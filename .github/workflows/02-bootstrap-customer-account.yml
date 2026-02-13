@@ -1,0 +1,173 @@
+name: "02 · Bootstrap Customer Account"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
+      auto_set_secrets:
+        description: 'Automatically set GitHub environment secrets from Terraform outputs (requires GH_PAT)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'license-portal' }}
+  TF_VAR_environment: ${{ inputs.environment }}
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  bootstrap:
+    name: Bootstrap Customer Account (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (Platform Admin)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Validate AWS Identity (Platform Admin)
+        run: |
+          set -euo pipefail
+          echo "::group::Platform Admin Identity"
+          aws sts get-caller-identity
+          echo "::endgroup::"
+
+      - name: Debug S3 Access
+        run: |
+          set -euo pipefail
+          echo "Current identity:"
+          aws sts get-caller-identity
+          BUCKET="${{ secrets.TF_STATE_BUCKET }}"
+          echo "Testing S3 access to bucket: $BUCKET"
+          aws s3 ls "s3://$BUCKET/" --max-items 5 || echo "❌ Cannot list bucket"
+          aws s3api head-bucket --bucket "$BUCKET" || echo "❌ Cannot head bucket"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform Init
+        working-directory: infra/data-plane/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=customer-account/${{ inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}" \
+            -reconfigure
+
+      - name: Terraform Plan
+        working-directory: infra/data-plane/terraform
+        env:
+          TF_VAR_platform_admin_account_id: ${{ secrets.PLATFORM_ADMIN_ACCOUNT_ID }}
+          TF_VAR_external_id: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
+          TF_VAR_customer_account_role_arn: ${{ secrets.CUSTOMER_ACCOUNT_ROLE_ARN }}
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infra/data-plane/terraform
+        env:
+          TF_VAR_platform_admin_account_id: ${{ secrets.PLATFORM_ADMIN_ACCOUNT_ID }}
+          TF_VAR_external_id: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
+          TF_VAR_customer_account_role_arn: ${{ secrets.CUSTOMER_ACCOUNT_ROLE_ARN }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Extract Outputs
+        id: tf-outputs
+        working-directory: infra/data-plane/terraform
+        run: |
+          echo "customer_table=$(terraform output -raw customer_dynamodb_table_name)" >> $GITHUB_OUTPUT
+          echo "customer_role=$(terraform output -raw customer_account_role_arn)" >> $GITHUB_OUTPUT
+          echo "cfn_role=$(terraform output -raw cloudformation_execution_role_arn)" >> $GITHUB_OUTPUT
+          echo "customer_account_id=$(terraform output -raw customer_account_id)" >> $GITHUB_OUTPUT
+
+      - name: Validate Cross-Account Access
+        env:
+          CROSS_ACCOUNT_EXTERNAL_ID: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
+        run: |
+          set -euo pipefail
+          CUSTOMER_ROLE="${{ steps.tf-outputs.outputs.customer_role }}"
+          TABLE_NAME="${{ steps.tf-outputs.outputs.customer_table }}"
+
+          bash scripts/validate-bootstrap.sh \
+            --data-plane-role "${CUSTOMER_ROLE}" \
+            --table-name "${TABLE_NAME}" \
+            --external-id "${CROSS_ACCOUNT_EXTERNAL_ID}"
+
+      # ── Auto-set GitHub secrets from Terraform outputs ──────────────
+      - name: Auto-set GitHub environment secrets
+        if: inputs.auto_set_secrets == true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::GH_PAT secret not set — skipping automatic secret configuration. Set secrets manually (see summary below)."
+            exit 0
+          fi
+
+          ENV="${{ inputs.environment }}"
+          REPO="${{ github.repository }}"
+
+          echo "🔧 Setting environment secrets for '$ENV' from Terraform outputs..."
+          gh secret set DATA_PLANE_ROLE_ARN   --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.customer_role }}"
+          gh secret set DATA_PLANE_TABLE_NAME --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.customer_table }}"
+
+          echo "✅ Data plane secrets set automatically for '$ENV'"
+          echo "### ✅ GitHub Secrets Auto-Configured (WF 02)" >> $GITHUB_STEP_SUMMARY
+          echo "Data plane secrets for \`$ENV\` have been set automatically." >> $GITHUB_STEP_SUMMARY
+
+      - name: Output Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << SUMMARY
+          ## ✅ Customer Account Bootstrapped
+
+          ### Resources Provisioned
+
+          | Resource | Value |
+          |----------|-------|
+          | DynamoDB Table | \`${{ steps.tf-outputs.outputs.customer_table }}\` |
+          | Cross-Account Role | \`${{ steps.tf-outputs.outputs.customer_role }}\` |
+          | CloudFormation Execution Role | \`${{ steps.tf-outputs.outputs.cfn_role }}\` |
+          | Customer Account ID | \`${{ steps.tf-outputs.outputs.customer_account_id }}\` |
+
+          ### Capabilities
+          | Tier | Provisioning Method |
+          |------|---------------------|
+          | **Public** | DynamoDB item created by create-infra-worker |
+          | **Private** | CloudFormation stack created/deleted by create/delete-infra-worker |
+
+          ### SSM Parameters Created
+          - \`/${TF_VAR_project_name}/${TF_VAR_environment}/dynamodb/customer-table\`
+          - \`/${TF_VAR_project_name}/${TF_VAR_environment}/cross-account/customer-account-role-arn\`
+          - \`/${TF_VAR_project_name}/${TF_VAR_environment}/cloudformation/execution-role-arn\`
+
+          ---
+
+          ### 🔧 Manual commands (if auto_set_secrets was disabled or GH_PAT is missing)
+
+          \`\`\`bash
+          ENV=${{ inputs.environment }}
+          gh secret set DATA_PLANE_ROLE_ARN     --env \$ENV --body "${{ steps.tf-outputs.outputs.customer_role }}"
+          gh secret set DATA_PLANE_TABLE_NAME   --env \$ENV --body "${{ steps.tf-outputs.outputs.customer_table }}"
+          \`\`\`
+
+          Then re-run **04 · Deploy Backend** to pick up the cross-account config.
+          SUMMARY

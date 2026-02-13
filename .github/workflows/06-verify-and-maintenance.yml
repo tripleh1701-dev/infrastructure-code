@@ -1,0 +1,589 @@
+# =============================================================================
+# 06 — Verify & Scheduled Maintenance
+# =============================================================================
+# Consolidates post-deploy bootstrap verification and scheduled maintenance
+# (nightly pre-flight, weekly security audit) into a single workflow.
+#
+# Triggers:
+#   1. After successful deploy (workflow_run from 04/05)
+#   2. Nightly at 02:00 UTC — pre-flight readiness + bootstrap verify
+#   3. Weekly Monday 09:00 UTC — security audit
+#   4. Manual with full control
+
+name: "06 · Verify & Maintenance"
+
+on:
+  # ── Post-deploy trigger ───────────────────────────────────────────────
+  workflow_run:
+    workflows: ['04 · Deploy Backend', '05 · Deploy Frontend']
+    types: [completed]
+    branches: [main]
+
+  # ── Scheduled triggers ────────────────────────────────────────────────
+  schedule:
+    - cron: '0 2 * * *'    # Nightly 2am UTC — pre-flight + bootstrap verify
+    - cron: '0 9 * * 1'    # Weekly Monday 9am UTC — security audit
+
+  # ── Manual trigger ────────────────────────────────────────────────────
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [dev, staging, prod]
+      run_bootstrap_verify:
+        description: 'Run bootstrap verification'
+        required: false
+        default: true
+        type: boolean
+      auto_heal:
+        description: 'Auto-fix detected bootstrap issues'
+        required: false
+        default: true
+        type: boolean
+      include_cognito:
+        description: 'Include Cognito identity checks'
+        required: false
+        default: true
+        type: boolean
+      run_preflight:
+        description: 'Run pre-flight readiness check'
+        required: false
+        default: false
+        type: boolean
+      run_security:
+        description: 'Run security audit'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+env:
+  NODE_VERSION: '20.x'
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  # ===========================================================================
+  # Resolve: determine what to run based on trigger
+  # ===========================================================================
+  resolve:
+    name: Resolve Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.decide.outputs.should_run }}
+      environment: ${{ steps.decide.outputs.environment }}
+      run_bootstrap_verify: ${{ steps.decide.outputs.run_bootstrap_verify }}
+      auto_heal: ${{ steps.decide.outputs.auto_heal }}
+      include_cognito: ${{ steps.decide.outputs.include_cognito }}
+      run_preflight: ${{ steps.decide.outputs.run_preflight }}
+      run_security: ${{ steps.decide.outputs.run_security }}
+
+    steps:
+      - name: Decide what to run
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "Upstream deployment did not succeed — skipping"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "should_run=true"               >> $GITHUB_OUTPUT
+            echo "environment=staging"           >> $GITHUB_OUTPUT
+            echo "run_bootstrap_verify=true"     >> $GITHUB_OUTPUT
+            echo "auto_heal=true"                >> $GITHUB_OUTPUT
+            echo "include_cognito=true"          >> $GITHUB_OUTPUT
+            echo "run_preflight=false"           >> $GITHUB_OUTPUT
+            echo "run_security=false"            >> $GITHUB_OUTPUT
+
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "should_run=true"                                                     >> $GITHUB_OUTPUT
+            echo "environment=${{ github.event.inputs.environment }}"                  >> $GITHUB_OUTPUT
+            echo "run_bootstrap_verify=${{ github.event.inputs.run_bootstrap_verify }}" >> $GITHUB_OUTPUT
+            echo "auto_heal=${{ github.event.inputs.auto_heal }}"                      >> $GITHUB_OUTPUT
+            echo "include_cognito=${{ github.event.inputs.include_cognito }}"           >> $GITHUB_OUTPUT
+            echo "run_preflight=${{ github.event.inputs.run_preflight }}"               >> $GITHUB_OUTPUT
+            echo "run_security=${{ github.event.inputs.run_security }}"                >> $GITHUB_OUTPUT
+
+          elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
+            # Nightly: run both bootstrap verify and pre-flight
+            echo "should_run=true"               >> $GITHUB_OUTPUT
+            echo "environment=prod"              >> $GITHUB_OUTPUT
+            echo "run_bootstrap_verify=true"     >> $GITHUB_OUTPUT
+            echo "auto_heal=true"                >> $GITHUB_OUTPUT
+            echo "include_cognito=true"          >> $GITHUB_OUTPUT
+            echo "run_preflight=true"            >> $GITHUB_OUTPUT
+            echo "run_security=false"            >> $GITHUB_OUTPUT
+
+          elif [ "${{ github.event.schedule }}" == "0 9 * * 1" ]; then
+            # Weekly Monday: security audit only
+            echo "should_run=true"               >> $GITHUB_OUTPUT
+            echo "environment=prod"              >> $GITHUB_OUTPUT
+            echo "run_bootstrap_verify=false"    >> $GITHUB_OUTPUT
+            echo "auto_heal=false"               >> $GITHUB_OUTPUT
+            echo "include_cognito=false"         >> $GITHUB_OUTPUT
+            echo "run_preflight=false"           >> $GITHUB_OUTPUT
+            echo "run_security=true"             >> $GITHUB_OUTPUT
+
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ===========================================================================
+  # BOOTSTRAP VERIFICATION (post-deploy + nightly)
+  # ===========================================================================
+  bootstrap-verify:
+    name: "🔍 Bootstrap Verify (${{ needs.resolve.outputs.environment }})"
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.run_bootstrap_verify == 'true'
+    environment: ${{ needs.resolve.outputs.environment }}
+
+    outputs:
+      has_failures: ${{ steps.verify.outputs.has_failures }}
+      total_checks: ${{ steps.verify.outputs.total_checks }}
+      passed: ${{ steps.verify.outputs.passed }}
+      failed: ${{ steps.verify.outputs.failed }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          npm install --package-lock-only 2>/dev/null || true
+          npm install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run bootstrap verification
+        id: verify
+        working-directory: backend
+        env:
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          SSM_PREFIX: ${{ secrets.SSM_PREFIX || '/accounts' }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: |
+          ARGS="--json"
+          if [ "${{ needs.resolve.outputs.include_cognito }}" == "true" ]; then
+            ARGS="$ARGS --with-cognito"
+          fi
+
+          set +e
+          npx ts-node scripts/verify-bootstrap.ts $ARGS > verify-report.json 2>verify-stderr.log
+          EXIT_CODE=$?
+          set -e
+
+          if [ -s verify-stderr.log ]; then
+            echo "::group::Verification stderr"
+            cat verify-stderr.log
+            echo "::endgroup::"
+          fi
+
+          if [ -f verify-report.json ] && jq -e . verify-report.json > /dev/null 2>&1; then
+            TOTAL=$(jq '.summary.total // 0' verify-report.json)
+            PASSED=$(jq '.summary.passed // 0' verify-report.json)
+            FAILED=$(jq '.summary.failed // 0' verify-report.json)
+            HAS_FAILURES=$( [ "$FAILED" -gt 0 ] && echo "true" || echo "false" )
+          else
+            TOTAL=0; PASSED=0; FAILED=1; HAS_FAILURES="true"
+          fi
+
+          echo "has_failures=$HAS_FAILURES" >> $GITHUB_OUTPUT
+          echo "total_checks=$TOTAL"        >> $GITHUB_OUTPUT
+          echo "passed=$PASSED"             >> $GITHUB_OUTPUT
+          echo "failed=$FAILED"             >> $GITHUB_OUTPUT
+
+          echo "## 🔍 Bootstrap Verification — ${{ needs.resolve.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+          echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bootstrap-verify-${{ needs.resolve.outputs.environment }}-${{ github.run_number }}
+          path: backend/verify-report.json
+          retention-days: 90
+
+  # ===========================================================================
+  # AUTO-HEAL (only when bootstrap verify finds failures)
+  # ===========================================================================
+  auto-heal:
+    name: "🔧 Auto-Heal (${{ needs.resolve.outputs.environment }})"
+    runs-on: ubuntu-latest
+    needs: [resolve, bootstrap-verify]
+    if: |
+      needs.bootstrap-verify.outputs.has_failures == 'true' &&
+      needs.resolve.outputs.auto_heal == 'true'
+    environment: ${{ needs.resolve.outputs.environment }}
+
+    outputs:
+      fix_success: ${{ steps.fix.outputs.fix_success }}
+      fixed_count: ${{ steps.fix.outputs.fixed_count }}
+      still_failed: ${{ steps.fix.outputs.still_failed }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          npm install --package-lock-only 2>/dev/null || true
+          npm install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Auto-heal bootstrap entities
+        id: fix
+        working-directory: backend
+        env:
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          SSM_PREFIX: ${{ secrets.SSM_PREFIX || '/accounts' }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: |
+          ARGS="--fix --json"
+          if [ "${{ needs.resolve.outputs.include_cognito }}" == "true" ]; then
+            ARGS="$ARGS --with-cognito"
+          fi
+
+          set +e
+          npx ts-node scripts/verify-bootstrap.ts $ARGS > fix-report.json 2>fix-stderr.log
+          set -e
+
+          if [ -f fix-report.json ] && jq -e . fix-report.json > /dev/null 2>&1; then
+            FIXED=$(jq '[.checks[] | select(.status == "FIXED")] | length' fix-report.json 2>/dev/null || echo 0)
+            STILL_FAILED=$(jq '[.checks[] | select(.status == "FAIL")] | length' fix-report.json 2>/dev/null || echo 0)
+            FIX_SUCCESS=$( [ "$STILL_FAILED" -eq 0 ] && echo "true" || echo "false" )
+          else
+            FIXED=0; STILL_FAILED=1; FIX_SUCCESS="false"
+          fi
+
+          echo "fix_success=$FIX_SUCCESS"   >> $GITHUB_OUTPUT
+          echo "fixed_count=$FIXED"         >> $GITHUB_OUTPUT
+          echo "still_failed=$STILL_FAILED" >> $GITHUB_OUTPUT
+
+          echo "## 🔧 Auto-Heal — ${{ needs.resolve.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔧 Fixed | $FIXED |" >> $GITHUB_STEP_SUMMARY
+          echo "| ❌ Still failing | $STILL_FAILED |" >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bootstrap-fix-${{ needs.resolve.outputs.environment }}-${{ github.run_number }}
+          path: backend/fix-report.json
+          retention-days: 90
+
+  # ===========================================================================
+  # ALERT on unresolvable bootstrap drift
+  # ===========================================================================
+  bootstrap-alert:
+    name: "🚨 Alert on Drift"
+    runs-on: ubuntu-latest
+    needs: [resolve, bootstrap-verify, auto-heal]
+    if: |
+      always() && (
+        (needs.auto-heal.result == 'failure') ||
+        (needs.auto-heal.outputs.still_failed != '0' && needs.auto-heal.outputs.still_failed != '')
+      )
+    steps:
+      - name: Create GitHub Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = '${{ needs.resolve.outputs.environment }}'.toUpperCase();
+            const failed = '${{ needs.bootstrap-verify.outputs.failed }}';
+            const fixed = '${{ needs.auto-heal.outputs.fixed_count }}' || '0';
+            const stillFailed = '${{ needs.auto-heal.outputs.still_failed }}' || 'unknown';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const body = [
+              `## 🚨 Bootstrap Drift Detected — ${env}`,
+              '', `Found **${failed}** issues. Auto-heal fixed **${fixed}**, **${stillFailed}** remain.`,
+              '', `**Workflow Run:** [View Logs](${runUrl})`,
+              '', `> Auto-created by Verify & Maintenance workflow.`,
+            ].join('\n');
+
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'bootstrap-drift', per_page: 1,
+            });
+
+            if (existing.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing[0].number,
+                body: `### Update — Run #${context.runNumber}\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: `🚨 Bootstrap drift in ${env} — ${stillFailed} unresolved`,
+                body, labels: ['bootstrap-drift', 'infrastructure', 'automated'],
+              });
+            }
+
+  # ===========================================================================
+  # PRE-FLIGHT READINESS CHECK (nightly)
+  # ===========================================================================
+  preflight:
+    name: "🚀 Pre-Flight (${{ needs.resolve.outputs.environment }})"
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.run_preflight == 'true'
+    environment: ${{ needs.resolve.outputs.environment }}
+
+    outputs:
+      go_live_ready: ${{ steps.preflight.outputs.go_live_ready }}
+      total_checks: ${{ steps.preflight.outputs.total_checks }}
+      pass_count: ${{ steps.preflight.outputs.pass_count }}
+      fail_count: ${{ steps.preflight.outputs.fail_count }}
+      warn_count: ${{ steps.preflight.outputs.warn_count }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          npm install --package-lock-only 2>/dev/null || true
+          npm install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run pre-flight check
+        id: preflight
+        working-directory: backend
+        env:
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          SSM_PREFIX: ${{ secrets.SSM_PREFIX || '/accounts' }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          SNS_CRITICAL_TOPIC_ARN: ${{ secrets.SNS_CRITICAL_TOPIC_ARN }}
+          API_GATEWAY_URL: ${{ secrets.VITE_API_BASE_URL }}
+          TARGET_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
+        run: |
+          set +e
+          npx ts-node scripts/pre-flight-check.ts --json --env ${{ needs.resolve.outputs.environment }} > preflight-report.json 2>preflight-stderr.log
+          set -e
+
+          if [ -f preflight-report.json ] && jq -e . preflight-report.json > /dev/null 2>&1; then
+            TOTAL=$(jq '.totals.total // 0' preflight-report.json)
+            PASS=$(jq '.totals.pass // 0' preflight-report.json)
+            FAIL=$(jq '.totals.fail // 0' preflight-report.json)
+            WARN=$(jq '.totals.warn // 0' preflight-report.json)
+            GO_LIVE=$(jq -r '.goLiveReady // false' preflight-report.json)
+          else
+            TOTAL=0; PASS=0; FAIL=1; WARN=0; GO_LIVE="false"
+          fi
+
+          echo "go_live_ready=$GO_LIVE"   >> $GITHUB_OUTPUT
+          echo "total_checks=$TOTAL"      >> $GITHUB_OUTPUT
+          echo "pass_count=$PASS"         >> $GITHUB_OUTPUT
+          echo "fail_count=$FAIL"         >> $GITHUB_OUTPUT
+          echo "warn_count=$WARN"         >> $GITHUB_OUTPUT
+
+          if [ "$GO_LIVE" == "true" ]; then STATUS="🟢 GO-LIVE READY"
+          elif [ "$FAIL" -eq 0 ]; then STATUS="🟡 WARNINGS ONLY"
+          else STATUS="🔴 FAILURES DETECTED"; fi
+
+          echo "## $STATUS — Pre-Flight (${{ needs.resolve.outputs.environment }})" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Pass | $PASS |" >> $GITHUB_STEP_SUMMARY
+          echo "| ❌ Fail | $FAIL |" >> $GITHUB_STEP_SUMMARY
+          echo "| ⚠️ Warn | $WARN |" >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preflight-${{ needs.resolve.outputs.environment }}-${{ github.run_number }}
+          path: backend/preflight-report.json
+          retention-days: 90
+
+  # ===========================================================================
+  # NOTIFY (SNS + Slack) — after pre-flight
+  # ===========================================================================
+  notify:
+    name: "📨 Notify"
+    runs-on: ubuntu-latest
+    needs: [resolve, preflight]
+    if: always() && needs.preflight.result != 'skipped'
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+        continue-on-error: true
+
+      - name: Send notifications
+        env:
+          SNS_CRITICAL_TOPIC_ARN: ${{ secrets.SNS_CRITICAL_TOPIC_ARN }}
+          SNS_WARNING_TOPIC_ARN: ${{ secrets.SNS_WARNING_TOPIC_ARN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_PREFLIGHT_WEBHOOK_URL }}
+        run: |
+          ENV="${{ needs.resolve.outputs.environment }}"
+          FAIL="${{ needs.preflight.outputs.fail_count }}"
+          WARN="${{ needs.preflight.outputs.warn_count }}"
+          PASS="${{ needs.preflight.outputs.pass_count }}"
+          GO_LIVE="${{ needs.preflight.outputs.go_live_ready }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          if [ "$GO_LIVE" == "true" ]; then SUBJECT="🟢 Pre-Flight PASSED — ${ENV^^}"
+          elif [ "${FAIL:-0}" -eq 0 ]; then SUBJECT="🟡 Pre-Flight WARNINGS — ${ENV^^}"
+          else SUBJECT="🔴 Pre-Flight FAILED — ${ENV^^} (${FAIL} failures)"; fi
+
+          MESSAGE="Pre-Flight: ${ENV^^} | Pass:${PASS} Fail:${FAIL} Warn:${WARN} | ${RUN_URL}"
+
+          # SNS
+          if [ "${FAIL:-0}" -gt 0 ] && [ -n "$SNS_CRITICAL_TOPIC_ARN" ]; then
+            aws sns publish --topic-arn "$SNS_CRITICAL_TOPIC_ARN" --subject "$SUBJECT" --message "$MESSAGE" || true
+          elif [ "${WARN:-0}" -gt 0 ] && [ -n "$SNS_WARNING_TOPIC_ARN" ]; then
+            aws sns publish --topic-arn "$SNS_WARNING_TOPIC_ARN" --subject "$SUBJECT" --message "$MESSAGE" || true
+          fi
+
+          # Slack
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -s -X POST -H "Content-Type: application/json" \
+              -d "{\"text\":\"${SUBJECT}\n${MESSAGE}\"}" "$SLACK_WEBHOOK_URL" || true
+          fi
+
+  # ===========================================================================
+  # PREFLIGHT ISSUE (create GitHub issue on failure)
+  # ===========================================================================
+  preflight-issue:
+    name: "📋 Preflight Issue"
+    runs-on: ubuntu-latest
+    needs: [resolve, preflight]
+    if: |
+      always() &&
+      needs.preflight.outputs.fail_count != '0' &&
+      needs.preflight.outputs.fail_count != ''
+    steps:
+      - name: Create or update issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = '${{ needs.resolve.outputs.environment }}'.toUpperCase();
+            const fail = '${{ needs.preflight.outputs.fail_count }}';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `🔴 Pre-Flight Failed — ${env} (${fail} failures)`;
+            const body = `Pre-flight check found **${fail}** failures in **${env}**.\n\n[View Details](${runUrl})\n\n_Auto-created by Verify & Maintenance workflow._`;
+
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              labels: 'preflight,automated', state: 'open', per_page: 5,
+            });
+            const match = existing.find(i => i.title.includes('Pre-Flight') && i.title.includes(env));
+
+            if (match) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: match.number, body: `### Update — ${new Date().toISOString()}\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['preflight', 'automated', 'infrastructure'],
+              });
+            }
+
+  # ===========================================================================
+  # SECURITY AUDIT (weekly Monday)
+  # ===========================================================================
+  security-audit:
+    name: "🔒 Security Audit"
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.run_security == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          npm install --package-lock-only 2>/dev/null || true
+          npm install
+
+      - name: npm audit
+        working-directory: backend
+        run: |
+          npm audit --json > audit-report.json || true
+          CRITICAL=$(jq '.metadata.vulnerabilities.critical // 0' audit-report.json)
+          HIGH=$(jq '.metadata.vulnerabilities.high // 0' audit-report.json)
+
+          echo "## 🔒 Weekly Security Audit" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔴 Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟠 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Terraform security scan
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra
+        continue-on-error: true
+
+      - name: Dependency check
+        working-directory: backend
+        run: |
+          echo "## Outdated Dependencies" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Current | Wanted | Latest |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|---------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          npm outdated --json 2>/dev/null | jq -r 'to_entries[] | "| \(.key) | \(.value.current) | \(.value.wanted) | \(.value.latest) |"' >> $GITHUB_STEP_SUMMARY || echo "All up to date ✅" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # FINAL SUMMARY
+  # ===========================================================================
+  summary:
+    name: "📋 Summary"
+    runs-on: ubuntu-latest
+    needs: [resolve, bootstrap-verify, auto-heal, preflight, security-audit]
+    if: always() && needs.resolve.outputs.should_run == 'true'
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 📋 Verify & Maintenance — Final Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ needs.resolve.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bootstrap Verify | ${{ needs.bootstrap-verify.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Auto-Heal | ${{ needs.auto-heal.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pre-Flight | ${{ needs.preflight.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Audit | ${{ needs.security-audit.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY

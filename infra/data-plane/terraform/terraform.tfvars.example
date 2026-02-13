@@ -1,0 +1,5 @@
+project_name              = "license-portal"
+environment               = "dev"
+aws_region                = "us-east-1"
+platform_admin_account_id = "REPLACE_WITH_ADMIN_ACCOUNT_ID"
+external_id               = "REPLACE_WITH_SECURE_EXTERNAL_ID"

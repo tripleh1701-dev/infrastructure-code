@@ -1,0 +1,507 @@
+# =============================================================================
+# Frontend Deployment - Build React/Vite to S3 + CloudFront
+# =============================================================================
+# Builds the React/Vite frontend and deploys static assets to the S3 bucket
+# provisioned by the frontend-hosting Terraform module. Invalidates the
+# CloudFront cache so users see the latest version immediately.
+#
+# Flow:
+#   1. Resolve workspace - derive S3 bucket + CloudFront distribution ID
+#   2. Build Vite production bundle (with workspace-specific env vars)
+#   3. Upload assets to S3 (with smart cache headers)
+#   4. Create CloudFront invalidation for changed paths
+#   5. Verify deployment via HTTP health check
+#
+# Workspaces:
+#   - dev:  Auto-deploy on push to main (frontend source changes)
+#   - qa:   Manual trigger or promotion from dev
+#   - prod: Manual trigger with required approval
+# =============================================================================
+
+name: "05 - Deploy Frontend"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - "vite.config.ts"
+      - "tailwind.config.ts"
+      - "postcss.config.js"
+      - "tsconfig*.json"
+      - "package*.json"
+      - ".github/workflows/05-deploy-frontend.yml"
+
+  workflow_dispatch:
+    inputs:
+      workspace:
+        description: "Target workspace to deploy"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+      skip_tests:
+        description: "Skip lint and tests (use with caution)"
+        required: false
+        default: false
+        type: boolean
+      invalidate_all:
+        description: "Invalidate entire CloudFront cache (not just changed files)"
+        required: false
+        default: false
+        type: boolean
+      api_provider:
+        description: "API provider for the frontend (external or nestjs)"
+        required: false
+        default: "external"
+        type: choice
+        options:
+          - external
+          - nestjs
+      set_api_provider_secret:
+        description: "Set VITE_API_PROVIDER as GitHub environment secret (requires GH_PAT)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  NODE_VERSION: "20.x"
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+# =============================================================================
+# Concurrency: Only one frontend deploy per workspace at a time
+# =============================================================================
+concurrency:
+  group: frontend-${{ github.event.inputs.workspace || 'dev' }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # Step 0: Resolve workspace configuration
+  # ===========================================================================
+  resolve:
+    name: "Resolve Workspace"
+    runs-on: ubuntu-latest
+    outputs:
+      workspace: ${{ steps.config.outputs.workspace }}
+      s3_bucket: ${{ steps.config.outputs.s3_bucket }}
+      distribution_id: ${{ steps.config.outputs.distribution_id }}
+      api_url: ${{ steps.config.outputs.api_url }}
+      cognito_client_id: ${{ steps.config.outputs.cognito_client_id }}
+      cognito_user_pool_id: ${{ steps.config.outputs.cognito_user_pool_id }}
+      run_tests: ${{ steps.config.outputs.run_tests }}
+
+    steps:
+      - name: Determine workspace configuration
+        id: config
+        run: |
+          WORKSPACE="${{ github.event.inputs.workspace || 'dev' }}"
+          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
+
+          PROJECT="${{ vars.PROJECT_NAME || 'license-portal' }}"
+          echo "s3_bucket=${PROJECT}-${WORKSPACE}-frontend" >> $GITHUB_OUTPUT
+          echo "distribution_id=" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event.inputs.skip_tests }}" == "true" ]; then
+            echo "run_tests=false" >> $GITHUB_OUTPUT
+          else
+            echo "run_tests=true" >> $GITHUB_OUTPUT
+          fi
+
+          echo "## Frontend Deployment Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Workspace | \`$WORKSPACE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Step 1: Lint and Test (optional)
+  # ===========================================================================
+  quality-checks:
+    name: "Quality Checks"
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: needs.resolve.outputs.run_tests == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run ESLint
+        run: npx eslint frontend/src/ --ext .ts,.tsx --max-warnings 0
+        continue-on-error: true
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Run unit tests
+        run: npx vitest run --reporter=verbose
+        continue-on-error: true
+
+  # ===========================================================================
+  # Step 2: Build Vite Production Bundle
+  # ===========================================================================
+  build:
+    name: "Build (${{ needs.resolve.outputs.workspace }})"
+    runs-on: ubuntu-latest
+    needs: [resolve, quality-checks]
+    if: |
+      always() &&
+      (needs.quality-checks.result == 'success' || needs.quality-checks.result == 'skipped')
+    environment: ${{ needs.resolve.outputs.workspace }}
+
+    outputs:
+      build-hash: ${{ steps.hash.outputs.hash }}
+      asset-count: ${{ steps.stats.outputs.asset_count }}
+      bundle-size: ${{ steps.stats.outputs.bundle_size }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate required environment variables
+        run: |
+          PROVIDER="${{ github.event.inputs.api_provider || 'external' }}"
+          if [ "$PROVIDER" == "external" ]; then
+            if [ -z "${{ secrets.VITE_EXTERNAL_API_URL }}" ]; then
+              echo "::error::VITE_EXTERNAL_API_URL secret is not set for the '${{ needs.resolve.outputs.workspace }}' environment."
+              exit 1
+            fi
+            echo "VITE_EXTERNAL_API_URL is configured"
+          fi
+
+      - name: Build for ${{ needs.resolve.outputs.workspace }}
+        env:
+          VITE_API_PROVIDER: ${{ github.event.inputs.api_provider || 'external' }}
+          VITE_EXTERNAL_API_URL: ${{ secrets.VITE_EXTERNAL_API_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          VITE_COGNITO_DOMAIN: ${{ secrets.VITE_COGNITO_DOMAIN }}
+          VITE_APP_ENVIRONMENT: ${{ needs.resolve.outputs.workspace }}
+        run: npx vite build
+
+      - name: Verify build output
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "::error::Build failed - dist/ directory not found"
+            exit 1
+          fi
+          if [ ! -f "dist/index.html" ]; then
+            echo "::error::Build failed - dist/index.html not found"
+            exit 1
+          fi
+
+      - name: Calculate build hash
+        id: hash
+        run: |
+          HASH=$(find dist -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1 | head -c 12)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Collect build stats
+        id: stats
+        run: |
+          ASSET_COUNT=$(find dist -type f | wc -l)
+          BUNDLE_SIZE=$(du -sh dist | cut -f1)
+          echo "asset_count=$ASSET_COUNT" >> $GITHUB_OUTPUT
+          echo "bundle_size=$BUNDLE_SIZE" >> $GITHUB_OUTPUT
+
+          echo "## Build Stats" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Assets | $ASSET_COUNT files |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bundle Size | $BUNDLE_SIZE |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Hash | \`${{ steps.hash.outputs.hash }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Largest Assets" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          find dist -type f -exec du -h {} \; | sort -rh | head -10 >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-${{ needs.resolve.outputs.workspace }}-${{ steps.hash.outputs.hash }}
+          path: dist/
+          retention-days: 30
+
+  # ===========================================================================
+  # Step 3: Deploy to S3 + Invalidate CloudFront
+  # ===========================================================================
+  deploy:
+    name: "Deploy (${{ needs.resolve.outputs.workspace }})"
+    runs-on: ubuntu-latest
+    needs: [resolve, build]
+    environment: ${{ needs.resolve.outputs.workspace }}
+
+    outputs:
+      frontend_url: ${{ steps.verify.outputs.frontend_url }}
+      invalidation_id: ${{ steps.invalidate.outputs.invalidation_id }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-${{ needs.resolve.outputs.workspace }}-${{ needs.build.outputs.build-hash }}
+          path: dist/
+
+      - name: Resolve infrastructure outputs
+        id: infra
+        run: |
+          S3_BUCKET="${{ secrets.FRONTEND_S3_BUCKET }}"
+          CF_DISTRIBUTION="${{ secrets.FRONTEND_CLOUDFRONT_DISTRIBUTION_ID }}"
+
+          if [ -z "$S3_BUCKET" ]; then
+            echo "::notice::FRONTEND_S3_BUCKET secret not set - attempting Terraform output lookup"
+            S3_BUCKET="${{ vars.PROJECT_NAME || 'license-portal' }}-${{ needs.resolve.outputs.workspace }}-frontend"
+          fi
+
+          if [ -z "$CF_DISTRIBUTION" ]; then
+            echo "::notice::FRONTEND_CLOUDFRONT_DISTRIBUTION_ID secret not set - attempting AWS lookup"
+            CF_DISTRIBUTION=$(aws cloudfront list-distributions \
+              --query "DistributionList.Items[?Comment=='${{ vars.PROJECT_NAME || 'license-portal' }}-${{ needs.resolve.outputs.workspace }}-frontend'].Id" \
+              --output text 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$S3_BUCKET" ]; then
+            echo "::error::Unable to resolve S3 bucket name. Set FRONTEND_S3_BUCKET secret."
+            exit 1
+          fi
+
+          echo "s3_bucket=$S3_BUCKET" >> $GITHUB_OUTPUT
+          echo "distribution_id=$CF_DISTRIBUTION" >> $GITHUB_OUTPUT
+          echo "S3 Bucket: $S3_BUCKET"
+          echo "CloudFront Distribution: ${CF_DISTRIBUTION:-not configured}"
+
+      - name: Sync hashed assets (immutable, long cache)
+        run: |
+          aws s3 sync dist/assets/ s3://${{ steps.infra.outputs.s3_bucket }}/assets/ \
+            --cache-control "public, max-age=31536000, immutable" \
+            --delete \
+            --size-only
+
+      - name: Sync index.html (no cache)
+        run: |
+          aws s3 cp dist/index.html s3://${{ steps.infra.outputs.s3_bucket }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+      - name: Sync remaining static files
+        run: |
+          aws s3 sync dist/ s3://${{ steps.infra.outputs.s3_bucket }}/ \
+            --cache-control "public, max-age=86400, stale-while-revalidate=3600" \
+            --delete \
+            --exclude "assets/*" \
+            --exclude "index.html"
+
+      - name: Invalidate CloudFront cache
+        id: invalidate
+        if: steps.infra.outputs.distribution_id != ''
+        run: |
+          DISTRIBUTION_ID="${{ steps.infra.outputs.distribution_id }}"
+          WORKSPACE="${{ needs.resolve.outputs.workspace }}"
+          INVALIDATE_ALL="${{ github.event.inputs.invalidate_all }}"
+
+          if [ "$INVALIDATE_ALL" == "true" ]; then
+            PATHS="/*"
+            echo "Performing full cache invalidation..."
+          else
+            PATHS="/index.html /sw.js /manifest.json /robots.txt /favicon.ico"
+            echo "Performing smart cache invalidation..."
+          fi
+
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths $PATHS \
+            --query 'Invalidation.Id' \
+            --output text)
+
+          echo "invalidation_id=$INVALIDATION_ID" >> $GITHUB_OUTPUT
+          echo "CloudFront Invalidation: $INVALIDATION_ID"
+
+      - name: Wait for CloudFront invalidation
+        if: steps.invalidate.outputs.invalidation_id != ''
+        run: |
+          echo "Waiting for invalidation ${{ steps.invalidate.outputs.invalidation_id }}..."
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${{ steps.infra.outputs.distribution_id }}" \
+            --id "${{ steps.invalidate.outputs.invalidation_id }}" \
+            2>/dev/null || echo "::warning::Invalidation wait timed out"
+
+      - name: Resolve frontend URL
+        id: verify
+        run: |
+          DISTRIBUTION_ID="${{ steps.infra.outputs.distribution_id }}"
+          CUSTOM_DOMAIN="${{ secrets.FRONTEND_CUSTOM_DOMAIN }}"
+
+          if [ -n "$CUSTOM_DOMAIN" ]; then
+            FRONTEND_URL="https://${CUSTOM_DOMAIN}"
+          elif [ -n "$DISTRIBUTION_ID" ]; then
+            CF_DOMAIN=$(aws cloudfront get-distribution \
+              --id "$DISTRIBUTION_ID" \
+              --query 'Distribution.DomainName' \
+              --output text 2>/dev/null || echo "")
+            FRONTEND_URL="https://${CF_DOMAIN}"
+          else
+            FRONTEND_URL="http://${{ steps.infra.outputs.s3_bucket }}.s3-website-${{ env.AWS_REGION }}.amazonaws.com"
+          fi
+
+          echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT
+
+      - name: Health check
+        run: |
+          FRONTEND_URL="${{ steps.verify.outputs.frontend_url }}"
+
+          if [ -n "$FRONTEND_URL" ] && [ "$FRONTEND_URL" != "https://" ]; then
+            echo "Checking $FRONTEND_URL ..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 15 \
+              --retry 3 \
+              --retry-delay 5 \
+              "$FRONTEND_URL" 2>/dev/null || echo "000")
+
+            if [ "$HTTP_STATUS" == "200" ]; then
+              echo "Frontend is live at $FRONTEND_URL"
+            elif [ "$HTTP_STATUS" == "000" ]; then
+              echo "::warning::Health check failed - could not reach $FRONTEND_URL (DNS may still be propagating)"
+            else
+              echo "::warning::Health check returned HTTP $HTTP_STATUS for $FRONTEND_URL"
+            fi
+          else
+            echo "::notice::No frontend URL available - skipping health check"
+          fi
+
+      - name: Set VITE_API_PROVIDER secret
+        if: github.event.inputs.set_api_provider_secret == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::GH_PAT secret not set - cannot set VITE_API_PROVIDER automatically."
+            exit 0
+          fi
+
+          WORKSPACE="${{ needs.resolve.outputs.workspace }}"
+          PROVIDER="${{ github.event.inputs.api_provider || 'external' }}"
+          REPO="${{ github.repository }}"
+
+          gh secret set VITE_API_PROVIDER --repo "$REPO" --env "$WORKSPACE" --body "$PROVIDER"
+          echo "VITE_API_PROVIDER set to '$PROVIDER' for environment '$WORKSPACE'"
+          echo "### VITE_API_PROVIDER Secret Set" >> $GITHUB_STEP_SUMMARY
+          echo "Set to \`$PROVIDER\` for \`$WORKSPACE\` environment." >> $GITHUB_STEP_SUMMARY
+
+      - name: Deployment summary
+        run: |
+          WORKSPACE="${{ needs.resolve.outputs.workspace }}"
+          FRONTEND_URL="${{ steps.verify.outputs.frontend_url }}"
+          API_PROVIDER="${{ github.event.inputs.api_provider || 'external' }}"
+
+          echo "## Frontend Deployed - ${WORKSPACE^^}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| S3 Bucket | \`${{ steps.infra.outputs.s3_bucket }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| CloudFront ID | \`${{ steps.infra.outputs.distribution_id || 'N/A' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Invalidation | \`${{ steps.invalidate.outputs.invalidation_id || 'skipped' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Hash | \`${{ needs.build.outputs.build-hash }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Assets | ${{ needs.build.outputs.asset-count }} files |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bundle Size | ${{ needs.build.outputs.bundle-size }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Provider | \`$API_PROVIDER\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend URL | $FRONTEND_URL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deployed by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | [\`${{ github.sha }}\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Step 4: Promote to next workspace (manual gate)
+  # ===========================================================================
+  promote-qa:
+    name: "Promote to QA"
+    runs-on: ubuntu-latest
+    needs: [resolve, deploy]
+    if: |
+      needs.resolve.outputs.workspace == 'dev' &&
+      github.event_name == 'push'
+    environment: qa-promotion
+
+    steps:
+      - name: Trigger QA deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: '05-deploy-frontend.yml',
+              ref: 'main',
+              inputs: {
+                workspace: 'qa',
+                skip_tests: 'false',
+                invalidate_all: 'false'
+              }
+            });
+            core.info('QA deployment triggered');
+
+  promote-prod:
+    name: "Promote to Prod"
+    runs-on: ubuntu-latest
+    needs: [resolve, deploy]
+    if: |
+      needs.resolve.outputs.workspace == 'qa' &&
+      github.event_name == 'workflow_dispatch'
+    environment: prod-promotion
+
+    steps:
+      - name: Trigger Prod deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: '05-deploy-frontend.yml',
+              ref: 'main',
+              inputs: {
+                workspace: 'prod',
+                skip_tests: 'true',
+                invalidate_all: 'true'
+              }
+            });
+            core.info('Production deployment triggered');

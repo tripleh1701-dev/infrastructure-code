@@ -1,0 +1,215 @@
+# =============================================================================
+# 07 — Rollback: Revert Backend Lambda or Frontend S3 to a previous version
+# =============================================================================
+# Sequence: Run LAST, only when a deployment needs to be reverted.
+# Manual trigger only — requires confirmation.
+
+name: "07 · Rollback"
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to rollback'
+        required: true
+        type: choice
+        options:
+          - backend
+          - frontend
+          - both
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
+      backend_version:
+        description: 'Lambda version to rollback to (leave empty for previous)'
+        required: false
+        type: string
+      frontend_artifact:
+        description: 'Frontend artifact name from a previous run (leave empty for S3 versioning rollback)'
+        required: false
+        type: string
+      confirmation:
+        description: 'Type ROLLBACK to confirm'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  # ===========================================================================
+  validate:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    outputs:
+      confirmed: ${{ steps.check.outputs.confirmed }}
+    steps:
+      - name: Confirm rollback intent
+        id: check
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirmation }}" != "ROLLBACK" ]; then
+            echo "::error::Confirmation phrase must be 'ROLLBACK'. Got: '${{ inputs.confirmation }}'"
+            echo "confirmed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "confirmed=true" >> $GITHUB_OUTPUT
+          echo "## ⚠️ Rollback Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | ${{ inputs.component }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  rollback-backend:
+    name: "⏪ Rollback Backend (${{ inputs.environment }})"
+    runs-on: ubuntu-latest
+    needs: validate
+    if: needs.validate.outputs.confirmed == 'true' && (inputs.component == 'backend' || inputs.component == 'both')
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback Lambda
+        env:
+          FUNCTION_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment }}-backend
+        run: |
+          set -euo pipefail
+
+          if [ -n "${{ inputs.backend_version }}" ]; then
+            TARGET_VERSION="${{ inputs.backend_version }}"
+            echo "Rolling back to specified version: ${TARGET_VERSION}"
+          else
+            # Get current live alias version
+            CURRENT_VERSION=$(aws lambda get-alias \
+              --function-name "${FUNCTION_NAME}" \
+              --name live \
+              --query 'FunctionVersion' \
+              --output text)
+
+            # Get the version before current
+            ALL_VERSIONS=$(aws lambda list-versions-by-function \
+              --function-name "${FUNCTION_NAME}" \
+              --query "Versions[?Version!='\$LATEST'].Version" \
+              --output text | tr '\t' '\n' | sort -n)
+
+            TARGET_VERSION=$(echo "$ALL_VERSIONS" | grep -B1 "^${CURRENT_VERSION}$" | head -1)
+
+            if [ -z "$TARGET_VERSION" ] || [ "$TARGET_VERSION" == "$CURRENT_VERSION" ]; then
+              echo "::error::No previous version found to rollback to"
+              exit 1
+            fi
+            echo "Current version: ${CURRENT_VERSION}, rolling back to: ${TARGET_VERSION}"
+          fi
+
+          # Update live alias to target version
+          aws lambda update-alias \
+            --function-name "${FUNCTION_NAME}" \
+            --name live \
+            --function-version "${TARGET_VERSION}"
+
+          echo "✅ Backend rolled back to version ${TARGET_VERSION}"
+          echo "### Backend Rollback" >> $GITHUB_STEP_SUMMARY
+          echo "Lambda \`${FUNCTION_NAME}\` alias \`live\` → version \`${TARGET_VERSION}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  rollback-frontend:
+    name: "⏪ Rollback Frontend (${{ inputs.environment }})"
+    runs-on: ubuntu-latest
+    needs: validate
+    if: needs.validate.outputs.confirmed == 'true' && (inputs.component == 'frontend' || inputs.component == 'both')
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback via S3 versioning
+        if: inputs.frontend_artifact == ''
+        env:
+          S3_BUCKET: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment }}-frontend
+        run: |
+          set -euo pipefail
+
+          echo "Rolling back index.html to previous S3 version..."
+
+          # Get previous version of index.html
+          PREV_VERSION=$(aws s3api list-object-versions \
+            --bucket "${S3_BUCKET}" \
+            --prefix "index.html" \
+            --query "Versions[1].VersionId" \
+            --output text)
+
+          if [ -z "$PREV_VERSION" ] || [ "$PREV_VERSION" == "None" ]; then
+            echo "::error::No previous version of index.html found in S3"
+            exit 1
+          fi
+
+          # Copy previous version as current
+          aws s3api copy-object \
+            --bucket "${S3_BUCKET}" \
+            --copy-source "${S3_BUCKET}/index.html?versionId=${PREV_VERSION}" \
+            --key "index.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+          echo "✅ Frontend index.html rolled back to version ${PREV_VERSION}"
+          echo "### Frontend Rollback" >> $GITHUB_STEP_SUMMARY
+          echo "S3 \`index.html\` → version \`${PREV_VERSION}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Rollback via artifact
+        if: inputs.frontend_artifact != ''
+        env:
+          S3_BUCKET: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment }}-frontend
+        run: |
+          echo "::notice::Artifact-based rollback requires downloading from GitHub Actions artifacts."
+          echo "Artifact: ${{ inputs.frontend_artifact }}"
+          echo "This would download the artifact and re-sync to S3."
+          echo "For now, use S3 versioning rollback (leave artifact field empty)."
+
+      - name: Invalidate CloudFront
+        env:
+          DISTRIBUTION_ID: ${{ secrets.FRONTEND_CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          if [ -n "${DISTRIBUTION_ID}" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id "${DISTRIBUTION_ID}" \
+              --paths "/*"
+            echo "✅ CloudFront cache invalidated"
+          else
+            echo "::notice::No CloudFront distribution configured — skipping invalidation"
+          fi
+
+  # ===========================================================================
+  summary:
+    name: Rollback Summary
+    runs-on: ubuntu-latest
+    needs: [validate, rollback-backend, rollback-frontend]
+    if: always() && needs.validate.outputs.confirmed == 'true'
+    steps:
+      - name: Final summary
+        run: |
+          echo "## Rollback Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ needs.rollback-backend.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ needs.rollback-frontend.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Run **06 · Verify & Maintenance** to validate the rollback." >> $GITHUB_STEP_SUMMARY

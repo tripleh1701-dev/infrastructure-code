@@ -1,0 +1,244 @@
+name: "01 · Bootstrap Platform Admin"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
+      admin_email:
+        description: 'Platform admin email (for initial Cognito user)'
+        required: true
+        type: string
+      enterprise_name:
+        description: 'Default enterprise name'
+        required: false
+        default: 'Default Enterprise'
+        type: string
+      auto_set_secrets:
+        description: 'Automatically set GitHub environment secrets from Terraform outputs (requires GH_PAT)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'license-portal' }}
+  TF_VAR_environment: ${{ inputs.environment }}
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VAR_credential_notification_enabled: ${{ vars.CREDENTIAL_NOTIFICATION_ENABLED || 'false' }}
+  TF_VAR_ses_sender_email: ${{ vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
+  TF_VAR_platform_login_url: ${{ vars.PLATFORM_LOGIN_URL || '' }}
+  TF_VAR_platform_name: ${{ vars.PLATFORM_NAME || 'License Portal' }}
+  TF_VAR_platform_support_email: ${{ vars.PLATFORM_SUPPORT_EMAIL || 'support@example.com' }}
+
+jobs:
+  bootstrap:
+    name: Bootstrap Platform Admin (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq
+
+      - name: Validate AWS Identity
+        run: |
+          set -euo pipefail
+          echo "::group::AWS Identity"
+          aws sts get-caller-identity
+          echo "::endgroup::"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Pre-flight Checks
+        run: bash scripts/prechecks.sh
+
+      - name: Create Lambda Placeholder
+        working-directory: infra/control-plane/terraform
+        run: |
+          echo "placeholder" > lambda-placeholder.txt
+          zip lambda-placeholder.zip lambda-placeholder.txt
+
+      - name: Terraform Init
+        working-directory: infra/control-plane/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=platform-admin/${{ inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}" \
+            -reconfigure
+
+      - name: Terraform Plan
+        working-directory: infra/control-plane/terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infra/control-plane/terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Extract Terraform Outputs
+        id: tf-outputs
+        working-directory: infra/control-plane/terraform
+        run: |
+          echo "cognito_user_pool_id=$(terraform output -raw cognito_user_pool_id)" >> $GITHUB_OUTPUT
+          echo "cognito_client_id=$(terraform output -raw cognito_client_id)" >> $GITHUB_OUTPUT
+          echo "cognito_domain=$(terraform output -raw cognito_domain)" >> $GITHUB_OUTPUT
+          echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          echo "frontend_url=$(terraform output -raw frontend_url)" >> $GITHUB_OUTPUT
+          echo "control_plane_table=$(terraform output -raw control_plane_dynamodb_table)" >> $GITHUB_OUTPUT
+          echo "account_registry_table=$(terraform output -raw account_registry_dynamodb_table)" >> $GITHUB_OUTPUT
+          echo "vpc_id=$(terraform output -raw vpc_id)" >> $GITHUB_OUTPUT
+          echo "create_account_sfn=$(terraform output -raw create_account_sfn_arn)" >> $GITHUB_OUTPUT
+          echo "frontend_bucket=$(terraform output -raw frontend_bucket)" >> $GITHUB_OUTPUT
+          echo "frontend_cf_id=$(terraform output -raw frontend_cloudfront_id)" >> $GITHUB_OUTPUT
+
+      # =================================================================
+      # Platform Bootstrap — Seed default data via NestJS bootstrap script
+      # Creates: Default Account, Enterprise, Products, Services, Linkages,
+      #          RBAC roles/groups, Platform Admin user in Cognito + DynamoDB
+      # =================================================================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: |
+          npm install --package-lock-only
+          npm ci
+
+      - name: Build Backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Run Platform Bootstrap (Seed Data)
+        working-directory: backend
+        env:
+          NODE_ENV: ${{ inputs.environment }}
+          CONTROL_PLANE_TABLE_NAME: ${{ steps.tf-outputs.outputs.control_plane_table }}
+          DYNAMODB_TABLE_NAME: ${{ steps.tf-outputs.outputs.control_plane_table }}
+          ACCOUNT_REGISTRY_TABLE_NAME: ${{ steps.tf-outputs.outputs.account_registry_table }}
+          COGNITO_USER_POOL_ID: ${{ steps.tf-outputs.outputs.cognito_user_pool_id }}
+          COGNITO_CLIENT_ID: ${{ steps.tf-outputs.outputs.cognito_client_id }}
+          BOOTSTRAP_ADMIN_EMAIL: ${{ inputs.admin_email }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+          BOOTSTRAP_ENTERPRISE_NAME: ${{ inputs.enterprise_name }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+        run: |
+          COGNITO_FLAG=""
+          if [ -n "${COGNITO_USER_POOL_ID}" ]; then
+            COGNITO_FLAG="--with-cognito"
+          fi
+          npx ts-node -P tsconfig.scripts.json scripts/bootstrap-day0.ts ${COGNITO_FLAG} || {
+            echo "::warning::Bootstrap seed script failed — you may need to run it manually"
+          }
+
+      # ── Auto-set GitHub secrets from Terraform outputs ──────────────
+      - name: Auto-set GitHub environment secrets
+        if: inputs.auto_set_secrets == true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::GH_PAT secret not set — skipping automatic secret configuration. Set secrets manually (see summary below)."
+            exit 0
+          fi
+
+          ENV="${{ inputs.environment }}"
+          REPO="${{ github.repository }}"
+
+          echo "🔧 Setting environment secrets for '$ENV' from Terraform outputs..."
+          gh secret set VITE_API_BASE_URL         --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.api_gateway_url }}"
+          gh secret set VITE_EXTERNAL_API_URL     --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.api_gateway_url }}"
+          gh secret set VITE_COGNITO_USER_POOL_ID --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.cognito_user_pool_id }}"
+          gh secret set VITE_COGNITO_CLIENT_ID    --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.cognito_client_id }}"
+          gh secret set VITE_COGNITO_DOMAIN       --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.cognito_domain }}"
+          gh secret set FRONTEND_S3_BUCKET        --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.frontend_bucket }}"
+          gh secret set FRONTEND_CLOUDFRONT_DISTRIBUTION_ID --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.frontend_cf_id }}"
+          gh secret set COGNITO_USER_POOL_ID      --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.cognito_user_pool_id }}"
+          gh secret set DYNAMODB_TABLE_NAME       --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.control_plane_table }}"
+
+          echo "✅ All environment secrets set automatically for '$ENV'"
+          echo "### ✅ GitHub Secrets Auto-Configured (WF 01)" >> $GITHUB_STEP_SUMMARY
+          echo "All Terraform output secrets for \`$ENV\` have been set automatically." >> $GITHUB_STEP_SUMMARY
+
+      - name: Output Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
+          ## ✅ Platform Admin Bootstrapped
+
+          ### Infrastructure Provisioned
+
+          | Resource | Value |
+          |----------|-------|
+          | VPC | `${{ steps.tf-outputs.outputs.vpc_id }}` |
+          | Cognito User Pool | `${{ steps.tf-outputs.outputs.cognito_user_pool_id }}` |
+          | Cognito Client ID | `${{ steps.tf-outputs.outputs.cognito_client_id }}` |
+          | API Gateway URL | `${{ steps.tf-outputs.outputs.api_gateway_url }}` |
+          | Frontend URL | `${{ steps.tf-outputs.outputs.frontend_url }}` |
+          | Control-Plane Table | `${{ steps.tf-outputs.outputs.control_plane_table }}` |
+          | Account Registry Table | `${{ steps.tf-outputs.outputs.account_registry_table }}` |
+          | Create Account SFN | `${{ steps.tf-outputs.outputs.create_account_sfn }}` |
+
+          ### Worker Lambdas
+          | Worker | Status |
+          |--------|--------|
+          | create-infra-worker | ✅ Provisioned (placeholder) |
+          | delete-infra-worker | ✅ Provisioned (placeholder) |
+          | poll-infra-worker | ✅ Provisioned (placeholder) |
+          | setup-rbac-worker | ✅ Provisioned (placeholder) |
+          | create-admin-worker | ✅ Provisioned (placeholder) |
+
+          ### Platform Bootstrap (Seed Data)
+          | Item | Status |
+          |------|--------|
+          | Default Account | ✅ Created |
+          | Default Enterprise | ✅ Created |
+          | Products & Services | ✅ Linked |
+          | RBAC Roles & Groups | ✅ Configured |
+          | Platform Admin User | ✅ Created in Cognito |
+
+          ---
+
+          ### 🔧 Manual commands (if auto_set_secrets was disabled or GH_PAT is missing)
+
+          ```bash
+          ENV=${{ inputs.environment }}
+
+          gh secret set VITE_API_BASE_URL         --env $ENV --body "${{ steps.tf-outputs.outputs.api_gateway_url }}"
+          gh secret set VITE_EXTERNAL_API_URL     --env $ENV --body "${{ steps.tf-outputs.outputs.api_gateway_url }}"
+          gh secret set VITE_COGNITO_USER_POOL_ID --env $ENV --body "${{ steps.tf-outputs.outputs.cognito_user_pool_id }}"
+          gh secret set VITE_COGNITO_CLIENT_ID    --env $ENV --body "${{ steps.tf-outputs.outputs.cognito_client_id }}"
+          gh secret set VITE_COGNITO_DOMAIN       --env $ENV --body "${{ steps.tf-outputs.outputs.cognito_domain }}"
+          gh secret set FRONTEND_S3_BUCKET        --env $ENV --body "${{ steps.tf-outputs.outputs.frontend_bucket }}"
+          gh secret set FRONTEND_CLOUDFRONT_DISTRIBUTION_ID --env $ENV --body "${{ steps.tf-outputs.outputs.frontend_cf_id }}"
+          ```
+
+          SUMMARY

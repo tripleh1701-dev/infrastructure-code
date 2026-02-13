@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>License Portal</title>
+    <meta name="description" content="Enterprise License Management Portal" />
+    <meta name="author" content="Lovable" />
+
+    <meta property="og:title" content="License Portal" />
+    <meta property="og:description" content="Enterprise License Management Portal" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@Lovable" />
+    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script>
+      // Polyfill Node.js globals required by amazon-cognito-identity-js
+      if (typeof global === 'undefined') { window.global = window; }
+    </script>
+    <script type="module" src="/frontend/src/main.tsx"></script>
+  </body>
+</html>

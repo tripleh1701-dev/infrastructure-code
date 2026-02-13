@@ -1,0 +1,443 @@
+# =============================================================================
+# 08 — Destroy Infrastructure: Tear down all AWS resources provisioned by Terraform
+# =============================================================================
+# ⚠️  DANGER ZONE — This workflow permanently destroys infrastructure and data.
+#
+# What it destroys:
+#   1. Control-Plane (Account 2): VPC, Cognito, API Gateway, Lambda, DynamoDB,
+#      S3 frontend bucket, CloudFront, Step Functions, CloudWatch, SNS
+#   2. Data-Plane (Account 3): Customer DynamoDB table, cross-account IAM role,
+#      CloudFormation execution role, SSM parameters
+#   3. (Optional) Terraform state backend: S3 bucket + DynamoDB lock table
+#   4. (Optional) GitHub environment secrets
+#
+# Prerequisites:
+#   - PLATFORM_ADMIN_ROLE_ARN environment secret
+#   - TF_STATE_BUCKET and TF_LOCK_TABLE environment secrets
+#   - GH_PAT secret (only if cleanup_github_secrets is true)
+#
+# Run Order: This should be the LAST workflow you ever run for an environment.
+# =============================================================================
+
+name: "08 · Destroy Infrastructure"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment to destroy'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
+      scope:
+        description: 'What to destroy'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - control-plane-only
+          - data-plane-only
+      cleanup_state_backend:
+        description: 'Also delete Terraform state S3 bucket and lock table (⚠️ irreversible)'
+        required: false
+        default: false
+        type: boolean
+      cleanup_github_secrets:
+        description: 'Delete GitHub environment secrets after destroy (requires GH_PAT)'
+        required: false
+        default: false
+        type: boolean
+      empty_s3_buckets:
+        description: 'Empty S3 buckets before destroy (required if buckets contain objects)'
+        required: false
+        default: true
+        type: boolean
+      confirmation:
+        description: 'Type DESTROY to confirm (this action is irreversible!)'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  PROJECT: ${{ vars.PROJECT_NAME || 'license-portal' }}
+
+# Only one destroy per environment at a time
+concurrency:
+  group: destroy-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  # ===========================================================================
+  # Step 0: Validate confirmation
+  # ===========================================================================
+  validate:
+    name: "🔒 Validate Destroy Request"
+    runs-on: ubuntu-latest
+    outputs:
+      confirmed: ${{ steps.check.outputs.confirmed }}
+    steps:
+      - name: Confirm destroy intent
+        id: check
+        run: |
+          set -euo pipefail
+
+          if [ "${{ inputs.confirmation }}" != "DESTROY" ]; then
+            echo "::error::Confirmation phrase must be 'DESTROY'. Got: '${{ inputs.confirmation }}'"
+            echo "confirmed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "confirmed=true" >> $GITHUB_OUTPUT
+
+          echo "## ⚠️ Infrastructure Destroy Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ inputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Scope | \`${{ inputs.scope }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Empty S3 Buckets | \`${{ inputs.empty_s3_buckets }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cleanup State Backend | \`${{ inputs.cleanup_state_backend }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cleanup GitHub Secrets | \`${{ inputs.cleanup_github_secrets }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ **This action is irreversible. All data will be permanently deleted.**" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Step 1: Destroy Data-Plane (Customer Account)
+  # ===========================================================================
+  destroy-data-plane:
+    name: "💥 Destroy Data-Plane (${{ inputs.environment }})"
+    runs-on: ubuntu-latest
+    needs: validate
+    if: >
+      needs.validate.outputs.confirmed == 'true' &&
+      (inputs.scope == 'all' || inputs.scope == 'data-plane-only')
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (Platform Admin)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform Init (Data-Plane)
+        working-directory: infra/data-plane/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=customer-account/${{ inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}" \
+            -reconfigure
+
+      - name: Terraform Destroy (Data-Plane)
+        working-directory: infra/data-plane/terraform
+        env:
+          TF_VAR_project_name: ${{ env.PROJECT }}
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+          TF_VAR_platform_admin_account_id: ${{ secrets.PLATFORM_ADMIN_ACCOUNT_ID }}
+          TF_VAR_external_id: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
+          TF_VAR_customer_account_role_arn: ${{ secrets.CUSTOMER_ACCOUNT_ROLE_ARN }}
+        run: |
+          echo "🔥 Destroying data-plane infrastructure..."
+          terraform destroy -auto-approve
+
+          echo "✅ Data-plane infrastructure destroyed"
+          echo "### 💥 Data-Plane Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "Customer account resources (DynamoDB, IAM roles, SSM parameters) have been removed." >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Step 2: Destroy Control-Plane (Platform Admin Account)
+  # ===========================================================================
+  destroy-control-plane:
+    name: "💥 Destroy Control-Plane (${{ inputs.environment }})"
+    runs-on: ubuntu-latest
+    needs: [validate, destroy-data-plane]
+    if: >
+      always() &&
+      needs.validate.outputs.confirmed == 'true' &&
+      (inputs.scope == 'all' || inputs.scope == 'control-plane-only') &&
+      (needs.destroy-data-plane.result == 'success' || needs.destroy-data-plane.result == 'skipped')
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (Platform Admin)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      # ── Empty S3 buckets before destroy (Terraform can't delete non-empty buckets) ──
+      - name: Empty S3 buckets
+        if: inputs.empty_s3_buckets == true
+        run: |
+          set -euo pipefail
+
+          FRONTEND_BUCKET="${{ secrets.FRONTEND_S3_BUCKET }}"
+          if [ -z "$FRONTEND_BUCKET" ]; then
+            FRONTEND_BUCKET="${{ env.PROJECT }}-${{ inputs.environment }}-frontend"
+          fi
+
+          echo "🗑️ Emptying S3 bucket: $FRONTEND_BUCKET"
+          if aws s3api head-bucket --bucket "$FRONTEND_BUCKET" 2>/dev/null; then
+            # Delete all object versions (required for versioned buckets)
+            aws s3api list-object-versions \
+              --bucket "$FRONTEND_BUCKET" \
+              --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
+              --output json > /tmp/versions.json
+
+            if [ "$(cat /tmp/versions.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/versions.json)" != 'null' ]; then
+              aws s3api delete-objects \
+                --bucket "$FRONTEND_BUCKET" \
+                --delete file:///tmp/versions.json 2>/dev/null || true
+            fi
+
+            # Delete all delete markers
+            aws s3api list-object-versions \
+              --bucket "$FRONTEND_BUCKET" \
+              --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
+              --output json > /tmp/markers.json
+
+            if [ "$(cat /tmp/markers.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/markers.json)" != 'null' ]; then
+              aws s3api delete-objects \
+                --bucket "$FRONTEND_BUCKET" \
+                --delete file:///tmp/markers.json 2>/dev/null || true
+            fi
+
+            echo "✅ S3 bucket emptied: $FRONTEND_BUCKET"
+          else
+            echo "⚠️ Bucket $FRONTEND_BUCKET not found — skipping"
+          fi
+
+      - name: Create Lambda Placeholder (required for Terraform state consistency)
+        working-directory: infra/control-plane/terraform
+        run: |
+          echo "placeholder" > lambda-placeholder.txt
+          zip lambda-placeholder.zip lambda-placeholder.txt
+
+      - name: Terraform Init (Control-Plane)
+        working-directory: infra/control-plane/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=platform-admin/${{ inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}" \
+            -reconfigure
+
+      - name: Terraform Destroy (Control-Plane)
+        working-directory: infra/control-plane/terraform
+        env:
+          TF_VAR_project_name: ${{ env.PROJECT }}
+          TF_VAR_environment: ${{ inputs.environment }}
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+        run: |
+          echo "🔥 Destroying control-plane infrastructure..."
+          terraform destroy -auto-approve
+
+          echo "✅ Control-plane infrastructure destroyed"
+          echo "### 💥 Control-Plane Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "VPC, Cognito, API Gateway, Lambda, DynamoDB, S3, CloudFront, Step Functions — all removed." >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Step 3: (Optional) Cleanup Terraform state backend
+  # ===========================================================================
+  cleanup-state:
+    name: "🗑️ Cleanup State Backend"
+    runs-on: ubuntu-latest
+    needs: [validate, destroy-data-plane, destroy-control-plane]
+    if: >
+      always() &&
+      needs.validate.outputs.confirmed == 'true' &&
+      inputs.cleanup_state_backend == true &&
+      inputs.scope == 'all'
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Configure AWS Credentials (Platform Admin)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Delete Terraform state bucket
+        run: |
+          set -euo pipefail
+          BUCKET="${{ secrets.TF_STATE_BUCKET }}"
+
+          if [ -z "$BUCKET" ]; then
+            echo "::warning::TF_STATE_BUCKET not set — skipping"
+            exit 0
+          fi
+
+          echo "🗑️ Emptying and deleting Terraform state bucket: $BUCKET"
+
+          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            # Empty all versions
+            aws s3api list-object-versions \
+              --bucket "$BUCKET" \
+              --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
+              --output json > /tmp/versions.json
+
+            if [ "$(cat /tmp/versions.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/versions.json)" != 'null' ]; then
+              aws s3api delete-objects \
+                --bucket "$BUCKET" \
+                --delete file:///tmp/versions.json 2>/dev/null || true
+            fi
+
+            aws s3api list-object-versions \
+              --bucket "$BUCKET" \
+              --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
+              --output json > /tmp/markers.json
+
+            if [ "$(cat /tmp/markers.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/markers.json)" != 'null' ]; then
+              aws s3api delete-objects \
+                --bucket "$BUCKET" \
+                --delete file:///tmp/markers.json 2>/dev/null || true
+            fi
+
+            aws s3api delete-bucket --bucket "$BUCKET"
+            echo "✅ State bucket deleted: $BUCKET"
+          else
+            echo "⚠️ Bucket $BUCKET not found"
+          fi
+
+      - name: Delete Terraform lock table
+        run: |
+          set -euo pipefail
+          TABLE="${{ secrets.TF_LOCK_TABLE }}"
+
+          if [ -z "$TABLE" ]; then
+            echo "::warning::TF_LOCK_TABLE not set — skipping"
+            exit 0
+          fi
+
+          echo "🗑️ Deleting Terraform lock table: $TABLE"
+
+          if aws dynamodb describe-table --table-name "$TABLE" 2>/dev/null; then
+            aws dynamodb delete-table --table-name "$TABLE"
+            aws dynamodb wait table-not-exists --table-name "$TABLE"
+            echo "✅ Lock table deleted: $TABLE"
+          else
+            echo "⚠️ Table $TABLE not found"
+          fi
+
+          echo "### 🗑️ State Backend Cleaned Up" >> $GITHUB_STEP_SUMMARY
+          echo "Terraform state bucket and lock table have been deleted." >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Step 4: (Optional) Cleanup GitHub environment secrets
+  # ===========================================================================
+  cleanup-secrets:
+    name: "🗑️ Cleanup GitHub Secrets"
+    runs-on: ubuntu-latest
+    needs: [validate, destroy-data-plane, destroy-control-plane]
+    if: >
+      always() &&
+      needs.validate.outputs.confirmed == 'true' &&
+      inputs.cleanup_github_secrets == true
+
+    steps:
+      - name: Delete environment secrets
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::GH_PAT secret not set — cannot delete GitHub secrets automatically."
+            exit 0
+          fi
+
+          ENV="${{ inputs.environment }}"
+          REPO="${{ github.repository }}"
+
+          echo "🗑️ Deleting environment secrets for '$ENV'..."
+
+          SECRETS=(
+            PLATFORM_ADMIN_ROLE_ARN
+            CUSTOMER_ACCOUNT_ROLE_ARN
+            TF_STATE_BUCKET
+            TF_LOCK_TABLE
+            PLATFORM_ADMIN_ACCOUNT_ID
+            CROSS_ACCOUNT_EXTERNAL_ID
+            BOOTSTRAP_ADMIN_PASSWORD
+            VITE_API_BASE_URL
+            VITE_COGNITO_USER_POOL_ID
+            VITE_COGNITO_CLIENT_ID
+            VITE_COGNITO_DOMAIN
+            VITE_API_PROVIDER
+            FRONTEND_S3_BUCKET
+            FRONTEND_CLOUDFRONT_DISTRIBUTION_ID
+            FRONTEND_CUSTOM_DOMAIN
+            COGNITO_USER_POOL_ID
+            DYNAMODB_TABLE_NAME
+            DATA_PLANE_ROLE_ARN
+            DATA_PLANE_TABLE_NAME
+          )
+
+          DELETED=0
+          SKIPPED=0
+          for SECRET in "${SECRETS[@]}"; do
+            if gh secret delete "$SECRET" --repo "$REPO" --env "$ENV" 2>/dev/null; then
+              echo "  ✅ Deleted: $SECRET"
+              DELETED=$((DELETED + 1))
+            else
+              echo "  ⚠️ Not found: $SECRET"
+              SKIPPED=$((SKIPPED + 1))
+            fi
+          done
+
+          echo ""
+          echo "✅ Cleanup complete: $DELETED deleted, $SKIPPED not found"
+          echo "### 🗑️ GitHub Secrets Cleaned Up" >> $GITHUB_STEP_SUMMARY
+          echo "$DELETED environment secrets deleted for \`$ENV\`. $SKIPPED were not found." >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Final Summary
+  # ===========================================================================
+  summary:
+    name: "📋 Destroy Summary"
+    runs-on: ubuntu-latest
+    needs: [validate, destroy-data-plane, destroy-control-plane, cleanup-state, cleanup-secrets]
+    if: always() && needs.validate.outputs.confirmed == 'true'
+
+    steps:
+      - name: Final summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📋 Infrastructure Destroy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Data-Plane | ${{ needs.destroy-data-plane.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Control-Plane | ${{ needs.destroy-control-plane.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| State Backend | ${{ needs.cleanup-state.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Secrets | ${{ needs.cleanup-secrets.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Environment \`${{ inputs.environment }}\` has been torn down by @${{ github.actor }}." >> $GITHUB_STEP_SUMMARY
+          echo "> To re-provision, run workflows **00 → 01 → 02 → 04 → 05** in order." >> $GITHUB_STEP_SUMMARY
