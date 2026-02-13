@@ -47,3 +47,13 @@ export class EnterprisesController {
     await this.enterprisesService.remove(id);
   }
 }
+
+@Controller('enterprise-products')
+export class EnterpriseProductsController {
+  constructor(private readonly enterprisesService: EnterprisesService) {}
+
+  @Get()
+  async findAll() {
+    return this.enterprisesService.findAllEnterpriseProducts();
+  }
+}

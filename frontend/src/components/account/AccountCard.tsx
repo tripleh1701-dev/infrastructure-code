@@ -43,7 +43,7 @@ export function AccountCard({
   onClick,
   getCloudTypeLabel,
 }: AccountCardProps) {
-  const primaryAddress = account.addresses[0];
+  const primaryAddress = account.addresses?.[0];
   const licenseCount = account.license_count ?? 0;
   const expiringCount = account.expiring_license_count ?? 0;
   const technicalUsersCount = account.technical_users?.length ?? 0;

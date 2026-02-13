@@ -19,6 +19,19 @@ export class LicensesController {
   constructor(private readonly licensesService: LicensesService) {}
 
   /**
+   * GET /api/licenses/licensed-entities?accountId=...&enterpriseId=...
+   * Returns unique products and services from licenses for a given account + enterprise.
+   * Must be declared before :id to avoid route conflicts.
+   */
+  @Get('licensed-entities')
+  async findLicensedEntities(
+    @Query('accountId') accountId?: string,
+    @Query('enterpriseId') enterpriseId?: string,
+  ) {
+    return this.licensesService.findLicensedEntities({ accountId, enterpriseId });
+  }
+
+  /**
    * GET /api/licenses/expiring?accountId=...&days=30
    * Returns licenses expiring within the given window.
    * Must be declared before :id to avoid route conflicts.

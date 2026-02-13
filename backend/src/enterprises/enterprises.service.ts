@@ -235,6 +235,39 @@ export class EnterprisesService {
     }
   }
 
+  /**
+   * Returns all enterprise-product linkages as { enterprise_id, product_id }[].
+   */
+  async findAllEnterpriseProducts(): Promise<{ enterprise_id: string; product_id: string }[]> {
+    const result = await this.dynamoDb.queryByIndex(
+      'GSI1',
+      'GSI1PK = :pk',
+      { ':pk': 'ENTITY#ENTERPRISE' },
+    );
+
+    const enterprises = (result.Items || []).map(this.mapToEnterprise);
+    const linkages: { enterprise_id: string; product_id: string }[] = [];
+
+    for (const ent of enterprises) {
+      const prodResult = await this.dynamoDb.query({
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `ENTERPRISE#${ent.id}`,
+          ':sk': 'PRODUCT#',
+        },
+      });
+
+      for (const item of prodResult.Items || []) {
+        linkages.push({
+          enterprise_id: ent.id,
+          product_id: item.productId,
+        });
+      }
+    }
+
+    return linkages;
+  }
+
   private mapToEnterprise(item: Record<string, any>): Enterprise {
     return {
       id: item.id,

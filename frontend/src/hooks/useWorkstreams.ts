@@ -202,7 +202,14 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
   const createWorkstream = useMutation({
     mutationFn: async (data: CreateWorkstreamData) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.post<Workstream>('/api/workstreams', data);
+        // Transform snake_case to camelCase for NestJS backend
+        const payload = {
+          name: data.name,
+          accountId: data.account_id,
+          enterpriseId: data.enterprise_id,
+          tools: (data.tools || []).map(t => ({ toolName: t.tool_name, category: t.category })),
+        };
+        const { data: result, error } = await httpClient.post<Workstream>('/api/workstreams', payload);
         if (error) throw new Error(error.message);
         return result;
       }

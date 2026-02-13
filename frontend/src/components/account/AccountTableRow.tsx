@@ -54,7 +54,7 @@ export function AccountTableRow({
 }: AccountTableRowProps) {
   const { licenses } = useLicenses(account.id);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const primaryAddress = account.addresses[0];
+  const primaryAddress = account.addresses?.[0];
   
   const licenseCount = account.license_count ?? licenses.length;
   const expiringCount = account.expiring_license_count ?? 0;

@@ -356,9 +356,10 @@ export function AddEnterpriseForm({ open, onOpenChange, onSuccess }: AddEnterpri
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0" aria-describedby="add-enterprise-desc">
         <VisuallyHidden>
           <DialogTitle>Add New Enterprise</DialogTitle>
+          <p id="add-enterprise-desc">Create a new enterprise with product and services configuration</p>
         </VisuallyHidden>
 
         {/* Header with animated gradient */}

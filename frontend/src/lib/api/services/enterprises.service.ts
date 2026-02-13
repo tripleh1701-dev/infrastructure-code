@@ -208,14 +208,23 @@ async function getEnterprisesExternal(): Promise<ApiResponse<EnterpriseWithDetai
 }
 
 async function createEnterpriseExternal(input: CreateEnterpriseInput): Promise<ApiResponse<Enterprise>> {
-  return httpClient.post<Enterprise>('/api/enterprises', input);
+  // Transform frontend shape to backend DTO shape: productId -> products[], serviceIds -> services[]
+  const payload: any = { name: input.name };
+  if (input.productId) payload.products = [input.productId];
+  if (input.serviceIds) payload.services = input.serviceIds;
+  return httpClient.post<Enterprise>('/api/enterprises', payload);
 }
 
 async function updateEnterpriseExternal(
   id: string,
   input: Partial<CreateEnterpriseInput>
 ): Promise<ApiResponse<Enterprise>> {
-  return httpClient.put<Enterprise>(`/api/enterprises/${id}`, input);
+  // Transform frontend shape to backend DTO shape
+  const payload: any = {};
+  if (input.name) payload.name = input.name;
+  if (input.productId !== undefined) payload.products = input.productId ? [input.productId] : [];
+  if (input.serviceIds !== undefined) payload.services = input.serviceIds;
+  return httpClient.put<Enterprise>(`/api/enterprises/${id}`, payload);
 }
 
 async function deleteEnterpriseExternal(id: string): Promise<ApiResponse<void>> {

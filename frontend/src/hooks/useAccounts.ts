@@ -88,7 +88,12 @@ export function useAccounts() {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<AccountWithDetails[]>('/api/accounts');
         if (error) throw new Error(error.message);
-        return data || [];
+        // Ensure addresses/technical_users arrays exist to prevent crashes
+        return (data || []).map(a => ({
+          ...a,
+          addresses: Array.isArray(a.addresses) ? a.addresses : [],
+          technical_users: Array.isArray(a.technical_users) ? a.technical_users : [],
+        }));
       }
 
       const { data: accountsData, error: accountsError } = await supabase

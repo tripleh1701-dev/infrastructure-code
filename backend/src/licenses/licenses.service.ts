@@ -99,6 +99,54 @@ export class LicensesService {
       .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
   }
 
+  /**
+   * Returns unique products and services from licenses for a given account + enterprise.
+   * Used by security/governance views to know which products/services are licensed.
+   */
+  async findLicensedEntities(filters: {
+    accountId?: string;
+    enterpriseId?: string;
+  }): Promise<{ products: { id: string; name: string }[]; services: { id: string; name: string }[] }> {
+    const licenses = await this.findAll({
+      accountId: filters.accountId,
+      enterpriseId: filters.enterpriseId,
+    });
+
+    // Collect unique product and service IDs
+    const productIds = [...new Set(licenses.map((l) => l.productId).filter(Boolean))];
+    const serviceIds = [...new Set(licenses.map((l) => l.serviceId).filter(Boolean))];
+
+    // Resolve product names
+    const products = await Promise.all(
+      productIds.map(async (id) => {
+        try {
+          const result = await this.dynamoDb.get({
+            Key: { PK: `PRODUCT#${id}`, SK: 'METADATA' },
+          });
+          return { id, name: result.Item?.name || 'Unknown' };
+        } catch {
+          return { id, name: 'Unknown' };
+        }
+      }),
+    );
+
+    // Resolve service names
+    const services = await Promise.all(
+      serviceIds.map(async (id) => {
+        try {
+          const result = await this.dynamoDb.get({
+            Key: { PK: `SERVICE#${id}`, SK: 'METADATA' },
+          });
+          return { id, name: result.Item?.name || 'Unknown' };
+        } catch {
+          return { id, name: 'Unknown' };
+        }
+      }),
+    );
+
+    return { products, services };
+  }
+
   async findOne(id: string): Promise<License> {
     // Need to query by GSI to find the license without knowing the account
     const result = await this.dynamoDb.queryByIndex(
