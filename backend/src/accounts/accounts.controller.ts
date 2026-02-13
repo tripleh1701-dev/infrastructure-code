@@ -22,6 +22,15 @@ export class AccountsController {
     return this.accountsService.findAll();
   }
 
+  /**
+   * Check if an account has a license linked to the Global enterprise.
+   * Must be declared BEFORE the generic :id route to avoid path collision.
+   */
+  @Get(':id/global-access')
+  async checkGlobalAccess(@Param('id') id: string) {
+    return this.accountsService.checkGlobalAccess(id);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.accountsService.findOne(id);

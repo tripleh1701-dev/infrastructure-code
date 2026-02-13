@@ -65,8 +65,6 @@ export function EnterpriseProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       // NestJS returns enterprises scoped to the user's access + selected account
-      // Server handles Global enterprise inclusion, product linkage resolution,
-      // and license-based filtering
       const params: Record<string, string> = {};
       if (selectedAccount?.id) {
         params.accountId = selectedAccount.id;
@@ -78,11 +76,14 @@ export function EnterpriseProvider({ children }: { children: ReactNode }) {
 
       if (error) throw new Error(error.message);
 
-      const sorted = sortEnterprises(Array.isArray(data) ? data : []);
+      // Defensive: ensure data is always an array
+      const enterpriseList = Array.isArray(data) ? data : [];
+      const sorted = sortEnterprises(enterpriseList);
       setEnterprises(sorted);
       applyDefaultSelection(sorted);
     } catch (error) {
       console.error("Error fetching enterprises from API:", error);
+      setEnterprises([]);
     } finally {
       setIsLoading(false);
     }

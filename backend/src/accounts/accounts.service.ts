@@ -86,6 +86,28 @@ export class AccountsService {
   }
 
   /**
+   * Check if an account has a license linked to the Global enterprise.
+   * Returns { hasGlobalAccess: boolean }.
+   */
+  async checkGlobalAccess(accountId: string): Promise<{ hasGlobalAccess: boolean }> {
+    const GLOBAL_ENTERPRISE_ID = '00000000-0000-0000-0000-000000000001';
+
+    const result = await this.dynamoDb.query({
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `ACCOUNT#${accountId}`,
+        ':sk': 'LICENSE#',
+      },
+    });
+
+    const hasGlobal = (result.Items || []).some(
+      (item) => item.enterpriseId === GLOBAL_ENTERPRISE_ID,
+    );
+
+    return { hasGlobalAccess: hasGlobal };
+  }
+
+  /**
    * Get a single account with all details
    */
   async findOne(id: string): Promise<Account & { addresses: AccountAddress[]; technicalUser?: TechnicalUser }> {

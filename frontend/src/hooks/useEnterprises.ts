@@ -28,7 +28,9 @@ export function useEnterprises() {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<EnterpriseWithDetails[]>('/api/enterprises');
         if (error) throw new Error(error.message);
-        setEnterprises(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        // Ensure each enterprise has services array for downstream consumers
+        setEnterprises(list.map(e => ({ ...e, services: Array.isArray(e.services) ? e.services : [] })));
         return;
       }
 

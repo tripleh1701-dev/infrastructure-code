@@ -27,14 +27,70 @@ export interface EnterpriseService {
 export class EnterprisesService {
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
-  async findAll(): Promise<Enterprise[]> {
+  async findAll(): Promise<any[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
       'GSI1PK = :pk',
       { ':pk': 'ENTITY#ENTERPRISE' },
     );
 
-    return (result.Items || []).map(this.mapToEnterprise);
+    const enterprises = (result.Items || []).map(this.mapToEnterprise);
+
+    // Enrich each enterprise with product and services linkage data
+    const enriched = await Promise.all(
+      enterprises.map(async (ent) => {
+        // Get products linked to this enterprise
+        const prodResult = await this.dynamoDb.query({
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `ENTERPRISE#${ent.id}`,
+            ':sk': 'PRODUCT#',
+          },
+        });
+
+        // Get services linked to this enterprise
+        const svcResult = await this.dynamoDb.query({
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `ENTERPRISE#${ent.id}`,
+            ':sk': 'SERVICE#',
+          },
+        });
+
+        // Resolve product name from product metadata
+        let product = null;
+        const prodItems = prodResult.Items || [];
+        if (prodItems.length > 0) {
+          const productId = prodItems[0].productId;
+          const productMeta = await this.dynamoDb.get({
+            Key: { PK: `PRODUCT#${productId}`, SK: 'METADATA' },
+          });
+          if (productMeta.Item) {
+            product = { id: productId, name: productMeta.Item.name };
+          }
+        }
+
+        // Resolve service names
+        const services = await Promise.all(
+          (svcResult.Items || []).map(async (svcItem) => {
+            const svcMeta = await this.dynamoDb.get({
+              Key: { PK: `SERVICE#${svcItem.serviceId}`, SK: 'METADATA' },
+            });
+            return svcMeta.Item
+              ? { id: svcItem.serviceId, name: svcMeta.Item.name }
+              : { id: svcItem.serviceId, name: 'Unknown' };
+          }),
+        );
+
+        return {
+          ...ent,
+          product,
+          services,
+        };
+      }),
+    );
+
+    return enriched;
   }
 
   async findOne(id: string): Promise<Enterprise & { products: string[]; services: string[] }> {
