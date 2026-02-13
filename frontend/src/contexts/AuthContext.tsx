@@ -62,11 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // NestJS endpoint returns the user's accessible accounts/enterprises
       // along with super_admin flag — server resolves this from the JWT subject
-      const { data: responseData, error } = await httpClient.get<{
-        data: {
-          isSuperAdmin: boolean;
-          accounts: UserAccountAccess[];
-        };
+      const { data, error } = await httpClient.get<{
+        isSuperAdmin: boolean;
+        accounts: UserAccountAccess[];
       }>("/api/users/me/access");
 
       if (error) {
@@ -76,11 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Handle both nested { data: { ... } } and flat { isSuperAdmin, accounts } shapes
-      const accessData = (responseData as any)?.data ?? responseData;
-      if (accessData) {
-        setIsSuperAdmin(accessData.isSuperAdmin ?? false);
-        setUserAccounts(Array.isArray(accessData.accounts) ? accessData.accounts : []);
+      if (data) {
+        setIsSuperAdmin(data.isSuperAdmin ?? false);
+        setUserAccounts(Array.isArray(data.accounts) ? data.accounts : []);
       }
     } catch (err) {
       console.error("Error fetching user access from API:", err);

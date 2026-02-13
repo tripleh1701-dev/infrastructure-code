@@ -19,12 +19,21 @@ import { UpdateCredentialDto } from './dto/update-credential.dto';
 export class CredentialsController {
   constructor(private readonly credentialsService: CredentialsService) {}
 
-  @Get()
-  async findAll(
+  /**
+   * GET /api/credentials/expiring?accountId=...&days=30
+   * Must be declared before :id to avoid route conflicts.
+   */
+  @Get('expiring')
+  async findExpiring(
     @Query('accountId') accountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
+    @Query('days') days?: string,
   ) {
-    return this.credentialsService.findAll(accountId, enterpriseId);
+    return this.credentialsService.findExpiring({
+      accountId,
+      enterpriseId,
+      days: days ? parseInt(days, 10) : 30,
+    });
   }
 
   @Get('check-name')
@@ -37,6 +46,14 @@ export class CredentialsController {
     return all
       .filter((c) => c.name.toLowerCase() === name.toLowerCase())
       .map((c) => ({ id: c.id, name: c.name }));
+  }
+
+  @Get()
+  async findAll(
+    @Query('accountId') accountId?: string,
+    @Query('enterpriseId') enterpriseId?: string,
+  ) {
+    return this.credentialsService.findAll(accountId, enterpriseId);
   }
 
   @Get(':id')

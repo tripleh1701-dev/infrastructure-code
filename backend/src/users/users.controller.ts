@@ -55,6 +55,19 @@ export class UsersController {
   }
 
   /**
+   * GET /api/users/check-email?email=...&accountId=...
+   * Checks if an email already exists among technical users.
+   * Must be declared before :id to avoid route conflicts.
+   */
+  @Get('check-email')
+  async checkEmail(
+    @Query('email') email: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.usersService.checkEmailExists(email, accountId);
+  }
+
+  /**
    * POST /api/users/reconcile/cognito
    * Reconcile DynamoDB users with Cognito User Pool.
    * Must be declared before :id to avoid route conflicts.
@@ -121,5 +134,19 @@ export class UsersController {
     @Body() workstreamIds: string[],
   ) {
     return this.usersService.updateWorkstreams(id, workstreamIds);
+  }
+
+  // User Groups
+  @Get(':id/groups')
+  async getUserGroups(@Param('id') id: string) {
+    return this.usersService.getUserGroups(id);
+  }
+
+  @Put(':id/groups')
+  async updateUserGroups(
+    @Param('id') id: string,
+    @Body() body: { groupIds: string[] },
+  ) {
+    return this.usersService.updateUserGroups(id, body.groupIds);
   }
 }

@@ -373,6 +373,102 @@ export class UsersService {
     return workstreamIds;
   }
 
+  // ─── USER GROUPS ──────────────────────────────────────────────────────
+
+  /**
+   * Get the groups a user belongs to.
+   */
+  async getUserGroups(userId: string): Promise<{ id: string; groupId: string; groupName: string }[]> {
+    const result = await this.dynamoDb.query({
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `USER#${userId}`,
+        ':sk': 'GROUP#',
+      },
+    });
+
+    const groups: { id: string; groupId: string; groupName: string }[] = [];
+    for (const item of result.Items || []) {
+      let groupName = '';
+      try {
+        const groupResult = await this.dynamoDb.get({
+          Key: { PK: `GROUP#${item.groupId}`, SK: 'METADATA' },
+        });
+        groupName = groupResult.Item?.name || '';
+      } catch {
+        // ignore
+      }
+      groups.push({
+        id: item.id,
+        groupId: item.groupId,
+        groupName,
+      });
+    }
+
+    return groups;
+  }
+
+  /**
+   * Replace all group assignments for a user.
+   */
+  async updateUserGroups(userId: string, groupIds: string[]): Promise<void> {
+    // Delete existing group assignments
+    const existing = await this.dynamoDb.query({
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `USER#${userId}`,
+        ':sk': 'GROUP#',
+      },
+    });
+
+    if (existing.Items?.length) {
+      const deleteRequests = existing.Items.map((item: any) => ({
+        DeleteRequest: { Key: { PK: item.PK, SK: item.SK } },
+      }));
+      await this.dynamoDb.batchWrite(deleteRequests);
+    }
+
+    // Add new groups
+    if (groupIds.length > 0) {
+      const now = new Date().toISOString();
+      const operations = groupIds.map((groupId) => ({
+        Put: {
+          Item: {
+            PK: `USER#${userId}`,
+            SK: `GROUP#${groupId}`,
+            id: uuidv4(),
+            userId,
+            groupId,
+            createdAt: now,
+          },
+        },
+      }));
+      await this.dynamoDb.transactWrite(operations);
+    }
+  }
+
+  // ─── CHECK EMAIL ──────────────────────────────────────────────────────
+
+  /**
+   * Check if an email already exists among technical users.
+   */
+  async checkEmailExists(
+    email: string,
+    accountId?: string,
+  ): Promise<{ exists: boolean; userId?: string }> {
+    const allUsers = accountId
+      ? await this.findByAccount(accountId)
+      : await this.findAll();
+
+    const match = allUsers.find(
+      (u) => u.email?.toLowerCase() === email?.toLowerCase(),
+    );
+
+    return match
+      ? { exists: true, userId: match.id }
+      : { exists: false };
+  }
+
   // ─── COGNITO RECONCILIATION ──────────────────────────────────────────
 
   /**

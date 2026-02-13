@@ -65,6 +65,34 @@ export class CredentialsService {
     return items;
   }
 
+  /**
+   * Find credentials expiring within a given number of days.
+   */
+  async findExpiring(filters: {
+    accountId?: string;
+    enterpriseId?: string;
+    days?: number;
+  }): Promise<(Credential & { daysUntilExpiry: number })[]> {
+    const all = await this.findAll(filters.accountId, filters.enterpriseId);
+    const now = new Date();
+    const windowMs = (filters.days || 30) * 24 * 60 * 60 * 1000;
+    const cutoff = new Date(now.getTime() + windowMs);
+
+    return all
+      .filter((c) => {
+        if (!c.expiresAt) return false;
+        const expiryDate = new Date(c.expiresAt);
+        return expiryDate > now && expiryDate <= cutoff;
+      })
+      .map((c) => ({
+        ...c,
+        daysUntilExpiry: Math.ceil(
+          (new Date(c.expiresAt!).getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+        ),
+      }))
+      .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+  }
+
   async findOne(id: string): Promise<Credential & { workstreams: string[] }> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',

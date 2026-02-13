@@ -68,6 +68,37 @@ export class LicensesService {
     return licenses;
   }
 
+  /**
+   * Find licenses expiring within a given number of days.
+   */
+  async findExpiring(filters: {
+    accountId?: string;
+    enterpriseId?: string;
+    days?: number;
+  }): Promise<(License & { daysUntilExpiry: number })[]> {
+    const allLicenses = await this.findAll({
+      accountId: filters.accountId,
+      enterpriseId: filters.enterpriseId,
+    });
+
+    const now = new Date();
+    const windowMs = (filters.days || 30) * 24 * 60 * 60 * 1000;
+    const cutoff = new Date(now.getTime() + windowMs);
+
+    return allLicenses
+      .filter((l) => {
+        const endDate = new Date(l.endDate);
+        return endDate > now && endDate <= cutoff;
+      })
+      .map((l) => ({
+        ...l,
+        daysUntilExpiry: Math.ceil(
+          (new Date(l.endDate).getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+        ),
+      }))
+      .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+  }
+
   async findOne(id: string): Promise<License> {
     // Need to query by GSI to find the license without knowing the account
     const result = await this.dynamoDb.queryByIndex(

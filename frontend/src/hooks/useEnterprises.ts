@@ -28,7 +28,7 @@ export function useEnterprises() {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<EnterpriseWithDetails[]>('/api/enterprises');
         if (error) throw new Error(error.message);
-        setEnterprises(data || []);
+        setEnterprises(Array.isArray(data) ? data : []);
         return;
       }
 

@@ -78,7 +78,7 @@ export function EnterpriseProvider({ children }: { children: ReactNode }) {
 
       if (error) throw new Error(error.message);
 
-      const sorted = sortEnterprises(data || []);
+      const sorted = sortEnterprises(Array.isArray(data) ? data : []);
       setEnterprises(sorted);
       applyDefaultSelection(sorted);
     } catch (error) {

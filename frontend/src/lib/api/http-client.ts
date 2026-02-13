@@ -118,8 +118,22 @@ class HttpClient {
     }
 
     try {
-      const data = await response.json();
-      return { data, error: null };
+      const rawData = await response.json();
+
+      // Auto-unwrap backend TransformInterceptor envelope: { data: T, error: null }
+      // The NestJS interceptor wraps every response as { data, error }.
+      // Without this unwrap the caller would see { data: { data: T, error: null }, error: null }.
+      if (
+        rawData &&
+        typeof rawData === 'object' &&
+        !Array.isArray(rawData) &&
+        'data' in rawData &&
+        'error' in rawData
+      ) {
+        return { data: rawData.data as T, error: rawData.error };
+      }
+
+      return { data: rawData as T, error: null };
     } catch {
       return { data: null, error: null };
     }

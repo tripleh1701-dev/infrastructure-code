@@ -110,14 +110,12 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Handle double-wrapped response: { data: { data: { permissions, ... } } }
-      const permData = (data as any)?.data ?? data;
-      if (permData) {
-        const perms = Array.isArray(permData.permissions) ? permData.permissions : [];
+      if (data) {
+        const perms = Array.isArray(data.permissions) ? data.permissions : [];
         setPermissions(perms.length > 0 ? perms : DEFAULT_ADMIN_PERMISSIONS);
-        setCurrentUserRoleId(permData.roleId ?? null);
-        setCurrentUserRoleName(permData.roleName ?? null);
-        setCurrentTechnicalUserId(permData.technicalUserId ?? null);
+        setCurrentUserRoleId(data.roleId ?? null);
+        setCurrentUserRoleName(data.roleName ?? null);
+        setCurrentTechnicalUserId(data.technicalUserId ?? null);
       }
     } catch (error) {
       console.error("Error fetching permissions from API:", error);

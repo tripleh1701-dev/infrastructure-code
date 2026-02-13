@@ -37,11 +37,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     try {
       // NestJS returns accounts scoped to the authenticated user's access
       // Super admins receive all accounts; regular users receive only assigned ones
-      const { data: responseData, error } = await httpClient.get<{ data: Account[] }>("/api/accounts");
+      const { data, error } = await httpClient.get<Account[]>("/api/accounts");
 
       if (error) throw new Error(error.message);
 
-      const accountList = Array.isArray(responseData?.data) ? responseData.data : (Array.isArray(responseData) ? responseData : []);
+      const accountList = Array.isArray(data) ? data : [];
       setAccounts(accountList);
 
       // Set ABC account as default for super admin

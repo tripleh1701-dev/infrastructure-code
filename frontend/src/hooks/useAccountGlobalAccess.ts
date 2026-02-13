@@ -23,15 +23,11 @@ export function useAccountGlobalAccess(accountId: string | null | undefined) {
 
       setIsLoading(true);
       try {
-        // External API mode: NestJS checks global access server-side
+        // External API mode: endpoint not yet implemented in NestJS,
+        // fall through to Supabase check or default to false gracefully
         if (isExternalApi()) {
-          const { data, error } = await httpClient.get<{ hasGlobalAccess: boolean }>(`/api/accounts/${accountId}/global-access`);
-          if (error) {
-            console.error("Error checking global access:", error);
-            setHasGlobalAccess(false);
-          } else {
-            setHasGlobalAccess(data?.hasGlobalAccess || false);
-          }
+          // Global access check not available via NestJS yet — default to false
+          setHasGlobalAccess(false);
           setIsLoading(false);
           return;
         }

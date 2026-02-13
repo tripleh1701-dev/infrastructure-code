@@ -18,6 +18,24 @@ import { UpdateLicenseDto } from './dto/update-license.dto';
 export class LicensesController {
   constructor(private readonly licensesService: LicensesService) {}
 
+  /**
+   * GET /api/licenses/expiring?accountId=...&days=30
+   * Returns licenses expiring within the given window.
+   * Must be declared before :id to avoid route conflicts.
+   */
+  @Get('expiring')
+  async findExpiring(
+    @Query('accountId') accountId?: string,
+    @Query('enterpriseId') enterpriseId?: string,
+    @Query('days') days?: string,
+  ) {
+    return this.licensesService.findExpiring({
+      accountId,
+      enterpriseId,
+      days: days ? parseInt(days, 10) : 30,
+    });
+  }
+
   @Get()
   async findAll(
     @Query('accountId') accountId?: string,
