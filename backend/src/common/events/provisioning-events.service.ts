@@ -96,19 +96,18 @@ export class ProvisioningEventsService {
     this.failureTopicArn = this.configService.get('SNS_PROVISIONING_FAILURE_ARN', '');
     this.allEventsTopicArn = this.configService.get('SNS_PROVISIONING_ALL_ARN', '');
 
-    const credentials = {
-      accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID', ''),
-      secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY', ''),
-    };
+    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+    const credentials = accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
 
     this.eventBridgeClient = new EventBridgeClient({
       region: awsRegion,
-      credentials,
+      ...(credentials && { credentials }),
     });
 
     this.snsClient = new SNSClient({
       region: awsRegion,
-      credentials,
+      ...(credentials && { credentials }),
     });
   }
 
