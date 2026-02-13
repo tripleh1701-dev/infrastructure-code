@@ -146,7 +146,7 @@ export function AccountCard({
         {/* Description */}
         <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1 line-clamp-2">
           {primaryAddress 
-            ? `Located in ${primaryAddress.city}, ${primaryAddress.country}${account.addresses.length > 1 ? ` (+${account.addresses.length - 1} more)` : ''}.`
+            ? `Located in ${primaryAddress.city}, ${primaryAddress.country}${(account.addresses?.length ?? 0) > 1 ? ` (+${(account.addresses?.length ?? 0) - 1} more)` : ''}.`
             : "No location configured."
           }
           {expiringCount > 0 && ` ${expiringCount} license${expiringCount > 1 ? 's' : ''} expiring soon.`}

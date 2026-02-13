@@ -133,7 +133,7 @@ export function AccountTableRow({
             <div className="flex items-center gap-1.5 text-sm text-[#64748b]">
               <MapPin className="w-3.5 h-3.5" />
               <span>{primaryAddress.city}, {primaryAddress.country}</span>
-              {account.addresses.length > 1 && (
+              {(account.addresses?.length ?? 0) > 1 && (
                 <span className="px-1.5 py-0.5 bg-[#f1f5f9] border border-[#e2e8f0] rounded text-[10px] text-[#64748b]">
                   +{account.addresses.length - 1}
                 </span>

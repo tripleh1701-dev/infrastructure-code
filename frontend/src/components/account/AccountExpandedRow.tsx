@@ -45,7 +45,7 @@ export function AccountExpandedRow({
 }: AccountExpandedRowProps) {
   const [activeTab, setActiveTab] = useState("overview");
 
-  const technicalUser = account.technical_users[0];
+  const technicalUser = account.technical_users?.[0];
 
   const isExpiringSoon = (endDate: string) => {
     const daysRemaining = differenceInDays(new Date(endDate), new Date());
@@ -82,7 +82,7 @@ export function AccountExpandedRow({
                 value="addresses" 
                 className="text-xs h-7 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm transition-all"
               >
-                Addresses ({account.addresses.length})
+                Addresses ({account.addresses?.length ?? 0})
               </TabsTrigger>
               <TabsTrigger 
                 value="licenses" 
@@ -134,7 +134,7 @@ export function AccountExpandedRow({
               </div>
 
               {/* Primary Address */}
-              {account.addresses[0] && (
+              {account.addresses?.[0] && (
                 <div className="p-4 rounded-lg bg-background border border-border">
                   <div className="flex items-center gap-2 mb-3">
                     <MapPin className="w-4 h-4 text-emerald-500" />
@@ -185,7 +185,7 @@ export function AccountExpandedRow({
 
           {/* Addresses Tab */}
           <TabsContent value="addresses" className="mt-0">
-            {account.addresses.length === 0 ? (
+            {(account.addresses?.length ?? 0) === 0 ? (
               <div className="text-center py-6 text-muted-foreground text-sm">
                 No addresses configured
               </div>
