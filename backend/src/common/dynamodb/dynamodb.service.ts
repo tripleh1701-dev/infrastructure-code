@@ -27,13 +27,20 @@ export class DynamoDBService implements OnModuleInit {
   constructor(private configService: ConfigService) {}
 
   onModuleInit() {
-    const client = new DynamoDBClient({
+    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+
+    const clientConfig: any = {
       region: this.configService.get('AWS_REGION', 'us-east-1'),
-      credentials: {
-        accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID', ''),
-        secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY', ''),
-      },
-    });
+    };
+
+    // Only set explicit credentials if both are provided (local dev).
+    // In Lambda the IAM execution-role credentials are used automatically.
+    if (accessKeyId && secretAccessKey) {
+      clientConfig.credentials = { accessKeyId, secretAccessKey };
+    }
+
+    const client = new DynamoDBClient(clientConfig);
 
     this.docClient = DynamoDBDocumentClient.from(client, {
       marshallOptions: {

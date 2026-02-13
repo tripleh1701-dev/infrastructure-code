@@ -55,14 +55,11 @@ export class DynamoDBRouterService implements OnModuleInit {
 
   onModuleInit() {
     const region = this.configService.get('AWS_REGION', 'us-east-1');
+    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
+    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+    const credentials = accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
     
-    const dynamoClient = new DynamoDBClient({
-      region,
-      credentials: {
-        accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID', ''),
-        secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY', ''),
-      },
-    });
+    const dynamoClient = new DynamoDBClient({ region, ...(credentials && { credentials }) });
 
     this.docClient = DynamoDBDocumentClient.from(dynamoClient, {
       marshallOptions: {
@@ -71,13 +68,7 @@ export class DynamoDBRouterService implements OnModuleInit {
       },
     });
 
-    this.ssmClient = new SSMClient({
-      region,
-      credentials: {
-        accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID', ''),
-        secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY', ''),
-      },
-    });
+    this.ssmClient = new SSMClient({ region, ...(credentials && { credentials }) });
 
     const prefix = this.configService.get('DYNAMODB_TABLE_PREFIX', 'app_');
     this.sharedTableName = `${prefix}data`;
