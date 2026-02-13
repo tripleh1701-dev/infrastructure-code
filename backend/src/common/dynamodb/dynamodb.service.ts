@@ -45,8 +45,10 @@ export class DynamoDBService implements OnModuleInit {
       },
     });
 
-    const prefix = this.configService.get('DYNAMODB_TABLE_PREFIX', 'app_');
-    this.tableName = `${prefix}data`;
+    // Prefer explicit table name from Terraform, fall back to prefix-based convention
+    this.tableName = this.configService.get('CONTROL_PLANE_TABLE_NAME')
+      || this.configService.get('DYNAMODB_TABLE_NAME')
+      || `${this.configService.get('DYNAMODB_TABLE_PREFIX', 'app_')}data`;
   }
 
   getTableName(): string {
