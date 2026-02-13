@@ -21,6 +21,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { ProvisioningEventsService } from '../events/provisioning-events.service';
+import { resolveAwsCredentials } from '../utils/aws-credentials';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -86,23 +87,24 @@ export class AccountProvisionerService {
     this.projectName = this.configService.get('PROJECT_NAME', 'app');
     this.templateBucket = this.configService.get('CFN_TEMPLATE_BUCKET', `${this.projectName}-cfn-templates`);
 
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-    const credentials = accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+    const credentials = resolveAwsCredentials(
+      this.configService.get<string>('AWS_ACCESS_KEY_ID'),
+      this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
+    );
 
     this.cfnClient = new CloudFormationClient({
       region: this.awsRegion,
-      credentials,
+      ...(credentials && { credentials }),
     });
 
     this.ssmClient = new SSMClient({
       region: this.awsRegion,
-      credentials,
+      ...(credentials && { credentials }),
     });
 
     this.s3Client = new S3Client({
       region: this.awsRegion,
-      credentials,
+      ...(credentials && { credentials }),
     });
   }
 

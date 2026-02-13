@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolveAwsCredentials } from '../utils/aws-credentials';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -55,9 +56,10 @@ export class DynamoDBRouterService implements OnModuleInit {
 
   onModuleInit() {
     const region = this.configService.get('AWS_REGION', 'us-east-1');
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-    const credentials = accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+    const credentials = resolveAwsCredentials(
+      this.configService.get<string>('AWS_ACCESS_KEY_ID'),
+      this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
+    );
     
     const dynamoClient = new DynamoDBClient({ region, ...(credentials && { credentials }) });
 
@@ -68,7 +70,7 @@ export class DynamoDBRouterService implements OnModuleInit {
       },
     });
 
-    this.ssmClient = new SSMClient({ region, ...(credentials && { credentials }) });
+    this.ssmClient = new SSMClient({ region, ...(credentials && { credentials }) });  
 
     const prefix = this.configService.get('DYNAMODB_TABLE_PREFIX', 'app_');
     this.sharedTableName = `${prefix}data`;

@@ -9,6 +9,7 @@ import {
   DescribeStacksCommand,
   DescribeStackResourcesCommand,
 } from '@aws-sdk/client-cloudformation';
+import { resolveAwsCredentials } from '../common/utils/aws-credentials';
 import { v4 as uuidv4 } from 'uuid';
 
 // In-memory store for active provisioning jobs (in production, use Redis/DynamoDB)
@@ -30,9 +31,10 @@ export class ProvisioningService {
     this.environment = this.configService.get('NODE_ENV', 'dev');
     this.projectName = this.configService.get('PROJECT_NAME', 'app');
 
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-    const credentials = accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+    const credentials = resolveAwsCredentials(
+      this.configService.get<string>('AWS_ACCESS_KEY_ID'),
+      this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
+    );
 
     this.cfnClient = new CloudFormationClient({
       region: awsRegion,

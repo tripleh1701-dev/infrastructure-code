@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolveAwsCredentials } from '../utils/aws-credentials';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -27,20 +28,15 @@ export class DynamoDBService implements OnModuleInit {
   constructor(private configService: ConfigService) {}
 
   onModuleInit() {
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+    const credentials = resolveAwsCredentials(
+      this.configService.get<string>('AWS_ACCESS_KEY_ID'),
+      this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
+    );
 
-    const clientConfig: any = {
+    const client = new DynamoDBClient({
       region: this.configService.get('AWS_REGION', 'us-east-1'),
-    };
-
-    // Only set explicit credentials if both are provided (local dev).
-    // In Lambda the IAM execution-role credentials are used automatically.
-    if (accessKeyId && secretAccessKey) {
-      clientConfig.credentials = { accessKeyId, secretAccessKey };
-    }
-
-    const client = new DynamoDBClient(clientConfig);
+      ...(credentials && { credentials }),
+    });
 
     this.docClient = DynamoDBDocumentClient.from(client, {
       marshallOptions: {

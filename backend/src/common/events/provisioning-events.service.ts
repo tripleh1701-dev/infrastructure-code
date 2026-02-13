@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolveAwsCredentials } from '../utils/aws-credentials';
 import {
   EventBridgeClient,
   PutEventsCommand,
@@ -96,9 +97,10 @@ export class ProvisioningEventsService {
     this.failureTopicArn = this.configService.get('SNS_PROVISIONING_FAILURE_ARN', '');
     this.allEventsTopicArn = this.configService.get('SNS_PROVISIONING_ALL_ARN', '');
 
-    const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-    const credentials = accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined;
+    const credentials = resolveAwsCredentials(
+      this.configService.get<string>('AWS_ACCESS_KEY_ID'),
+      this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
+    );
 
     this.eventBridgeClient = new EventBridgeClient({
       region: awsRegion,
