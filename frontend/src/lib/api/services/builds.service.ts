@@ -91,9 +91,17 @@ export const buildsService = {
   async createBuildJob(accountId: string, enterpriseId: string, input: CreateBuildJobInput): Promise<BuildJob> {
     if (isExternalApi()) {
       const { data, error } = await httpClient.post<BuildJob>('/api/builds/jobs', {
-        account_id: accountId,
-        enterprise_id: enterpriseId,
-        ...input,
+        accountId: accountId,
+        enterpriseId: enterpriseId,
+        connectorName: input.connector_name,
+        description: input.description || undefined,
+        entity: input.entity || undefined,
+        pipeline: input.pipeline || undefined,
+        product: input.product || "DevOps",
+        service: input.service || "Integration",
+        status: input.status || "ACTIVE",
+        scope: input.scope || undefined,
+        connectorIconName: input.connector_icon_name || undefined,
       });
       if (error) throw new Error(error.message);
       return data!;
@@ -123,7 +131,13 @@ export const buildsService = {
 
   async updateBuildJob(id: string, updates: Partial<CreateBuildJobInput & { pipeline_stages_state: any }>): Promise<BuildJob> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.put<BuildJob>(`/api/builds/jobs/${id}`, updates);
+      // Convert snake_case keys to camelCase for external API
+      const camelCaseUpdates: Record<string, any> = {};
+      for (const [key, value] of Object.entries(updates)) {
+        const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+        camelCaseUpdates[camelKey] = value;
+      }
+      const { data, error } = await httpClient.put<BuildJob>(`/api/builds/jobs/${id}`, camelCaseUpdates);
       if (error) throw new Error(error.message);
       return data!;
     }
@@ -176,9 +190,9 @@ export const buildsService = {
   async createExecution(input: CreateExecutionInput): Promise<BuildExecution> {
     if (isExternalApi()) {
       const { data, error } = await httpClient.post<BuildExecution>(`/api/builds/jobs/${input.build_job_id}/executions`, {
-        build_number: input.build_number,
+        buildNumber: input.build_number,
         branch: input.branch || "main",
-        jira_number: input.jira_number || null,
+        jiraNumber: input.jira_number || null,
         approvers: input.approvers || null,
       });
       if (error) throw new Error(error.message);

@@ -137,13 +137,13 @@ export function GroupCard({ group, index, onEdit, onDelete }: GroupCardProps) {
         </div>
 
         {/* Roles Section */}
-        {group.roles.length > 0 && (
+        {(group.roles ?? []).length > 0 && (
           <div className="mt-3 pt-3 border-t border-slate-100">
             <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wider">
               Assigned Roles
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {group.roles.slice(0, 3).map((role) => (
+              {(group.roles ?? []).slice(0, 3).map((role) => (
                 <Tooltip key={role.roleId}>
                   <TooltipTrigger asChild>
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200">
@@ -161,16 +161,16 @@ export function GroupCard({ group, index, onEdit, onDelete }: GroupCardProps) {
                   </TooltipContent>
                 </Tooltip>
               ))}
-              {group.roles.length > 3 && (
+              {(group.roles ?? []).length > 3 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground cursor-default">
-                      +{group.roles.length - 3} more
+                      +{(group.roles ?? []).length - 3} more
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <div className="space-y-1">
-                      {group.roles.slice(3).map((role) => (
+                      {(group.roles ?? []).slice(3).map((role) => (
                         <div key={role.roleId} className="text-sm">
                           {role.roleName}
                         </div>

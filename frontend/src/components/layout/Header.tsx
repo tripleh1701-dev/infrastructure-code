@@ -16,6 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { isExternalApi } from "@/lib/api/config";
+import { httpClient } from "@/lib/api/http-client";
 
 interface HeaderProps {
   title: string;
@@ -43,15 +45,24 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
       setLoadingEnterpriseIds(true);
       try {
-        const { data, error } = await supabase
-          .from("account_licenses")
-          .select("enterprise_id")
-          .eq("account_id", selectedAccount.id);
+        let uniqueIds: string[] = [];
 
-        if (error) throw error;
+        if (isExternalApi()) {
+          const { data, error } = await httpClient.get<{ enterprise_id: string }[]>('/api/licenses', {
+            params: { accountId: selectedAccount.id, fields: 'enterprise_id' },
+          });
+          if (error) throw new Error(error.message);
+          uniqueIds = [...new Set((data || []).map(l => l.enterprise_id))];
+        } else {
+          const { data, error } = await supabase
+            .from("account_licenses")
+            .select("enterprise_id")
+            .eq("account_id", selectedAccount.id);
 
-        // Get unique enterprise IDs
-        const uniqueIds: string[] = [...new Set(data?.map(l => l.enterprise_id) || [])];
+          if (error) throw error;
+          uniqueIds = [...new Set(data?.map(l => l.enterprise_id) || [])];
+        }
+
         setAccountEnterpriseIds(uniqueIds);
 
         // Auto-select first enterprise if current selection is not in the filtered list

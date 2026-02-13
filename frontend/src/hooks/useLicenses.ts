@@ -55,11 +55,33 @@ export function useLicenses(accountId?: string) {
       if (!accountId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<LicenseWithDetails[]>('/api/licenses', {
+        const { data, error } = await httpClient.get<any[]>('/api/licenses', {
           params: { accountId },
         });
         if (error) throw new Error(error.message);
-        return data || [];
+        // Map camelCase API response back to snake_case for UI consistency
+        return (data || []).map((l: any) => ({
+          id: l.id,
+          account_id: l.accountId ?? l.account_id,
+          enterprise_id: l.enterpriseId ?? l.enterprise_id,
+          product_id: l.productId ?? l.product_id,
+          service_id: l.serviceId ?? l.service_id,
+          start_date: l.startDate ?? l.start_date,
+          end_date: l.endDate ?? l.end_date,
+          number_of_users: l.numberOfUsers ?? l.number_of_users,
+          contact_full_name: l.contactFullName ?? l.contact_full_name,
+          contact_email: l.contactEmail ?? l.contact_email,
+          contact_phone: l.contactPhone ?? l.contact_phone ?? null,
+          contact_department: l.contactDepartment ?? l.contact_department ?? null,
+          contact_designation: l.contactDesignation ?? l.contact_designation ?? null,
+          renewal_notify: l.renewalNotify ?? l.renewal_notify,
+          notice_days: l.noticeDays ?? l.notice_days,
+          created_at: l.createdAt ?? l.created_at,
+          updated_at: l.updatedAt ?? l.updated_at,
+          enterprise: l.enterprise ?? null,
+          product: l.product ?? null,
+          service: l.service ?? null,
+        })) as LicenseWithDetails[];
       }
 
       const { data, error } = await supabase
@@ -88,7 +110,22 @@ export function useLicenses(accountId?: string) {
   const createLicense = useMutation({
     mutationFn: async (data: LicenseFormData & { account_id: string }) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.post('/api/licenses', data);
+        const { error } = await httpClient.post('/api/licenses', {
+          accountId: data.account_id,
+          enterpriseId: data.enterprise_id,
+          productId: data.product_id,
+          serviceId: data.service_id,
+          startDate: data.start_date,
+          endDate: data.end_date,
+          numberOfUsers: data.number_of_users,
+          contactFullName: data.contact_full_name,
+          contactEmail: data.contact_email,
+          contactPhone: data.contact_phone || null,
+          contactDepartment: data.contact_department || null,
+          contactDesignation: data.contact_designation || null,
+          renewalNotify: data.renewal_notify,
+          noticeDays: data.notice_days,
+        });
         if (error) throw new Error(error.message);
         return;
       }

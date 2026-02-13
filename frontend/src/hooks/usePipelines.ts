@@ -124,7 +124,15 @@ export function usePipelines() {
 
       if (isExternalApi()) {
         const { data, error } = await httpClient.post<Pipeline>('/api/pipelines', {
-          ...input,
+          name: input.name,
+          description: input.description || undefined,
+          status: input.status || 'draft',
+          deploymentType: input.deployment_type || 'Integration',
+          nodes: input.nodes || [],
+          edges: input.edges || [],
+          yamlContent: input.yaml_content || undefined,
+          productId: input.product_id || undefined,
+          serviceIds: input.service_ids || [],
           accountId: selectedAccountId,
           enterpriseId: selectedEnterpriseId,
         });
@@ -172,7 +180,13 @@ export function usePipelines() {
     mutationFn: async (input: UpdatePipelineInput) => {
       if (isExternalApi()) {
         const { id, ...updates } = input;
-        const { data, error } = await httpClient.put<Pipeline>(`/api/pipelines/${id}`, updates);
+        // Convert snake_case keys to camelCase for external API
+        const camelCaseUpdates: Record<string, any> = {};
+        for (const [key, value] of Object.entries(updates)) {
+          const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+          camelCaseUpdates[camelKey] = value;
+        }
+        const { data, error } = await httpClient.put<Pipeline>(`/api/pipelines/${id}`, camelCaseUpdates);
         if (error) throw new Error(error.message);
         return data as Pipeline;
       }

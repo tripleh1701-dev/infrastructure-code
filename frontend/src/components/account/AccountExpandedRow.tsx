@@ -191,7 +191,7 @@ export function AccountExpandedRow({
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {account.addresses.map((address, index) => (
+                {(account.addresses ?? []).map((address, index) => (
                   <div
                     key={address.id}
                     className="p-3 rounded-lg bg-background border border-border"
