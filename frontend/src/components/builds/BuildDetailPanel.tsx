@@ -470,139 +470,221 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
         </AnimatePresence>
       </div>
 
-      {/* Pipeline Canvas — fills remaining space */}
-      <div className="flex-1 min-h-0 px-5 py-2 border-t border-border/40">
-        <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">
-          <GitBranch className="w-3 h-3" />
-          Pipeline Stages
-          {runStatus === "running" && (
-            <span className="stats-badge text-[8px] py-0 px-1">LIVE</span>
-          )}
-        </h4>
-        <div className="h-[calc(100%-20px)]">
-          <PipelineFlowPreview
-            pipelineName={buildJob.pipeline}
-            executionStatus={canvasStatus}
-            activeStageIndex={runStatus !== "idle" ? activeStageIndex : undefined}
-            stageStates={buildExecution.stageStates}
-            currentNode={buildExecution.currentNode}
-          />
-        </div>
-      </div>
-
-      {/* Bottom Tab Bar + Content — fixed at bottom */}
-      <div className="flex-shrink-0 border-t border-border/60">
-        {/* Tab strip with gradient background */}
-        <div className="flex items-center bg-gradient-to-r from-muted/40 via-muted/20 to-muted/40 backdrop-blur-sm relative">
-          {/* Animated active indicator line */}
-          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-border/30" />
-          {DETAIL_TABS.map((tab, index) => {
-            const isTabActive = activeTab === tab.key;
-            const TabIcon = tab.icon;
-
-            // Per-tab accent colors
-            const tabColors = {
-              overview: { active: "from-[hsl(var(--brand-blue))] to-[hsl(var(--brand-cyan))]", text: "text-primary", iconBg: "bg-primary/10", badge: "bg-primary/15 text-primary" },
-              executions: { active: "from-[hsl(var(--success))] to-[hsl(142,71%,35%)]", text: "text-[hsl(var(--success))]", iconBg: "bg-[hsl(var(--success))]/10", badge: "bg-[hsl(var(--success))]/15 text-[hsl(var(--success))]" },
-              timeline: { active: "from-violet-500 to-purple-600", text: "text-violet-500", iconBg: "bg-violet-500/10", badge: "bg-violet-500/15 text-violet-500" },
-              logs: { active: "from-[hsl(var(--warning))] to-[hsl(28,90%,45%)]", text: "text-[hsl(var(--warning))]", iconBg: "bg-[hsl(var(--warning))]/10", badge: "bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]" },
-            }[tab.key];
-
-            return (
-              <motion.button
-                key={tab.key}
-                onClick={() => toggleTab(tab.key)}
-                className={cn(
-                  "group flex items-center gap-2 px-4 py-2.5 text-xs font-medium relative transition-colors duration-300",
-                  isTabActive
-                    ? cn("bg-card/80 backdrop-blur-sm", tabColors.text)
-                    : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-                )}
-                whileHover={{ y: -1 }}
-                whileTap={{ scale: 0.97 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              >
-                {/* Active bottom gradient bar */}
-                {isTabActive && (
-                  <motion.div
-                    layoutId="activeTabIndicator"
-                    className={cn("absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r", tabColors.active)}
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-                )}
-
-                {/* Icon with themed background */}
-                <motion.div
-                  className={cn(
-                    "w-5 h-5 rounded-md flex items-center justify-center transition-all duration-300",
-                    isTabActive ? tabColors.iconBg : "bg-transparent group-hover:bg-muted/50"
-                  )}
-                  animate={isTabActive ? { scale: [1, 1.1, 1] } : {}}
-                  transition={{ duration: 0.3 }}
-                >
-                  <TabIcon className={cn("w-3 h-3 transition-all duration-300", isTabActive && "drop-shadow-sm")} />
-                </motion.div>
-
-                {tab.label}
-
-                {/* Execution count badge */}
-                {tab.key === "executions" && executions.length > 0 && (
-                  <motion.span
-                    className={cn(
-                      "ml-0.5 text-[9px] px-1.5 py-0 rounded-full font-semibold transition-all duration-300",
-                      isTabActive ? tabColors.badge : "bg-muted text-muted-foreground"
-                    )}
-                    initial={{ scale: 0.8 }}
-                    animate={{ scale: 1 }}
-                  >
-                    {executions.length}
-                  </motion.span>
-                )}
-
-                {/* Live pulse dot for logs */}
-                {tab.key === "logs" && runStatus === "running" && (
-                  <motion.div
-                    className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--success))] ml-0.5 shadow-[0_0_6px_hsl(var(--success))]"
-                    animate={{ opacity: [1, 0.3, 1], scale: [1, 1.3, 1] }}
-                    transition={{ duration: 1, repeat: Infinity }}
-                  />
-                )}
-
-                {/* Hover glow */}
-                {!isTabActive && (
-                  <motion.div
-                    className="absolute inset-0 rounded-sm bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-                  />
-                )}
-              </motion.button>
-            );
-          })}
+      {/* Main content: Pipeline Canvas (left) + Side Panel (right) */}
+      <div className="flex-1 min-h-0 flex border-t border-border/40">
+        {/* Pipeline Canvas — left side */}
+        <div className={cn(
+          "flex-1 min-w-0 px-5 py-2 transition-all duration-300",
+          activeTab ? "border-r border-border/40" : ""
+        )}>
+          <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <GitBranch className="w-3 h-3" />
+            Pipeline Stages
+            {runStatus === "running" && (
+              <span className="stats-badge text-[8px] py-0 px-1">LIVE</span>
+            )}
+          </h4>
+          <div className="h-[calc(100%-20px)]">
+            <PipelineFlowPreview
+              pipelineName={buildJob.pipeline}
+              executionStatus={canvasStatus}
+              activeStageIndex={runStatus !== "idle" ? activeStageIndex : undefined}
+              stageStates={buildExecution.stageStates}
+              currentNode={buildExecution.currentNode}
+            />
+          </div>
         </div>
 
-        {/* Tab content — animated panel */}
-        <AnimatePresence mode="wait">
-          {activeTab && (
+        {/* Right Side Panel — Vertical Tab Rail + Content */}
+        <div className="flex h-full flex-shrink-0">
+        {/* Vertical Tab Rail — icon-only with animations & color */}
+          <div className="relative flex flex-col items-center border-l border-border/40 w-14 py-4 gap-2 overflow-hidden">
+            {/* Animated background gradient */}
             <motion.div
-              key={activeTab}
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-              className="overflow-hidden border-t border-border/30 bg-gradient-to-b from-card/60 to-card/40 backdrop-blur-sm"
-            >
+              className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-[hsl(var(--brand-cyan))]/5"
+              animate={{ opacity: [0.3, 0.7, 0.3] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            />
+
+            {/* Decorative top accent line */}
+            <div className="w-6 h-[2px] rounded-full bg-gradient-to-r from-primary/40 to-[hsl(var(--brand-cyan))]/40 mb-1 flex-shrink-0" />
+
+            {DETAIL_TABS.map((tab, index) => {
+              const isTabActive = activeTab === tab.key;
+              const TabIcon = tab.icon;
+
+              const tabColors = {
+                overview: {
+                  gradient: "from-[hsl(var(--brand-blue))] to-[hsl(var(--brand-cyan))]",
+                  text: "text-primary",
+                  bg: "bg-primary/10",
+                  glow: "shadow-[0_0_12px_hsl(var(--brand-blue)/0.4)]",
+                  ring: "ring-primary/30",
+                },
+                executions: {
+                  gradient: "from-[hsl(var(--success))] to-[hsl(142,71%,35%)]",
+                  text: "text-[hsl(var(--success))]",
+                  bg: "bg-[hsl(var(--success))]/10",
+                  glow: "shadow-[0_0_12px_hsl(142,71%,45%,0.4)]",
+                  ring: "ring-[hsl(var(--success))]/30",
+                },
+                timeline: {
+                  gradient: "from-violet-500 to-purple-600",
+                  text: "text-violet-500",
+                  bg: "bg-violet-500/10",
+                  glow: "shadow-[0_0_12px_rgba(139,92,246,0.4)]",
+                  ring: "ring-violet-500/30",
+                },
+                logs: {
+                  gradient: "from-[hsl(var(--warning))] to-[hsl(28,90%,45%)]",
+                  text: "text-[hsl(var(--warning))]",
+                  bg: "bg-[hsl(var(--warning))]/10",
+                  glow: "shadow-[0_0_12px_hsl(38,92%,50%,0.4)]",
+                  ring: "ring-[hsl(var(--warning))]/30",
+                },
+              }[tab.key];
+
+              return (
+                <div key={tab.key} className="relative z-10 group/tab">
+                  <motion.button
+                    onClick={() => toggleTab(tab.key)}
+                    className={cn(
+                      "relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300",
+                      isTabActive
+                        ? cn("border border-border/60 ring-1", tabColors?.text, tabColors?.ring, tabColors?.bg, tabColors?.glow)
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    whileHover={{ scale: 1.12, y: -1 }}
+                    whileTap={{ scale: 0.9 }}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.08, type: "spring", stiffness: 300, damping: 25 }}
+                  >
+                    {/* Active background glow */}
+                    {isTabActive && (
+                      <motion.div
+                        layoutId="tabGlowBg"
+                        className={cn("absolute inset-0 rounded-xl bg-gradient-to-br opacity-15", tabColors?.gradient)}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
+                    )}
+
+                    {/* Side indicator bar */}
+                    {isTabActive && (
+                      <motion.div
+                        layoutId="activeSideTabIndicator"
+                        className={cn("absolute -left-[1px] top-2 bottom-2 w-[3px] rounded-r-full bg-gradient-to-b", tabColors?.gradient)}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
+                    )}
+
+                    {/* Hover glow ring */}
+                    {!isTabActive && (
+                      <motion.div
+                        className="absolute inset-0 rounded-xl bg-muted/0 group-hover/tab:bg-muted/40 transition-colors duration-200"
+                      />
+                    )}
+
+                    <TabIcon className={cn(
+                      "w-[18px] h-[18px] relative z-10 transition-all duration-300",
+                      isTabActive && "drop-shadow-md"
+                    )} />
+
+                    {/* Execution count badge */}
+                    {tab.key === "executions" && executions.length > 0 && (
+                      <motion.span
+                        className={cn(
+                          "absolute -top-1 -right-1 text-[7px] min-w-[16px] h-[16px] rounded-full flex items-center justify-center font-bold leading-none border",
+                          isTabActive
+                            ? "bg-[hsl(var(--success))] text-white border-[hsl(var(--success))]/50 shadow-[0_0_8px_hsl(142,71%,45%,0.5)]"
+                            : "bg-muted text-muted-foreground border-border/50"
+                        )}
+                        animate={isTabActive ? { scale: [1, 1.15, 1] } : {}}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      >
+                        {executions.length}
+                      </motion.span>
+                    )}
+
+                    {/* Live pulse dot for logs */}
+                    {tab.key === "logs" && runStatus === "running" && (
+                      <motion.div
+                        className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[hsl(var(--success))]"
+                        animate={{
+                          opacity: [1, 0.3, 1],
+                          scale: [1, 1.5, 1],
+                          boxShadow: [
+                            "0 0 4px hsl(142,71%,45%,0.6)",
+                            "0 0 12px hsl(142,71%,45%,0.8)",
+                            "0 0 4px hsl(142,71%,45%,0.6)",
+                          ],
+                        }}
+                        transition={{ duration: 1.2, repeat: Infinity }}
+                      />
+                    )}
+                  </motion.button>
+
+                  {/* Tooltip on hover */}
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-2.5 py-1.5 rounded-lg bg-foreground text-background text-[10px] font-semibold whitespace-nowrap opacity-0 pointer-events-none group-hover/tab:opacity-100 transition-all duration-200 shadow-xl z-50 group-hover/tab:translate-x-0 translate-x-1">
+                    {tab.label}
+                    <div className="absolute right-[-5px] top-1/2 -translate-y-1/2 w-0 h-0 border-t-[5px] border-b-[5px] border-l-[5px] border-transparent border-l-foreground" />
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Decorative bottom accent line */}
+            <div className="mt-auto w-6 h-[2px] rounded-full bg-gradient-to-r from-[hsl(var(--brand-cyan))]/30 to-primary/30 flex-shrink-0" />
+          </div>
+
+          {/* Side Panel Content */}
+          <AnimatePresence mode="wait">
+            {activeTab && (
               <motion.div
-                initial={{ y: 8, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: -8, opacity: 0 }}
-                transition={{ duration: 0.2, delay: 0.05 }}
+                key={activeTab}
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 340, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden bg-gradient-to-b from-card/60 to-card/40 backdrop-blur-sm"
               >
-                <ScrollArea className="max-h-[240px]">
-                  {renderTabContent()}
-                </ScrollArea>
+                <div className="w-[340px] h-full flex flex-col">
+                  {/* Panel Header */}
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const tab = DETAIL_TABS.find((t) => t.key === activeTab);
+                        const TabIcon = tab?.icon || Info;
+                        return <TabIcon className="w-3.5 h-3.5 text-muted-foreground" />;
+                      })()}
+                      <span className="text-xs font-semibold text-foreground capitalize">{activeTab}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                      onClick={() => setActiveTab(null)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+
+                  {/* Panel Content */}
+                  <ScrollArea className="flex-1">
+                    <motion.div
+                      initial={{ x: 10, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: -10, opacity: 0 }}
+                      transition={{ duration: 0.2, delay: 0.05 }}
+                    >
+                      {renderTabContent()}
+                    </motion.div>
+                  </ScrollArea>
+                </div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

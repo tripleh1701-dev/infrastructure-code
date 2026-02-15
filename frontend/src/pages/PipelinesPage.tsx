@@ -360,7 +360,7 @@ export default function PipelinesPage() {
     <PermissionGate menuKey="pipelines">
       <TooltipProvider>
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
-          <Header title="Pipelines" />
+          <Header title="Pipelines" subtitle="Build, configure, and manage CI/CD pipelines" />
 
         <motion.div
           className="p-6"
@@ -368,30 +368,9 @@ export default function PipelinesPage() {
           initial="hidden"
           animate="visible"
         >
-          {/* Page Header with Stats */}
+          {/* Stats */}
           <motion.div variants={itemVariants} className="mb-8">
-            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-              <div>
-                <motion.h1
-                  className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 24 }}
-                >
-                  Pipeline Management
-                </motion.h1>
-                <motion.p
-                  className="text-slate-500 mt-1"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  Build, configure, and manage CI/CD pipelines
-                </motion.p>
-                <div className="mt-3">
-                  <FilterContextIndicator />
-                </div>
-              </div>
+            <div className="flex flex-col lg:flex-row lg:items-end gap-6">
 
               {/* Quick Stats Bar */}
               <motion.div

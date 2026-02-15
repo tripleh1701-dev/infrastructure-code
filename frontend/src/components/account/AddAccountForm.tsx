@@ -555,7 +555,11 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
       if (!isOpen) handleClose();
       else onOpenChange(isOpen);
     }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+      <DialogContent 
+        className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <VisuallyHidden>
           <DialogTitle>Create New Account</DialogTitle>
         </VisuallyHidden>

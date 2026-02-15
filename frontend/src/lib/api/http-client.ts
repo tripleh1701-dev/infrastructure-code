@@ -104,9 +104,11 @@ class HttpClient {
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
+      // NestJS TransformInterceptor wraps errors as { data: null, error: { message, code } }
+      const nestedError = errorBody?.error;
       const error: ApiError = {
-        message: errorBody.message || `HTTP error ${response.status}`,
-        code: errorBody.code || errorBody.error,
+        message: nestedError?.message || errorBody.message || `HTTP error ${response.status}`,
+        code: nestedError?.code || errorBody.code || errorBody.error,
         status: response.status,
       };
       return { data: null, error };

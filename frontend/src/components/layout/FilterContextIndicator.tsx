@@ -4,7 +4,11 @@ import { useAccountGlobalAccess } from "@/hooks/useAccountGlobalAccess";
 import { Badge } from "@/components/ui/badge";
 import { Building2, Briefcase, Filter, Globe } from "lucide-react";
 
-export function FilterContextIndicator() {
+interface FilterContextIndicatorProps {
+  compact?: boolean;
+}
+
+export function FilterContextIndicator({ compact = false }: FilterContextIndicatorProps) {
   const { selectedAccount, isLoading: accountLoading } = useAccountContext();
   const { selectedEnterprise, enterprises, isLoading: enterpriseLoading } = useEnterpriseContext();
   const { hasGlobalAccess } = useAccountGlobalAccess(selectedAccount?.id);
@@ -13,7 +17,6 @@ export function FilterContextIndicator() {
     return null;
   }
 
-  // Check if selected enterprise name has duplicates in the list
   const getEnterpriseDisplayName = (): string => {
     if (!selectedEnterprise) return "All Enterprises";
     
@@ -23,6 +26,28 @@ export function FilterContextIndicator() {
     }
     return selectedEnterprise.name;
   };
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Badge variant="outline" className="gap-1 font-medium text-[10px] px-1.5 py-0 h-5">
+          <Briefcase className="h-2.5 w-2.5" />
+          {selectedAccount?.name || "All"}
+        </Badge>
+        <span>/</span>
+        <Badge variant="outline" className="gap-1 font-medium text-[10px] px-1.5 py-0 h-5">
+          <Building2 className="h-2.5 w-2.5" />
+          {getEnterpriseDisplayName()}
+        </Badge>
+        {hasGlobalAccess && (
+          <Badge variant="secondary" className="gap-1 font-medium text-[10px] px-1.5 py-0 h-5 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20">
+            <Globe className="h-2.5 w-2.5" />
+            Global
+          </Badge>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg border border-border/50 text-sm">
@@ -44,7 +69,7 @@ export function FilterContextIndicator() {
       {hasGlobalAccess && (
         <>
           <span className="text-muted-foreground">•</span>
-          <Badge variant="secondary" className="gap-1.5 font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
+          <Badge variant="secondary" className="gap-1.5 font-medium bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20">
             <Globe className="h-3 w-3" />
             Global Access
           </Badge>

@@ -35,6 +35,8 @@ interface AuthContextType {
   userAccounts: UserAccountAccess[];
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  confirmSignUp: (email: string, code: string) => Promise<{ error: Error | null }>;
+  resendConfirmationCode: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   confirmResetPassword: (email: string, code: string, newPassword: string) => Promise<{ error: Error | null }>;
@@ -281,6 +283,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
+  const confirmSignUp = async (email: string, code: string) => {
+    if (BYPASS_AUTH) return { error: null };
+    if (!isExternalApi()) {
+      // Supabase handles confirmation via email links, not codes
+      return { error: null };
+    }
+    const { error } = await cognitoAuth.confirmSignUp(email, code);
+    return { error };
+  };
+
+  const resendConfirmationCode = async (email: string) => {
+    if (BYPASS_AUTH) return { error: null };
+    if (!isExternalApi()) {
+      return { error: null };
+    }
+    const { error } = await cognitoAuth.resendConfirmationCode(email);
+    return { error };
+  };
+
   const signOut = async () => {
     if (BYPASS_AUTH) return;
     setUserAccounts([]);
@@ -339,6 +360,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userAccounts,
         signIn,
         signUp,
+        confirmSignUp,
+        resendConfirmationCode,
         signOut,
         resetPassword,
         confirmResetPassword,

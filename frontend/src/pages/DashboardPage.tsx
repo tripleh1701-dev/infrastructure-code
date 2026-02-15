@@ -82,13 +82,14 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#f8fafc]">
       <Header 
         title="Dashboard" 
+        subtitle="Analytics and performance metrics"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2 bg-white border-[#e2e8f0] text-[#334155] hover:bg-[#f1f5f9]">
+            <Button variant="outline" size="sm" className="gap-2 bg-card border-border text-foreground hover:bg-muted">
               Last 7 days
               <ChevronDown className="w-3.5 h-3.5" />
             </Button>
-            <Button variant="outline" size="sm" className="gap-2 bg-white border-[#e2e8f0] text-[#334155] hover:bg-[#f1f5f9]">
+            <Button variant="outline" size="sm" className="gap-2 bg-card border-border text-foreground hover:bg-muted">
               <RefreshCw className="w-4 h-4" />
               Refresh
             </Button>
@@ -97,14 +98,6 @@ export default function DashboardPage() {
       />
 
       <div className="p-content">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-muted-foreground">Analytics and performance metrics</p>
-          </div>
-          <FilterContextIndicator />
-        </div>
 
         {/* Metrics Grid - Responsive */}
         <div className="responsive-grid mb-6">

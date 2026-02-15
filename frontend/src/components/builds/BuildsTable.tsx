@@ -79,7 +79,8 @@ export function BuildsTable({
           transition={{ delay: index * 0.03 }}
           className={cn(
             "border-b border-border/40 hover:bg-primary/3 transition-all group cursor-pointer",
-            isSelected && "bg-primary/5 border-l-2 border-l-primary shadow-sm"
+            isSelected && "bg-primary/5 border-l-2 border-l-primary shadow-sm",
+            isExpanded && "bg-muted/20"
           )}
           onClick={() => onOpenDetail(build)}
         >
@@ -89,7 +90,12 @@ export function BuildsTable({
                 e.stopPropagation();
                 toggleExpand(build.id);
               }}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className={cn(
+                "w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200",
+                isExpanded
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
             >
               <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
                 <ChevronRight className="w-4 h-4" />
@@ -205,20 +211,56 @@ export function BuildsTable({
         <AnimatePresence>
           {isExpanded && (
             <motion.tr
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
             >
-              <td colSpan={visibleColumns.length + 2} className="p-0 border-b border-border/30">
-                <PipelineStagesSubRow
-                  build={build}
-                  onUpdateStagesState={(buildId, state) => {
-                    updateBuildJob.mutate({
-                      id: buildId,
-                      pipeline_stages_state: state as any,
-                    } as any);
-                  }}
-                />
+              <td colSpan={visibleColumns.length + 2} className="p-0">
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="mx-4 my-3 rounded-xl border border-border/50 bg-gradient-to-br from-card via-background to-card shadow-sm overflow-hidden">
+                    {/* Mini summary bar */}
+                    <div className="flex items-center gap-4 px-5 py-3 bg-muted/20 border-b border-border/30">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "w-6 h-6 rounded-md flex items-center justify-center",
+                          isActive ? "bg-[hsl(var(--success))]/10" : "bg-muted"
+                        )}>
+                          {isActive ? <CheckCircle className="w-3 h-3 text-[hsl(var(--success))]" /> : <XCircle className="w-3 h-3 text-muted-foreground" />}
+                        </div>
+                        <span className="text-xs font-semibold text-foreground">{build.connector_name}</span>
+                      </div>
+                      {build.pipeline && (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-primary/5 border border-primary/10 text-primary">
+                          <GitBranch className="w-2.5 h-2.5" />
+                          {build.pipeline}
+                        </span>
+                      )}
+                      <div className="flex-1" />
+                      <span className="text-[10px] text-muted-foreground">
+                        {build.product} / {build.service}
+                        {build.entity && ` • ${build.entity}`}
+                      </span>
+                    </div>
+
+                    {/* Stage configuration content */}
+                    <PipelineStagesSubRow
+                      build={build}
+                      onUpdateStagesState={(buildId, state) => {
+                        updateBuildJob.mutate({
+                          id: buildId,
+                          pipeline_stages_state: state as any,
+                        } as any);
+                      }}
+                    />
+                  </div>
+                </motion.div>
               </td>
             </motion.tr>
           )}

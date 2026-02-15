@@ -200,13 +200,14 @@ export class WorkstreamsService {
    * Ensure a "Default" workstream exists for the given account + enterprise.
    * Returns the workstream ID (existing or newly created).
    */
-  async ensureDefault(accountId: string, enterpriseId: string): Promise<string> {
+  async ensureDefault(accountId: string, enterpriseId: string): Promise<{ id: string; name: string }> {
     // Check if any workstream exists for this account + enterprise
     const existing = await this.findAll({ accountId, enterpriseId });
 
     if (existing.length > 0) {
       const defaultWs = existing.find((w) => w.name === 'Default');
-      return defaultWs?.id || existing[0].id;
+      const match = defaultWs || existing[0];
+      return { id: match.id, name: match.name };
     }
 
     // Create a Default workstream
@@ -216,7 +217,7 @@ export class WorkstreamsService {
       enterpriseId,
     } as any);
 
-    return created.id;
+    return { id: created.id, name: created.name };
   }
 
   private mapToWorkstream(item: Record<string, any>): Workstream {

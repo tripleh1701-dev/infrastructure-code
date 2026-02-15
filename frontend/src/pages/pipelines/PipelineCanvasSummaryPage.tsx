@@ -212,13 +212,14 @@ export default function PipelineCanvasSummaryPage() {
       <div className="min-h-screen bg-[#f8fafc]">
         <Header
           title="Pipeline Canvas"
+          subtitle="Manage your pipeline configurations and enterprise-product-service linkups"
           actions={
             <div className="flex items-center gap-2">
               {isLoading && (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-[#f1f5f9] text-[#64748b] rounded-lg text-sm font-medium"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-muted text-muted-foreground rounded-lg text-sm font-medium"
                 >
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Loading...
@@ -228,7 +229,7 @@ export default function PipelineCanvasSummaryPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => refetch()}
-                className="gap-2 bg-white border-[#e2e8f0] text-[#334155] hover:bg-[#f1f5f9]"
+                className="gap-2 bg-card border-border text-foreground hover:bg-muted"
               >
                 <Save className="w-4 h-4" />
                 Refresh
@@ -236,7 +237,7 @@ export default function PipelineCanvasSummaryPage() {
               {canCreate && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="sm" className="gap-2 bg-[#0171EC] hover:bg-[#005fca] text-white">
+                    <Button size="sm" className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
                       <Plus className="w-4 h-4" />
                       Add
                       <ChevronDown className="w-3 h-3" />
@@ -259,15 +260,6 @@ export default function PipelineCanvasSummaryPage() {
         />
 
       <div className="p-6">
-        {/* Page Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <h1 className="text-2xl font-bold text-[#0f172a]">Pipeline Canvas Summary</h1>
-          <p className="text-[#64748b]">Manage your pipeline configurations and enterprise-product-service linkups</p>
-        </motion.div>
 
         {/* Quick Stats */}
         <motion.div

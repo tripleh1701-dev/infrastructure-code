@@ -22,9 +22,34 @@ Parameters:
     Type: String
     Default: PAY_PER_REQUEST
     AllowedValues: [PAY_PER_REQUEST, PROVISIONED]
+  ReadCapacity:
+    Type: Number
+    Default: 5
+    Description: Read capacity units (only used when BillingMode is PROVISIONED)
+  WriteCapacity:
+    Type: Number
+    Default: 5
+    Description: Write capacity units (only used when BillingMode is PROVISIONED)
+  EnablePointInTimeRecovery:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable point-in-time recovery for the DynamoDB table
+  EnableDeletionProtection:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable deletion protection for the DynamoDB table
+  EnableAutoScaling:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable auto-scaling (reserved for future use)
 
 Conditions:
   IsProvisioned: !Equals [!Ref BillingMode, PROVISIONED]
+  PITREnabled: !Equals [!Ref EnablePointInTimeRecovery, 'true']
+  DeletionProtected: !Equals [!Ref EnableDeletionProtection, 'true']
 
 Resources:
   AccountTable:
@@ -34,13 +59,14 @@ Resources:
     Properties:
       TableName: !Sub '${ProjectName}-${Environment}-${AccountId}'
       BillingMode: !Ref BillingMode
+      DeletionProtectionEnabled: !If [DeletionProtected, true, false]
       ProvisionedThroughput: !If
         - IsProvisioned
-        - ReadCapacityUnits: 5
-          WriteCapacityUnits: 5
+        - ReadCapacityUnits: !Ref ReadCapacity
+          WriteCapacityUnits: !Ref WriteCapacity
         - !Ref AWS::NoValue
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+        PointInTimeRecoveryEnabled: !If [PITREnabled, true, false]
       SSESpecification:
         SSEEnabled: true
       AttributeDefinitions:
@@ -70,8 +96,8 @@ Resources:
             ProjectionType: ALL
           ProvisionedThroughput: !If
             - IsProvisioned
-            - ReadCapacityUnits: 5
-              WriteCapacityUnits: 5
+            - ReadCapacityUnits: !Ref ReadCapacity
+              WriteCapacityUnits: !Ref WriteCapacity
             - !Ref AWS::NoValue
         - IndexName: GSI-EntityType
           KeySchema:
@@ -83,8 +109,8 @@ Resources:
             ProjectionType: ALL
           ProvisionedThroughput: !If
             - IsProvisioned
-            - ReadCapacityUnits: 5
-              WriteCapacityUnits: 5
+            - ReadCapacityUnits: !Ref ReadCapacity
+              WriteCapacityUnits: !Ref WriteCapacity
             - !Ref AWS::NoValue
       Tags:
         - Key: AccountId

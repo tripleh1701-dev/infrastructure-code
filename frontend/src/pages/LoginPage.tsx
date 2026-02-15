@@ -81,8 +81,14 @@ export default function LoginPage() {
   const [success, setSuccess] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [validationErrors, setValidationErrors] = useState<{ email?: string; password?: string }>({});
+  
+  // OTP confirmation state
+  const [showOtpConfirm, setShowOtpConfirm] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  const { signIn, signUp, isAuthenticated } = useAuth();
+  const { signIn, signUp, confirmSignUp, resendConfirmationCode, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -92,6 +98,14 @@ export default function LoginPage() {
       navigate(from, { replace: true });
     }
   }, [isAuthenticated, navigate, location]);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   const validateForm = () => {
     try {
@@ -131,8 +145,10 @@ export default function LoginPage() {
             setError(error.message);
           }
         } else {
-          setSuccess("Account created! Please check your email for a verification code.");
-          setEmail("");
+          // Show OTP confirmation step
+          setPendingEmail(email);
+          setShowOtpConfirm(true);
+          setSuccess("Account created! We've sent a 6-digit verification code to your email.");
           setPassword("");
         }
       } else {
@@ -141,7 +157,11 @@ export default function LoginPage() {
           if (error.message.includes("NotAuthorizedException") || error.message.includes("Incorrect")) {
             setError("Invalid email or password. Please try again.");
           } else if (error.message.includes("UserNotConfirmedException")) {
-            setError("Please verify your email before signing in.");
+            // Show OTP confirmation step for unconfirmed user
+            setPendingEmail(email);
+            setShowOtpConfirm(true);
+            setError("");
+            setSuccess("Your account is not yet verified. Please enter the verification code sent to your email.");
           } else if (error.message.includes("New password required")) {
             setError("You need to set a new password. Please use the forgot password flow.");
           } else {
@@ -151,6 +171,61 @@ export default function LoginPage() {
       }
     } catch (err) {
       setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!otpCode || otpCode.length < 6) {
+      setError("Please enter the 6-digit verification code.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await confirmSignUp(pendingEmail, otpCode);
+      if (error) {
+        if (error.message.includes("CodeMismatchException")) {
+          setError("Invalid verification code. Please check and try again.");
+        } else if (error.message.includes("ExpiredCodeException")) {
+          setError("Verification code has expired. Click 'Resend Code' to get a new one.");
+        } else {
+          setError(error.message);
+        }
+      } else {
+        setSuccess("Email verified successfully! You can now sign in.");
+        setShowOtpConfirm(false);
+        setOtpCode("");
+        setIsSignUp(false);
+        setEmail(pendingEmail);
+        setPendingEmail("");
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0) return;
+    setError("");
+    setIsLoading(true);
+    try {
+      const { error } = await resendConfirmationCode(pendingEmail);
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess("A new verification code has been sent to your email.");
+        setResendCooldown(60);
+      }
+    } catch (err) {
+      setError("Failed to resend code. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -308,177 +383,282 @@ export default function LoginPage() {
           {/* Header */}
           <div>
             <h2 className="text-2xl font-bold text-foreground">
-              {isSignUp ? "Create your account" : "Welcome back"}
+              {showOtpConfirm
+                ? "Verify your email"
+                : isSignUp
+                ? "Create your account"
+                : "Welcome back"}
             </h2>
             <p className="text-sm text-muted-foreground mt-1.5">
-              {isSignUp
+              {showOtpConfirm
+                ? `Enter the 6-digit code sent to ${pendingEmail}`
+                : isSignUp
                 ? "Get started with your CI/CD dashboard in minutes"
                 : "Sign in to manage your pipelines and deployments"}
             </p>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </motion.div>
-            )}
+          {/* OTP Confirmation Form */}
+          {showOtpConfirm ? (
+            <form onSubmit={handleOtpSubmit} className="space-y-5">
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </motion.div>
+              )}
 
-            {success && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-2.5 p-3 rounded-lg border text-sm"
+              {success && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-start gap-2.5 p-3 rounded-lg border text-sm"
+                  style={{
+                    background: "hsl(186 99% 51% / 0.08)",
+                    borderColor: "hsl(186 99% 51% / 0.2)",
+                    color: "hsl(186 80% 35%)",
+                  }}
+                >
+                  <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{success}</span>
+                </motion.div>
+              )}
+
+              {/* OTP Input */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Verification Code</label>
+                <div className="relative">
+                  <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="Enter 6-digit code"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="pl-10 h-11 bg-background border-border focus:border-primary text-center text-lg tracking-[0.5em] font-mono"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Verify Button */}
+              <Button
+                type="submit"
+                disabled={isLoading || otpCode.length < 6}
+                className="w-full h-11 font-medium gap-2 text-white"
                 style={{
-                  background: "hsl(186 99% 51% / 0.08)",
-                  borderColor: "hsl(186 99% 51% / 0.2)",
-                  color: "hsl(186 80% 35%)",
+                  background: "linear-gradient(135deg, hsl(213 97% 47%), hsl(213 97% 40%))",
                 }}
               >
-                <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{success}</span>
-              </motion.div>
-            )}
-
-            {/* Email */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Email address</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="email"
-                  placeholder="you@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={`pl-10 h-11 bg-background border-border focus:border-primary ${
-                    validationErrors.email ? "border-destructive" : ""
-                  }`}
-                  required
-                />
-              </div>
-              {validationErrors.email && (
-                <p className="text-xs text-destructive">{validationErrors.email}</p>
-              )}
-            </div>
-
-            {/* Password */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-foreground">Password</label>
-                {!isSignUp && (
-                  <Link to="/forgot-password" className="text-xs text-primary hover:underline font-medium">
-                    Forgot password?
-                  </Link>
+                {isLoading ? (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                  />
+                ) : (
+                  <>
+                    Verify Email
+                    <ArrowRight className="w-4 h-4" />
+                  </>
                 )}
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={`pl-10 pr-10 h-11 bg-background border-border focus:border-primary ${
-                    validationErrors.password ? "border-destructive" : ""
-                  }`}
-                  required
-                />
+              </Button>
+
+              {/* Resend Code */}
+              <div className="flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={handleResendCode}
+                  disabled={resendCooldown > 0 || isLoading}
+                  className="text-sm text-primary hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend Code"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOtpConfirm(false);
+                    setOtpCode("");
+                    setError("");
+                    setSuccess("");
+                  }}
+                  className="text-sm text-muted-foreground hover:text-foreground"
+                >
+                  Back to sign in
                 </button>
               </div>
-              {validationErrors.password && (
-                <p className="text-xs text-destructive">{validationErrors.password}</p>
-              )}
-              {isSignUp && <PasswordStrengthMeter password={password} />}
-            </div>
+            </form>
+          ) : (
+            <>
+              {/* Login/Signup Form */}
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </motion.div>
+                )}
 
-            {/* Remember Me */}
-            {!isSignUp && (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                />
-                <label htmlFor="remember" className="text-sm text-muted-foreground cursor-pointer select-none">
-                  Remember me for 30 days
-                </label>
+                {success && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-start gap-2.5 p-3 rounded-lg border text-sm"
+                    style={{
+                      background: "hsl(186 99% 51% / 0.08)",
+                      borderColor: "hsl(186 99% 51% / 0.2)",
+                      color: "hsl(186 80% 35%)",
+                    }}
+                  >
+                    <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{success}</span>
+                  </motion.div>
+                )}
+
+                {/* Email */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Email address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      type="email"
+                      placeholder="you@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className={`pl-10 h-11 bg-background border-border focus:border-primary ${
+                        validationErrors.email ? "border-destructive" : ""
+                      }`}
+                      required
+                    />
+                  </div>
+                  {validationErrors.email && (
+                    <p className="text-xs text-destructive">{validationErrors.email}</p>
+                  )}
+                </div>
+
+                {/* Password */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-foreground">Password</label>
+                    {!isSignUp && (
+                      <Link to="/forgot-password" className="text-xs text-primary hover:underline font-medium">
+                        Forgot password?
+                      </Link>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`pl-10 pr-10 h-11 bg-background border-border focus:border-primary ${
+                        validationErrors.password ? "border-destructive" : ""
+                      }`}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {validationErrors.password && (
+                    <p className="text-xs text-destructive">{validationErrors.password}</p>
+                  )}
+                  {isSignUp && <PasswordStrengthMeter password={password} />}
+                </div>
+
+                {/* Remember Me */}
+                {!isSignUp && (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="remember"
+                      checked={rememberMe}
+                      onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                    />
+                    <label htmlFor="remember" className="text-sm text-muted-foreground cursor-pointer select-none">
+                      Remember me for 30 days
+                    </label>
+                  </div>
+                )}
+
+                {/* Submit Button */}
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full h-11 font-medium gap-2 text-white"
+                  style={{
+                    background: "linear-gradient(135deg, hsl(213 97% 47%), hsl(213 97% 40%))",
+                  }}
+                >
+                  {isLoading ? (
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                    />
+                  ) : (
+                    <>
+                      {isSignUp ? "Create Account" : "Sign In"}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              {/* Divider */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-3 text-muted-foreground">Or continue with</span>
+                </div>
               </div>
-            )}
 
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full h-11 font-medium gap-2 text-white"
-              style={{
-                background: "linear-gradient(135deg, hsl(213 97% 47%), hsl(213 97% 40%))",
-              }}
-            >
-              {isLoading ? (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                />
-              ) : (
-                <>
-                  {isSignUp ? "Create Account" : "Sign In"}
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </Button>
-          </form>
+              {/* Social Logins */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button variant="outline" className="h-11 gap-2 text-sm" type="button">
+                  <Chrome className="w-4 h-4" />
+                  Google
+                </Button>
+                <Button variant="outline" className="h-11 gap-2 text-sm" type="button">
+                  <Github className="w-4 h-4" />
+                  GitHub
+                </Button>
+              </div>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-3 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
-
-          {/* Social Logins */}
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" className="h-11 gap-2 text-sm" type="button">
-              <Chrome className="w-4 h-4" />
-              Google
-            </Button>
-            <Button variant="outline" className="h-11 gap-2 text-sm" type="button">
-              <Github className="w-4 h-4" />
-              GitHub
-            </Button>
-          </div>
-
-          {/* Toggle */}
-          <p className="text-center text-sm text-muted-foreground">
-            {isSignUp ? "Already have an account? " : "Don't have an account? "}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError("");
-                setSuccess("");
-                setValidationErrors({});
-              }}
-              className="text-primary font-semibold hover:underline"
-            >
-              {isSignUp ? "Sign in" : "Sign up for free"}
-            </button>
-          </p>
+              {/* Toggle */}
+              <p className="text-center text-sm text-muted-foreground">
+                {isSignUp ? "Already have an account? " : "Don't have an account? "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setError("");
+                    setSuccess("");
+                    setValidationErrors({});
+                  }}
+                  className="text-primary font-semibold hover:underline"
+                >
+                  {isSignUp ? "Sign in" : "Sign up for free"}
+                </button>
+              </p>
+            </>
+          )}
         </div>
       </motion.div>
     </div>

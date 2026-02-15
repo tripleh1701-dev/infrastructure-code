@@ -889,7 +889,11 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+      <DialogContent 
+        className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <VisuallyHidden>
           <DialogTitle>Add New User</DialogTitle>
         </VisuallyHidden>

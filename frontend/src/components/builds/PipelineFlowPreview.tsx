@@ -389,123 +389,147 @@ function NodeConfigPanel({
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 300 }}
+      initial={{ opacity: 0, x: 320 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 300 }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="absolute top-0 right-0 h-full w-[320px] bg-background border-l border-border shadow-xl z-20 overflow-y-auto"
+      exit={{ opacity: 0, x: 320 }}
+      transition={{ type: "spring", damping: 28, stiffness: 320 }}
+      className="absolute top-0 right-0 h-full w-[340px] bg-gradient-to-b from-card via-background to-card border-l border-border/60 shadow-2xl z-20 overflow-hidden flex flex-col"
     >
-      <div className="sticky top-0 bg-background border-b border-border z-10 p-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-full border-2 flex items-center justify-center bg-white"
-              style={{ borderColor: statusCfg.color }}
-            >
-              {NodeIcon ? <NodeIcon className="w-4 h-4" /> : <Server className="w-4 h-4" />}
-            </div>
-            <div>
-              <h3 className="font-semibold text-xs text-foreground">{stage.label}</h3>
-              <div className="flex items-center gap-1 mt-0.5">
-                <Badge variant="outline" className="text-[9px] capitalize px-1 h-3.5">{stage.category}</Badge>
-                <Badge variant="outline" className="text-[9px] px-1 h-3.5" style={{ borderColor: statusCfg.color + "60", color: statusCfg.color }}>
-                  {statusCfg.label}
-                </Badge>
+      {/* Header with gradient accent */}
+      <div className="relative flex-shrink-0">
+        <div className="absolute inset-0 bg-gradient-to-r opacity-[0.06]" style={{ backgroundImage: `linear-gradient(135deg, ${statusCfg.color}, transparent)` }} />
+        <div className="relative px-4 py-3 border-b border-border/40">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div
+                  className="w-10 h-10 rounded-xl border-2 flex items-center justify-center bg-background shadow-sm"
+                  style={{ borderColor: statusCfg.color }}
+                >
+                  {NodeIcon ? <NodeIcon className="w-5 h-5" /> : <Server className="w-5 h-5" />}
+                </div>
+                <div
+                  className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-background flex items-center justify-center"
+                  style={{ backgroundColor: statusCfg.color }}
+                >
+                  <statusCfg.icon className="w-2.5 h-2.5 text-white" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-foreground">{stage.label}</h3>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <Badge variant="outline" className="text-[9px] capitalize px-1.5 h-4 font-medium">{stage.category}</Badge>
+                  <Badge
+                    variant="outline"
+                    className="text-[9px] px-1.5 h-4 font-medium"
+                    style={{ borderColor: statusCfg.color + "50", color: statusCfg.color, backgroundColor: statusCfg.color + "10" }}
+                  >
+                    {statusCfg.label}
+                  </Badge>
+                </div>
               </div>
             </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50" onClick={onClose}>
+              <X className="w-3.5 h-3.5" />
+            </Button>
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-            <X className="w-3 h-3" />
-          </Button>
         </div>
       </div>
 
-      <div className="p-3 space-y-4">
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Settings className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Properties</span>
-          </div>
-          <div className="space-y-1.5 text-[11px]">
-            <div className="flex justify-between py-1 px-2 rounded bg-muted/30">
-              <span className="text-muted-foreground">Type</span>
-              <span className="font-medium capitalize">{stage.category}</span>
-            </div>
-            <div className="flex justify-between py-1 px-2 rounded bg-muted/30">
-              <span className="text-muted-foreground">Tool</span>
-              <span className="font-medium capitalize">{stage.tool.replace(/_/g, " ")}</span>
-            </div>
-            <div className="flex justify-between py-1 px-2 rounded bg-muted/30">
-              <span className="text-muted-foreground">Status</span>
-              <span className="font-medium" style={{ color: statusCfg.color }}>{statusCfg.label}</span>
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Link className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Configuration</span>
-          </div>
-          <div className="space-y-3">
-            {isDeploy ? (
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Environment</Label>
-                <Select value={fields.environment || ""} onValueChange={(v) => onFieldChange(stageKey, "environment", v)}>
-                  <SelectTrigger className="h-7 text-xs">
-                    <SelectValue placeholder="Select environment..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover z-[100]">
-                    <SelectItem value="development">Development</SelectItem>
-                    <SelectItem value="qa">QA</SelectItem>
-                    <SelectItem value="staging">Staging</SelectItem>
-                    <SelectItem value="uat">UAT</SelectItem>
-                    <SelectItem value="production">Production</SelectItem>
-                  </SelectContent>
-                </Select>
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-4 space-y-5">
+          {/* Properties Section */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-5 h-5 rounded-md bg-muted/60 flex items-center justify-center">
+                <Settings className="w-3 h-3 text-muted-foreground" />
               </div>
-            ) : (
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Connector</Label>
-                <Select value={fields.connector || ""} onValueChange={(v) => onFieldChange(stageKey, "connector", v)}>
-                  <SelectTrigger className="h-7 text-xs">
-                    <SelectValue
-                      placeholder={
-                        connectorsLoading ? "Loading..." :
-                        availableConnectors.length === 0 ? "No connectors" :
-                        "Select connector..."
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover z-[100]">
-                    {availableConnectors.length === 0 ? (
-                      <SelectItem value="__none" disabled>No {stage.category} connectors</SelectItem>
-                    ) : (
-                      availableConnectors.map((conn) => (
-                        <SelectItem key={conn.id} value={conn.id}>
-                          <span>{conn.name}</span>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+              <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Properties</span>
+            </div>
+            <div className="space-y-1 text-[11px]">
+              {[
+                { label: "Type", value: stage.category },
+                { label: "Tool", value: stage.tool.replace(/_/g, " ") },
+                { label: "Status", value: statusCfg.label, color: statusCfg.color },
+                { label: "Node ID", value: stage.id.slice(0, 8) + "..." },
+              ].map((row) => (
+                <div key={row.label} className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
+                  <span className="text-muted-foreground font-medium">{row.label}</span>
+                  <span className="font-semibold capitalize" style={row.color ? { color: row.color } : undefined}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
 
-            {isCode && fields.connector && (
-              <>
-                <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Repository URL</Label>
-                  <Input className="h-7 text-xs" placeholder="https://github.com/org/repo" value={fields.repoUrl || ""} onChange={(e) => onFieldChange(stageKey, "repoUrl", e.target.value)} />
+          <Separator className="bg-border/30" />
+
+          {/* Configuration Section */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-5 h-5 rounded-md bg-muted/60 flex items-center justify-center">
+                <Link className="w-3 h-3 text-muted-foreground" />
+              </div>
+              <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Configuration</span>
+            </div>
+            <div className="space-y-3">
+              {isDeploy ? (
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground font-medium">Environment</Label>
+                  <Select value={fields.environment || ""} onValueChange={(v) => onFieldChange(stageKey, "environment", v)}>
+                    <SelectTrigger className="h-8 text-xs rounded-lg border-border/50 bg-background">
+                      <SelectValue placeholder="Select environment..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover z-[100]">
+                      <SelectItem value="development">Development</SelectItem>
+                      <SelectItem value="qa">QA</SelectItem>
+                      <SelectItem value="staging">Staging</SelectItem>
+                      <SelectItem value="uat">UAT</SelectItem>
+                      <SelectItem value="production">Production</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Branch</Label>
-                  <Input className="h-7 text-xs" placeholder="main" value={fields.branch || ""} onChange={(e) => onFieldChange(stageKey, "branch", e.target.value)} />
+              ) : (
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground font-medium">Connector</Label>
+                  <Select value={fields.connector || ""} onValueChange={(v) => onFieldChange(stageKey, "connector", v)}>
+                    <SelectTrigger className="h-8 text-xs rounded-lg border-border/50 bg-background">
+                      <SelectValue
+                        placeholder={
+                          connectorsLoading ? "Loading..." :
+                          availableConnectors.length === 0 ? "No connectors" :
+                          "Select connector..."
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover z-[100]">
+                      {availableConnectors.length === 0 ? (
+                        <SelectItem value="__none" disabled>No {stage.category} connectors</SelectItem>
+                      ) : (
+                        availableConnectors.map((conn) => (
+                          <SelectItem key={conn.id} value={conn.id}>
+                            <span>{conn.name}</span>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </>
-            )}
+              )}
+
+              {isCode && fields.connector && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] text-muted-foreground font-medium">Repository URL</Label>
+                    <Input className="h-8 text-xs rounded-lg border-border/50" placeholder="https://github.com/org/repo" value={fields.repoUrl || ""} onChange={(e) => onFieldChange(stageKey, "repoUrl", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] text-muted-foreground font-medium">Branch</Label>
+                    <Input className="h-8 text-xs rounded-lg border-border/50" placeholder="main" value={fields.branch || ""} onChange={(e) => onFieldChange(stageKey, "branch", e.target.value)} />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -643,8 +667,17 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
   }
 
   return (
-    <div className="relative h-full">
-      <div className="overflow-x-auto p-4 h-full">
+    <div className="relative h-full overflow-hidden">
+      {/* Dot grid background */}
+      <div
+        className="absolute inset-0 opacity-[0.35] pointer-events-none"
+        style={{
+          backgroundImage: `radial-gradient(circle, hsl(var(--foreground) / 0.15) 1px, transparent 1px)`,
+          backgroundSize: '20px 20px',
+        }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.02] via-transparent to-[hsl(var(--brand-cyan))]/[0.02] pointer-events-none" />
+      <div className="relative overflow-x-auto p-4 h-full">
         <div className="flex items-start gap-0 min-w-max">
           {/* Environment Stages */}
           {environmentNodes.map((env, idx) => {

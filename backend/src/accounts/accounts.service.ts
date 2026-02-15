@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { AccountProvisionerService, ProvisioningConfig } from '../common/dynamodb/account-provisioner.service';
+import { CognitoUserProvisioningService } from '../auth/cognito-user-provisioning.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
 
@@ -70,6 +71,7 @@ export class AccountsService {
     private readonly dynamoDb: DynamoDBService,
     private readonly dynamoDbRouter: DynamoDBRouterService,
     private readonly accountProvisioner: AccountProvisionerService,
+    private readonly cognitoProvisioning: CognitoUserProvisioningService,
   ) {}
 
   /**
@@ -277,6 +279,7 @@ export class AccountsService {
       );
 
     // Assign technical user to the auto-provisioned Technical Group
+    // and create corresponding Cognito user
     if (dto.technicalUser) {
       const techUserId = operations.find(
         (op) => op.Put?.Item?.SK?.startsWith('TECH_USER#'),
@@ -284,6 +287,40 @@ export class AccountsService {
 
       if (techUserId) {
         await this.assignUserToGroup(techUserId, techGroupId, dto.cloudType, id, now);
+      }
+
+      // ── Create Cognito user matching the technical user ──────────────
+      try {
+        const cognitoResult = await this.cognitoProvisioning.createUser({
+          email: dto.technicalUser.email,
+          firstName: dto.technicalUser.firstName,
+          lastName: dto.technicalUser.lastName,
+          accountId: id,
+          enterpriseId: firstEnterpriseId,
+          role: dto.technicalUser.assignedRole || 'user',
+          groupName: 'TechnicalUsers',
+        });
+
+        if (cognitoResult.created) {
+          this.logger.log(
+            `Cognito user created for technical user ${dto.technicalUser.email} (sub: ${cognitoResult.cognitoSub})`,
+          );
+        } else if (cognitoResult.updated) {
+          this.logger.log(
+            `Cognito user already existed for ${dto.technicalUser.email}, attributes updated`,
+          );
+        } else if (cognitoResult.skipped) {
+          this.logger.warn(
+            `Cognito user creation skipped for ${dto.technicalUser.email}: ${cognitoResult.reason}`,
+          );
+        }
+      } catch (cognitoError: any) {
+        // Log but don't fail account creation if Cognito provisioning fails
+        // The CognitoReconciliationCron can fix this later
+        this.logger.error(
+          `Failed to create Cognito user for ${dto.technicalUser.email}: ${cognitoError.message}`,
+          cognitoError.stack,
+        );
       }
     }
 

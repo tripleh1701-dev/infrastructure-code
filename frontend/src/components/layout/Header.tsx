@@ -1,23 +1,19 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, ChevronDown, Check, Briefcase, AlertTriangle, LogOut, User, Shield } from "lucide-react";
+import { Building2, ChevronDown, Check, Briefcase, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { useAccountContext } from "@/contexts/AccountContext";
-import { useAuth } from "@/contexts/AuthContext";
-import { usePermissions } from "@/contexts/PermissionContext";
-import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
+import { supabase } from "@/integrations/supabase/client";
+
 
 interface HeaderProps {
   title: string;
@@ -28,9 +24,6 @@ interface HeaderProps {
 export function Header({ title, subtitle, actions }: HeaderProps) {
   const { enterprises, selectedEnterprise, setSelectedEnterprise, isLoading: enterpriseLoading, getEnterpriseDisplayName } = useEnterpriseContext();
   const { accounts, selectedAccount, setSelectedAccount, isLoading: accountsLoading } = useAccountContext();
-  const { user, signOut } = useAuth();
-  const { currentUserRoleName } = usePermissions();
-  const navigate = useNavigate();
   
   const [accountEnterpriseIds, setAccountEnterpriseIds] = useState<string[]>([]);
   const [loadingEnterpriseIds, setLoadingEnterpriseIds] = useState(false);
@@ -65,7 +58,6 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
         setAccountEnterpriseIds(uniqueIds);
 
-        // Auto-select first enterprise if current selection is not in the filtered list
         if (uniqueIds.length > 0 && selectedEnterprise && !uniqueIds.includes(selectedEnterprise.id)) {
           const firstEnterprise = enterprises.find(e => e.id === uniqueIds[0]);
           if (firstEnterprise) {
@@ -82,21 +74,15 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
     fetchAccountEnterprises();
   }, [selectedAccount?.id, enterprises, selectedEnterprise, setSelectedEnterprise]);
 
-  // Filter enterprises based on account licenses
   const filteredEnterprises = useMemo(() => {
-    if (accountEnterpriseIds.length === 0) {
-      return []; // Return empty if no licenses for this account
-    }
+    if (accountEnterpriseIds.length === 0) return [];
     return enterprises.filter(e => accountEnterpriseIds.includes(e.id));
   }, [enterprises, accountEnterpriseIds]);
 
-  // Check for duplicate enterprise names within filtered list
   const hasDuplicateNamesInFiltered = (enterpriseName: string): boolean => {
-    const count = filteredEnterprises.filter(e => e.name === enterpriseName).length;
-    return count > 1;
+    return filteredEnterprises.filter(e => e.name === enterpriseName).length > 1;
   };
 
-  // Get display name - show product if duplicate names exist in filtered list
   const getFilteredEnterpriseDisplayName = (enterprise: typeof enterprises[0]): string => {
     if (hasDuplicateNamesInFiltered(enterprise.name) && enterprise.product?.name) {
       return `${enterprise.name} - ${enterprise.product.name}`;
@@ -104,40 +90,31 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
     return enterprise.name;
   };
 
-  // Check if account has no licenses (only when account is selected and loading is done)
   const hasNoLicenses = selectedAccount && !loadingEnterpriseIds && accountEnterpriseIds.length === 0;
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/login");
-  };
-
-  // Get user initials for avatar
-  const getUserInitials = () => {
-    if (!user?.email) return "U";
-    const parts = user.email.split("@")[0].split(/[._-]/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return user.email[0].toUpperCase();
-  };
 
   return (
     <>
-      <header className="border-b border-border bg-white sticky top-0 z-30 responsive-header flex items-center justify-between">
-        <div className="h-full w-full flex items-center justify-between">
-          {/* Page Title */}
+      <header className="border-b border-border bg-card sticky top-0 z-30">
+        <div className="flex items-center justify-between px-content py-2.5">
+          {/* Left: Title + Subtitle + Context */}
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex items-center gap-4"
+            className="flex items-center gap-4 min-w-0"
           >
-            <span className="text-sm font-medium text-[#0f172a]">{title}</span>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold gradient-text whitespace-nowrap">{title}</h1>
+              {subtitle && (
+                <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+              )}
+            </div>
           </motion.div>
 
-          {/* Right Side - Account/Enterprise Selectors and User Menu */}
-          <div className="flex items-center gap-3">
+          {/* Right: Context + Selectors + User */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+
             {actions}
             
             {/* Account Selector */}
@@ -146,14 +123,14 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 gap-2 text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]"
+                  className="h-8 gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2"
                   disabled={accountsLoading}
                 >
-                  <Briefcase className="w-4 h-4" />
-                  <span className="text-sm">
-                    {accountsLoading ? "Loading..." : selectedAccount?.name || "Select Account"}
+                  <Briefcase className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium hidden md:inline">
+                    {accountsLoading ? "..." : selectedAccount?.name || "Account"}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5" />
+                  <ChevronDown className="w-3 h-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 max-h-64 overflow-y-auto">
@@ -184,20 +161,20 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 gap-2 text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]"
+                  className="h-8 gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2"
                   disabled={enterpriseLoading || loadingEnterpriseIds || hasNoLicenses}
                 >
-                  <Building2 className="w-4 h-4" />
-                  <span className="text-sm">
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium hidden md:inline">
                     {enterpriseLoading || loadingEnterpriseIds 
-                      ? "Loading..." 
+                      ? "..." 
                       : hasNoLicenses
                         ? "No Enterprise"
                         : selectedEnterprise 
                           ? getFilteredEnterpriseDisplayName(selectedEnterprise)
-                          : "Select Enterprise"}
+                          : "Enterprise"}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5" />
+                  <ChevronDown className="w-3 h-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64 max-h-64 overflow-y-auto">
@@ -222,44 +199,6 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* User Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-2 text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9] px-2"
-                >
-                  <Avatar className="h-6 w-6">
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                      {getUserInitials()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <div className="px-3 py-2">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {user?.email || "User"}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Shield className="w-3 h-3 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground">
-                      Role: {currentUserRoleName || "No Role Assigned"}
-                    </p>
-                  </div>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleSignOut}
-                  className="text-destructive focus:text-destructive cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -272,15 +211,15 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 sticky top-14 z-20"
+            className="bg-[hsl(var(--warning))]/5 border-b border-[hsl(var(--warning))]/20 px-6 py-2 sticky top-14 z-20"
           >
-            <div className="flex items-center gap-2 text-amber-800">
+            <div className="flex items-center gap-2 text-[hsl(var(--warning))]">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span className="text-sm font-medium">
-                No Enterprise license has been assigned to "{selectedAccount?.name}".
+              <span className="text-xs font-medium">
+                No Enterprise license assigned to "{selectedAccount?.name}".
               </span>
-              <span className="text-sm text-amber-600">
-                Please add a license from Account Settings to enable enterprise features.
+              <span className="text-xs opacity-80">
+                Add a license from Account Settings.
               </span>
             </div>
           </motion.div>

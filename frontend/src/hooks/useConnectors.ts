@@ -84,7 +84,21 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
   const createConnector = useMutation({
     mutationFn: async (input: CreateConnectorInput) => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<ConnectorRecord>("/api/connectors", input);
+        const payload = {
+          name: input.name,
+          description: input.description,
+          connectorType: input.connector_type,
+          connectorTool: input.connector_tool,
+          category: input.category,
+          url: input.url,
+          accountId: input.account_id,
+          enterpriseId: input.enterprise_id,
+          productId: input.product_id,
+          serviceId: input.service_id,
+          credentialId: input.credential_id,
+          workstreamIds: input.workstream_ids,
+        };
+        const { data, error } = await httpClient.post<ConnectorRecord>("/api/connectors", payload);
         if (error) throw new Error(error.message);
         return data;
       }

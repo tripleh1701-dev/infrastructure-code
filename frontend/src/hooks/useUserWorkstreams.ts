@@ -158,8 +158,10 @@ export function useDefaultWorkstream(accountId?: string, enterpriseId?: string) 
       if (!accountId || !enterpriseId) return null;
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<{ id: string; name: string }>('/api/workstreams/default', {
-          params: { accountId, enterpriseId },
+        // Use POST ensure-default endpoint (no GET /default exists on backend)
+        const { data, error } = await httpClient.post<{ id: string; name: string }>('/api/workstreams/ensure-default', {
+          accountId,
+          enterpriseId,
         });
         if (error) throw new Error(error.message);
         return data;

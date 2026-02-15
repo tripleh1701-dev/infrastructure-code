@@ -1570,7 +1570,11 @@ export function AddCredentialDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] p-0 overflow-hidden gap-0">
+        <DialogContent 
+          className="max-w-2xl max-h-[90vh] p-0 overflow-hidden gap-0"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
         <VisuallyHidden>
           <DialogTitle>Add Credential</DialogTitle>
         </VisuallyHidden>

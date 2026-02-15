@@ -284,6 +284,7 @@ export default function BuildsPage() {
         <div className="min-h-screen min-h-dvh bg-gradient-to-br from-background via-secondary/30 to-background flex flex-col">
           <Header
             title="Builds"
+            subtitle="Manage integration jobs, extensions, and deployments"
             actions={
               <div className="flex items-center gap-2">
                 <Button
@@ -341,6 +342,7 @@ export default function BuildsPage() {
       <div className="min-h-screen min-h-dvh bg-gradient-to-br from-background via-secondary/30 to-background">
         <Header
           title="Builds"
+          subtitle="Manage integration jobs, extensions, and deployments"
           actions={
             <div className="flex items-center gap-2">
               <Button
@@ -362,84 +364,58 @@ export default function BuildsPage() {
           initial="hidden"
           animate="visible"
         >
-          {/* Page Header */}
-          <motion.div variants={itemVariants} className="mb-lg-fluid">
-            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-              <div>
-                <motion.h1
-                  className="text-3xl font-bold gradient-text"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 24 }}
-                >
-                  Builds
-                </motion.h1>
-                <motion.p
-                  className="text-muted-foreground mt-1"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  Manage integration jobs, extensions, and deployments
-                </motion.p>
-                <div className="mt-3">
-                  <FilterContextIndicator />
-                </div>
-              </div>
-
-              {/* Stats */}
-              <motion.div
-                className="responsive-flex"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                {[
-                  { label: "Total Jobs", value: stats.totalJobs, icon: Zap, gradient: "from-[hsl(var(--brand-blue))] to-[hsl(213,97%,37%)]", bg: "bg-primary/5" },
-                  { label: "Active", value: stats.activeJobs, icon: CheckCircle, gradient: "from-[hsl(var(--success))] to-[hsl(142,71%,35%)]", bg: "bg-[hsl(var(--success))]/5" },
-                  { label: "Inactive", value: stats.inactiveJobs, icon: XCircle, gradient: stats.inactiveJobs > 0 ? "from-[hsl(var(--warning))] to-[hsl(28,90%,45%)]" : "from-muted-foreground to-muted-foreground", bg: stats.inactiveJobs > 0 ? "bg-[hsl(var(--warning))]/5" : "bg-muted/50", pulse: stats.inactiveJobs > 0 },
-                  { label: "Extensions", value: 0, icon: Puzzle, gradient: "from-violet-500 to-violet-600", bg: "bg-violet-50" },
-                ].map((stat, i) => (
-                  <Tooltip key={stat.label}>
-                    <TooltipTrigger asChild>
-                      <motion.div
-                        custom={i}
-                        variants={statsCardVariants}
-                        initial="hidden"
-                        animate="visible"
-                        whileHover={{ scale: 1.05, y: -2 }}
-                        whileTap={{ scale: 0.98 }}
-                        className={cn(
-                          "flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/50 backdrop-blur-sm cursor-default",
-                          stat.bg,
-                          "shadow-sm hover:shadow-md transition-all duration-300"
-                        )}
-                      >
-                        <motion.div
-                          className={cn(
-                            "w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center text-white shadow-sm",
-                            stat.gradient
-                          )}
-                          animate={(stat as any).pulse ? "pulse" : undefined}
-                          variants={pulseVariants}
-                        >
-                          <stat.icon className="w-4 h-4" />
-                        </motion.div>
-                        <div className="flex flex-col">
-                          <span className="text-lg font-bold text-foreground">{stat.value}</span>
-                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                            {stat.label}
-                          </span>
-                        </div>
-                      </motion.div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{stat.value} {stat.label.toLowerCase()}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-              </motion.div>
-            </div>
+          {/* Stats */}
+          <motion.div
+            variants={itemVariants}
+            className="flex flex-wrap items-center gap-3 mb-lg-fluid"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            {[
+              { label: "Total Jobs", value: stats.totalJobs, icon: Zap, gradient: "from-[hsl(var(--brand-blue))] to-[hsl(213,97%,37%)]", bg: "bg-primary/5" },
+              { label: "Active", value: stats.activeJobs, icon: CheckCircle, gradient: "from-[hsl(var(--success))] to-[hsl(142,71%,35%)]", bg: "bg-[hsl(var(--success))]/5" },
+              { label: "Inactive", value: stats.inactiveJobs, icon: XCircle, gradient: stats.inactiveJobs > 0 ? "from-[hsl(var(--warning))] to-[hsl(28,90%,45%)]" : "from-muted-foreground to-muted-foreground", bg: stats.inactiveJobs > 0 ? "bg-[hsl(var(--warning))]/5" : "bg-muted/50", pulse: stats.inactiveJobs > 0 },
+              { label: "Extensions", value: 0, icon: Puzzle, gradient: "from-violet-500 to-violet-600", bg: "bg-violet-50" },
+            ].map((stat, i) => (
+              <Tooltip key={stat.label}>
+                <TooltipTrigger asChild>
+                  <motion.div
+                    custom={i}
+                    variants={statsCardVariants}
+                    initial="hidden"
+                    animate="visible"
+                    whileHover={{ scale: 1.05, y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/50 backdrop-blur-sm cursor-default",
+                      stat.bg,
+                      "shadow-sm hover:shadow-md transition-all duration-300"
+                    )}
+                  >
+                    <motion.div
+                      className={cn(
+                        "w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center text-white shadow-sm",
+                        stat.gradient
+                      )}
+                      animate={(stat as any).pulse ? "pulse" : undefined}
+                      variants={pulseVariants}
+                    >
+                      <stat.icon className="w-4 h-4" />
+                    </motion.div>
+                    <div className="flex flex-col">
+                      <span className="text-lg font-bold text-foreground">{stat.value}</span>
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        {stat.label}
+                      </span>
+                    </div>
+                  </motion.div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{stat.value} {stat.label.toLowerCase()}</p>
+                </TooltipContent>
+              </Tooltip>
+            ))}
           </motion.div>
 
           {/* Tabs */}

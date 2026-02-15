@@ -458,7 +458,7 @@ export default function SecurityPage() {
   return (
     <TooltipProvider>
     <div className="min-h-screen min-h-dvh bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
-      <Header title="Security & Governance" />
+      <Header title="Security & Governance" subtitle="Manage credentials, connectors, environments, and webhooks" />
 
       <motion.div 
         className="p-content"
@@ -466,107 +466,53 @@ export default function SecurityPage() {
         initial="hidden"
         animate="visible"
       >
-        {/* Filter Context Indicator */}
-        <FilterContextIndicator />
-        
-        {/* Enhanced Page Header with Stats */}
-        <motion.div variants={itemVariants} className="mb-lg-fluid">
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-            <div>
-              <motion.h1 
-                className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 24 }}
-              >
-                Security & Governance
-              </motion.h1>
-              <motion.p 
-                className="text-muted-foreground mt-1"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-              >
-                Manage credentials, connectors, environments, and webhooks
-              </motion.p>
-            </div>
-            
-            {/* Quick Stats Bar */}
-            <motion.div 
-              className="responsive-flex"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-            >
-              {[
-                { 
-                  label: "Active Credentials", 
-                  value: stats.activeCredentials, 
-                  icon: Key, 
-                  color: "from-emerald-500 to-emerald-600",
-                  bgColor: "bg-emerald-50"
-                },
-                { 
-                  label: "Expiring Soon", 
-                  value: stats.expiringCredentials, 
-                  icon: AlertTriangle, 
-                  color: stats.expiringCredentials > 0 ? "from-amber-500 to-amber-600" : "from-slate-400 to-slate-500",
-                  bgColor: stats.expiringCredentials > 0 ? "bg-amber-50" : "bg-slate-50",
-                  pulse: stats.expiringCredentials > 0
-                },
-                { 
-                  label: "Connected", 
-                  value: stats.connectedServices, 
-                  icon: Link2, 
-                  color: "from-blue-500 to-blue-600",
-                  bgColor: "bg-blue-50"
-                },
-                { 
-                  label: "Healthy Envs", 
-                  value: stats.healthyEnvironments, 
-                  icon: Globe, 
-                  color: "from-violet-500 to-violet-600",
-                  bgColor: "bg-violet-50"
-                },
-              ].map((stat, i) => (
-                <Tooltip key={stat.label}>
-                  <TooltipTrigger asChild>
-                    <motion.div
-                      custom={i}
-                      variants={statsCardVariants}
-                      initial="hidden"
-                      animate="visible"
-                      whileHover={{ scale: 1.05, y: -2 }}
-                      whileTap={{ scale: 0.98 }}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/50 backdrop-blur-sm cursor-default",
-                        stat.bgColor,
-                        "shadow-sm hover:shadow-md transition-shadow duration-300"
-                      )}
-                    >
-                      <motion.div 
-                        className={cn(
-                          "w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center text-white shadow-sm",
-                          stat.color
-                        )}
-                        animate={stat.pulse ? { scale: [1, 1.05, 1] } : undefined}
-                        transition={stat.pulse ? { duration: 2, repeat: Infinity } : undefined}
-                      >
-                        <stat.icon className="w-4 h-4" />
-                      </motion.div>
-                      <div className="flex flex-col">
-                        <span className="text-lg font-bold text-slate-800">{stat.value}</span>
-                        <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">{stat.label}</span>
-                      </div>
-                    </motion.div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{stat.value} {stat.label.toLowerCase()}</p>
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-            </motion.div>
-          </div>
+        {/* Quick Stats Bar */}
+        <motion.div
+          variants={itemVariants}
+          className="flex flex-wrap items-center gap-3 mb-lg-fluid"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          {[
+            { label: "Active Credentials", value: stats.activeCredentials, icon: Key, color: "from-emerald-500 to-emerald-600", bgColor: "bg-emerald-50" },
+            { label: "Expiring Soon", value: stats.expiringCredentials, icon: AlertTriangle, color: stats.expiringCredentials > 0 ? "from-amber-500 to-amber-600" : "from-slate-400 to-slate-500", bgColor: stats.expiringCredentials > 0 ? "bg-amber-50" : "bg-slate-50", pulse: stats.expiringCredentials > 0 },
+            { label: "Connected", value: stats.connectedServices, icon: Link2, color: "from-blue-500 to-blue-600", bgColor: "bg-blue-50" },
+            { label: "Healthy Envs", value: stats.healthyEnvironments, icon: Globe, color: "from-violet-500 to-violet-600", bgColor: "bg-violet-50" },
+          ].map((stat, i) => (
+            <Tooltip key={stat.label}>
+              <TooltipTrigger asChild>
+                <motion.div
+                  custom={i}
+                  variants={statsCardVariants}
+                  initial="hidden"
+                  animate="visible"
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/50 backdrop-blur-sm cursor-default",
+                    stat.bgColor,
+                    "shadow-sm hover:shadow-md transition-shadow duration-300"
+                  )}
+                >
+                  <motion.div 
+                    className={cn("w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center text-white shadow-sm", stat.color)}
+                    animate={stat.pulse ? { scale: [1, 1.05, 1] } : undefined}
+                    transition={stat.pulse ? { duration: 2, repeat: Infinity } : undefined}
+                  >
+                    <stat.icon className="w-4 h-4" />
+                  </motion.div>
+                  <div className="flex flex-col">
+                    <span className="text-lg font-bold text-foreground">{stat.value}</span>
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{stat.label}</span>
+                  </div>
+                </motion.div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{stat.value} {stat.label.toLowerCase()}</p>
+              </TooltipContent>
+            </Tooltip>
+          ))}
         </motion.div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>

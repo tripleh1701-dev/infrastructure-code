@@ -22,6 +22,7 @@ import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
+import ProvisioningHistoryPage from "./pages/ProvisioningHistoryPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -56,6 +57,7 @@ const App = () => (
                             <Route path="/access-control" element={<AccessControlPage />} />
                             <Route path="/account-settings" element={<AccountSettingsPage />} />
                             <Route path="/security" element={<SecurityPage />} />
+                            <Route path="/provisioning" element={<ProvisioningHistoryPage />} />
                             <Route path="/inbox" element={<OverviewPage />} />
                             <Route path="/monitoring" element={<DashboardPage />} />
                             <Route path="*" element={<NotFound />} />

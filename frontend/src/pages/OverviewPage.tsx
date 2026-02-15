@@ -58,8 +58,9 @@ export default function OverviewPage() {
     <div className="min-h-screen min-h-dvh bg-background">
       <Header 
         title="Overview" 
+        subtitle="Monitor your CI/CD pipelines and deployments"
         actions={
-          <Button variant="outline" size="sm" className="gap-2 bg-white border-border text-foreground hover:bg-muted">
+          <Button variant="outline" size="sm" className="gap-2 bg-card border-border text-foreground hover:bg-muted">
             <RefreshCw className="w-4 h-4" />
             Refresh
           </Button>
@@ -67,14 +68,6 @@ export default function OverviewPage() {
       />
       
       <div className="p-content">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Overview</h1>
-            <p className="text-muted-foreground">Monitor your CI/CD pipelines and deployments</p>
-          </div>
-          <FilterContextIndicator />
-        </div>
 
         {/* Metrics Grid - Responsive */}
         <div className="responsive-grid mb-6">

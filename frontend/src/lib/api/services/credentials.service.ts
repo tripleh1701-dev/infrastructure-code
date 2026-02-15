@@ -114,7 +114,24 @@ export const credentialsService = {
 
   async create(input: CreateCredentialInput): Promise<Credential> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.post<Credential>("/api/credentials", input);
+      const payload = {
+        name: input.name,
+        description: input.description || undefined,
+        accountId: input.account_id,
+        enterpriseId: input.enterprise_id,
+        workstreamIds: input.workstream_ids,
+        productId: input.product_id || undefined,
+        serviceId: input.service_id || undefined,
+        category: input.category,
+        connector: input.connector,
+        authType: input.auth_type,
+        credentials: input.credentials || undefined,
+        createdBy: input.created_by || undefined,
+        expiresAt: input.expires_at || undefined,
+        expiryNoticeDays: input.expiry_notice_days,
+        expiryNotify: input.expiry_notify,
+      };
+      const { data, error } = await httpClient.post<Credential>("/api/credentials", payload);
       if (error) throw new Error(error.message);
       return data!;
     }
@@ -159,7 +176,18 @@ export const credentialsService = {
 
   async update(id: string, updates: UpdateCredentialInput): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.patch(`/api/credentials/${id}`, updates);
+      const payload: Record<string, unknown> = {};
+      if (updates.name !== undefined) payload.name = updates.name;
+      if (updates.description !== undefined) payload.description = updates.description;
+      if (updates.product_id !== undefined) payload.productId = updates.product_id;
+      if (updates.service_id !== undefined) payload.serviceId = updates.service_id;
+      if (updates.status !== undefined) payload.status = updates.status;
+      if (updates.credentials !== undefined) payload.credentials = updates.credentials;
+      if (updates.expires_at !== undefined) payload.expiresAt = updates.expires_at;
+      if (updates.expiry_notice_days !== undefined) payload.expiryNoticeDays = updates.expiry_notice_days;
+      if (updates.expiry_notify !== undefined) payload.expiryNotify = updates.expiry_notify;
+      if (updates.workstream_ids !== undefined) payload.workstreamIds = updates.workstream_ids;
+      const { error } = await httpClient.patch(`/api/credentials/${id}`, payload);
       if (error) throw new Error(error.message);
       return;
     }
