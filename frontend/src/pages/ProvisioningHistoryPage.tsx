@@ -44,6 +44,7 @@ import { provisioningService } from "@/lib/api";
 import { isExternalApi } from "@/lib/api/config";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "@/hooks/use-toast";
+import { PermissionGate } from "@/components/auth/PermissionGate";
 
 // Extend with simulated history for demo
 interface HistoryJob extends ProvisioningEvent {
@@ -302,6 +303,7 @@ export default function ProvisioningHistoryPage() {
   }, [filteredJobs, statusFilter, cloudFilter, searchQuery]);
 
   return (
+    <PermissionGate menuKey="provisioning">
     <div className="min-h-screen bg-background">
       <Header title="Provisioning History" subtitle="Track infrastructure provisioning jobs and resource-level timelines" />
 
@@ -396,6 +398,7 @@ export default function ProvisioningHistoryPage() {
         </div>
       </main>
     </div>
+    </PermissionGate>
   );
 }
 

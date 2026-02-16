@@ -66,18 +66,27 @@ resource "aws_iam_role_policy" "assume_data_plane" {
   })
 }
 
-# SSM read access for platform config
-resource "aws_iam_role_policy" "ssm_read" {
-  name = "${var.function_name}-ssm-read"
+# SSM read/write access for platform config and account registration
+resource "aws_iam_role_policy" "ssm_access" {
+  name = "${var.function_name}-ssm-access"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-      Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/*"
-    }]
+    Statement = [
+      {
+        Sid      = "SSMPlatformConfig"
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/*"
+      },
+      {
+        Sid      = "SSMAccountRegistration"
+        Effect   = "Allow"
+        Action   = ["ssm:PutParameter", "ssm:GetParameter", "ssm:DeleteParameter"]
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/accounts/*"
+      }
+    ]
   })
 }
 

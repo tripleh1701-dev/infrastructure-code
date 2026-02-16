@@ -40,6 +40,7 @@ export interface Role {
 export function useRoles(accountId?: string | null, enterpriseId?: string | null) {
   return useQuery({
     queryKey: ["roles", accountId, enterpriseId],
+    enabled: !!accountId,
     queryFn: async () => {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<Role[]>('/api/roles', {

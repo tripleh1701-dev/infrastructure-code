@@ -110,7 +110,26 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
   const createCredential = useMutation({
     mutationFn: async (data: CreateCredentialData) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.post<Credential>('/api/credentials', data);
+        const payload: Record<string, any> = {
+          name: data.name,
+          description: data.description || undefined,
+          accountId: data.account_id,
+          enterpriseId: data.enterprise_id,
+          workstreamIds: data.workstream_ids,
+          productId: data.product_id || undefined,
+          serviceId: data.service_id || undefined,
+          category: data.category,
+          connector: data.connector,
+          authType: data.auth_type,
+          credentials: data.credentials || undefined,
+          createdBy: data.created_by || undefined,
+          expiresAt: data.expires_at || undefined,
+          expiryNoticeDays: data.expiry_notice_days,
+          expiryNotify: data.expiry_notify,
+        };
+        // Remove undefined keys to avoid backend validation errors
+        Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+        const { data: result, error } = await httpClient.post<Credential>('/api/credentials', payload);
         if (error) throw new Error(error.message);
         return result;
       }

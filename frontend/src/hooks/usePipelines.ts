@@ -9,6 +9,26 @@ import { Json } from "@/integrations/supabase/types";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
 
+function mapExternalPipeline(p: any): Pipeline {
+  return {
+    id: p.id,
+    account_id: p.accountId ?? p.account_id ?? '',
+    enterprise_id: p.enterpriseId ?? p.enterprise_id ?? '',
+    name: p.name ?? '',
+    description: p.description ?? null,
+    status: p.status ?? 'draft',
+    deployment_type: p.deploymentType ?? p.deployment_type ?? 'Integration',
+    nodes: p.nodes ?? [],
+    edges: p.edges ?? [],
+    yaml_content: p.yamlContent ?? p.yaml_content ?? null,
+    product_id: p.productId ?? p.product_id ?? null,
+    service_ids: p.serviceIds ?? p.service_ids ?? null,
+    created_by: p.createdBy ?? p.created_by ?? null,
+    created_at: p.createdAt ?? p.created_at ?? '',
+    updated_at: p.updatedAt ?? p.updated_at ?? '',
+  };
+}
+
 export interface Pipeline {
   id: string;
   account_id: string;
@@ -64,11 +84,11 @@ export function usePipelines() {
       if (!selectedAccountId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<Pipeline[]>('/api/pipelines', {
+        const { data, error } = await httpClient.get<any[]>('/api/pipelines', {
           params: { accountId: selectedAccountId, enterpriseId: selectedEnterpriseId },
         });
         if (error) throw new Error(error.message);
-        return data || [];
+        return (data || []).map(mapExternalPipeline);
       }
 
       let query = supabase
@@ -96,9 +116,9 @@ export function usePipelines() {
   // Fetch a single pipeline by ID
   const fetchPipeline = useCallback(async (id: string): Promise<Pipeline | null> => {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<Pipeline>(`/api/pipelines/${id}`);
+      const { data, error } = await httpClient.get<any>(`/api/pipelines/${id}`);
       if (error) return null;
-      return data;
+      return data ? mapExternalPipeline(data) : null;
     }
 
     const { data, error } = await supabase
@@ -137,7 +157,7 @@ export function usePipelines() {
           enterpriseId: selectedEnterpriseId,
         });
         if (error) throw new Error(error.message);
-        return data as Pipeline;
+        return mapExternalPipeline(data);
       }
 
       const { data, error } = await supabase
@@ -188,7 +208,7 @@ export function usePipelines() {
         }
         const { data, error } = await httpClient.put<Pipeline>(`/api/pipelines/${id}`, camelCaseUpdates);
         if (error) throw new Error(error.message);
-        return data as Pipeline;
+        return mapExternalPipeline(data);
       }
 
       const { id, ...updates } = input;

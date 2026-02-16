@@ -70,6 +70,7 @@ import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { formatDistanceToNow, differenceInDays, isPast, format } from "date-fns";
+import { PermissionGate } from "@/components/auth/PermissionGate";
 
 // Animation variants
 const pageVariants = {
@@ -456,6 +457,7 @@ export default function SecurityPage() {
   };
 
   return (
+    <PermissionGate menuKey="security">
     <TooltipProvider>
     <div className="min-h-screen min-h-dvh bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
       <Header title="Security & Governance" subtitle="Manage credentials, connectors, environments, and webhooks" />
@@ -1834,5 +1836,6 @@ export default function SecurityPage() {
       />
     </div>
     </TooltipProvider>
+    </PermissionGate>
   );
 }

@@ -30,6 +30,7 @@ import { ExpiringLicenses } from "@/components/dashboard/ExpiringLicenses";
 import { ExpiringCredentials } from "@/components/dashboard/ExpiringCredentials";
 import { NotificationHistory } from "@/components/dashboard/NotificationHistory";
 import { FilterContextIndicator } from "@/components/layout/FilterContextIndicator";
+import { PermissionGate } from "@/components/auth/PermissionGate";
 
 const buildTrendData = [
   { name: "Mon", value: 4 },
@@ -79,6 +80,7 @@ const metrics = [
 
 export default function DashboardPage() {
   return (
+    <PermissionGate menuKey="dashboard">
     <div className="min-h-screen bg-[#f8fafc]">
       <Header 
         title="Dashboard" 
@@ -376,5 +378,6 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+    </PermissionGate>
   );
 }

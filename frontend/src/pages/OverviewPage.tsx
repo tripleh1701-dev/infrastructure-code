@@ -20,6 +20,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { FilterContextIndicator } from "@/components/layout/FilterContextIndicator";
+import { PermissionGate } from "@/components/auth/PermissionGate";
 
 const sparklineData = [
   { value: 20 }, { value: 25 }, { value: 22 }, { value: 30 }, { value: 28 },
@@ -55,6 +56,7 @@ const metrics = [
 
 export default function OverviewPage() {
   return (
+    <PermissionGate menuKey="overview">
     <div className="min-h-screen min-h-dvh bg-background">
       <Header 
         title="Overview" 
@@ -258,5 +260,6 @@ export default function OverviewPage() {
         </div>
       </div>
     </div>
+    </PermissionGate>
   );
 }

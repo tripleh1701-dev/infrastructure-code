@@ -34,7 +34,7 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
   const { createBuildJob } = useBuilds();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
-  const { workstreams } = useWorkstreams(selectedAccount?.id, selectedEnterprise?.id);
+  const { workstreams, isLoading: workstreamsLoading } = useWorkstreams(selectedAccount?.id, selectedEnterprise?.id);
   const { pipelines } = usePipelines();
 
   const [form, setForm] = useState({
@@ -114,19 +114,15 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
               Workstream
             </Label>
             <Select value={form.entity} onValueChange={(v) => setForm({ ...form, entity: v })}>
-              <SelectTrigger>
-                <SelectValue placeholder={workstreams.length === 0 ? "No workstreams available" : "Select workstream"} />
+              <SelectTrigger disabled={workstreamsLoading || workstreams.length === 0}>
+                <SelectValue placeholder={workstreamsLoading ? "Loading workstreams..." : workstreams.length === 0 ? "No workstreams available" : "Select workstream"} />
               </SelectTrigger>
               <SelectContent className="bg-popover z-[100]">
-                {workstreams.length === 0 ? (
-                  <SelectItem value="__none" disabled>No workstreams found — create one first</SelectItem>
-                ) : (
-                  workstreams.map((ws) => (
-                    <SelectItem key={ws.id} value={ws.name}>
-                      {ws.name}
-                    </SelectItem>
-                  ))
-                )}
+                {workstreams.map((ws) => (
+                  <SelectItem key={ws.id} value={ws.name}>
+                    {ws.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -137,19 +133,15 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
               Pipeline
             </Label>
             <Select value={form.pipeline} onValueChange={(v) => setForm({ ...form, pipeline: v })}>
-              <SelectTrigger>
+              <SelectTrigger disabled={pipelines.length === 0}>
                 <SelectValue placeholder={pipelines.length === 0 ? "No pipelines available" : "Select pipeline"} />
               </SelectTrigger>
               <SelectContent className="bg-popover z-[100]">
-                {pipelines.length === 0 ? (
-                  <SelectItem value="__none" disabled>No pipelines found — create one first</SelectItem>
-                ) : (
-                  pipelines.map((p) => (
-                    <SelectItem key={p.id} value={p.name}>
-                      {p.name}
-                    </SelectItem>
-                  ))
-                )}
+                {pipelines.map((p) => (
+                  <SelectItem key={p.id} value={p.name}>
+                    {p.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

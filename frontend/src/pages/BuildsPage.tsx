@@ -23,6 +23,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PermissionGate } from "@/components/auth/PermissionGate";
 import { useViewPreference } from "@/hooks/useViewPreference";
 import { useBuilds, BuildJob } from "@/hooks/useBuilds";
 import { ViewToggle } from "@/components/ui/view-toggle";
@@ -338,6 +339,7 @@ export default function BuildsPage() {
   }
 
   return (
+    <PermissionGate menuKey="builds">
     <TooltipProvider>
       <div className="min-h-screen min-h-dvh bg-gradient-to-br from-background via-secondary/30 to-background">
         <Header
@@ -585,5 +587,6 @@ export default function BuildsPage() {
         />
       </div>
     </TooltipProvider>
+    </PermissionGate>
   );
 }

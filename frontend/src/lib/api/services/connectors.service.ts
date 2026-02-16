@@ -74,14 +74,39 @@ const CATEGORY_TYPE_MAP: Record<string, string> = {
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
+// Map camelCase API response to snake_case frontend interface
+function mapExternalConnector(c: any): Connector {
+  return {
+    id: c.id,
+    name: c.name,
+    description: c.description ?? null,
+    connector_type: c.connectorType ?? c.connector_type ?? '',
+    connector_tool: c.connectorTool ?? c.connector_tool ?? '',
+    category: c.category ?? '',
+    url: c.url ?? null,
+    status: c.status ?? 'connected',
+    health: c.health ?? 'healthy',
+    last_sync_at: c.lastSyncAt ?? c.last_sync_at ?? null,
+    sync_count: c.syncCount ?? c.sync_count ?? 0,
+    account_id: c.accountId ?? c.account_id ?? '',
+    enterprise_id: c.enterpriseId ?? c.enterprise_id ?? '',
+    product_id: c.productId ?? c.product_id ?? null,
+    service_id: c.serviceId ?? c.service_id ?? null,
+    credential_id: c.credentialId ?? c.credential_id ?? null,
+    created_at: c.createdAt ?? c.created_at ?? '',
+    updated_at: c.updatedAt ?? c.updated_at ?? '',
+    workstreams: (c.workstreams || []).map((w: any) => ({ id: w.id, name: w.name })),
+  };
+}
+
 export const connectorsService = {
   async getAll(accountId: string, enterpriseId: string): Promise<Connector[]> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<Connector[]>("/api/connectors", {
+      const { data, error } = await httpClient.get<any[]>("/api/connectors", {
         params: { accountId, enterpriseId },
       });
       if (error) throw new Error(error.message);
-      return data || [];
+      return (data || []).map(mapExternalConnector);
     }
 
     let query = supabase
@@ -120,9 +145,9 @@ export const connectorsService = {
         credentialId: input.credential_id,
         workstreamIds: input.workstream_ids,
       };
-      const { data, error } = await httpClient.post<Connector>("/api/connectors", payload);
+      const { data, error } = await httpClient.post<any>("/api/connectors", payload);
       if (error) throw new Error(error.message);
-      return data!;
+      return mapExternalConnector(data);
     }
 
     const insertData = {

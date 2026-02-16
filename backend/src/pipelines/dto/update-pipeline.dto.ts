@@ -4,7 +4,7 @@ import { PipelineStatus, PipelineNodeDto, PipelineEdgeDto } from './create-pipel
 
 /**
  * DTO for updating an existing pipeline
- *
+ * 
  * All fields are optional — only provided fields are updated.
  * Account/Enterprise context cannot be changed after creation.
  */

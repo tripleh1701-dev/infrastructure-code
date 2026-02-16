@@ -44,6 +44,7 @@ export interface AccessControlUser {
 export function useAccessControlUsers(accountId?: string | null, enterpriseId?: string | null) {
   return useQuery({
     queryKey: ["access-control-users", accountId, enterpriseId],
+    enabled: !!accountId,
     queryFn: async () => {
       // External API mode: NestJS handles relational joins, workstream defaults, and filtering server-side
       if (isExternalApi()) {

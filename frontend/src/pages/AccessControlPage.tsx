@@ -415,6 +415,7 @@ export default function AccessControlPage() {
   };
 
   return (
+    <PermissionGate menuKey="access-control">
     <TooltipProvider>
     <div className="min-h-screen min-h-dvh bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
       <Header title="Access Control" subtitle="Manage users, roles, and permissions" />
@@ -1561,5 +1562,6 @@ export default function AccessControlPage() {
       {deletingRole && <DeleteRoleDialog open={!!deletingRole} onOpenChange={(open) => !open && setDeletingRole(null)} role={deletingRole} />}
     </div>
     </TooltipProvider>
+    </PermissionGate>
   );
 }

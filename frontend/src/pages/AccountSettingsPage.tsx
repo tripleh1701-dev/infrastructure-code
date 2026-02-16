@@ -72,6 +72,7 @@ import { FilterContextIndicator } from "@/components/layout/FilterContextIndicat
 import { WorkstreamSummary } from "@/components/workstream/WorkstreamSummary";
 import { useAccountGlobalAccess } from "@/hooks/useAccountGlobalAccess";
 import { ProvisioningStatusBanner } from "@/components/account/ProvisioningStatusBanner";
+import { PermissionGate } from "@/components/auth/PermissionGate";
 
 interface EnterpriseWithDetails {
   id: string;
@@ -257,6 +258,7 @@ export default function AccountSettingsPage() {
   }, [filteredAccounts]);
 
   return (
+    <PermissionGate menuKey="account-settings">
     <TooltipProvider>
     <div className="min-h-screen min-h-dvh bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
       <Header title="Account Settings" subtitle="Manage enterprises, accounts, and global configuration" />
@@ -930,5 +932,6 @@ export default function AccountSettingsPage() {
       </motion.div>
     </div>
     </TooltipProvider>
+    </PermissionGate>
   );
 }

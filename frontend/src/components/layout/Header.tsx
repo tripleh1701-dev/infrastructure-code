@@ -41,11 +41,11 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         let uniqueIds: string[] = [];
 
         if (isExternalApi()) {
-          const { data, error } = await httpClient.get<{ enterprise_id: string }[]>('/api/licenses', {
+          const { data, error } = await httpClient.get<any[]>('/api/licenses', {
             params: { accountId: selectedAccount.id, fields: 'enterprise_id' },
           });
           if (error) throw new Error(error.message);
-          uniqueIds = [...new Set((data || []).map(l => l.enterprise_id))];
+          uniqueIds = [...new Set((data || []).map((l: any) => l.enterpriseId ?? l.enterprise_id))].filter(Boolean) as string[];
         } else {
           const { data, error } = await supabase
             .from("account_licenses")

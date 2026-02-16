@@ -1086,6 +1086,26 @@ ${edges.map((e) => `  - source: ${e.source}
     toast.success("Pipeline exported as YAML");
   }, [generateYamlContent, pipelineName]);
 
+  // Show loading state when account/enterprise context isn't ready
+  if (!selectedAccountId || !selectedEnterpriseId) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-12 h-12 rounded-full border-[3px] border-muted animate-spin" style={{ borderTopColor: '#0171EC' }} />
+          <div>
+            <p className="text-sm font-semibold text-foreground">Loading context...</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Waiting for Account and Enterprise selection. Please ensure they are selected in the header.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/pipelines")}>
+            Back to Pipelines
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <motion.div 
       className={cn(
