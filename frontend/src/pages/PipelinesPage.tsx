@@ -54,7 +54,7 @@ import {
   MoreHorizontal,
   CheckCircle,
   Clock,
-  
+  Link2,
   Sparkles,
   LayoutTemplate,
   Play,
@@ -77,7 +77,12 @@ import {
   Tablet,
   Code2,
   ExternalLink,
+  Trash2,
+  X,
+  Archive,
+  XCircle,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { ViewToggle } from "@/components/ui/view-toggle";
 import { useViewPreference } from "@/hooks/useViewPreference";
@@ -209,14 +214,58 @@ export default function PipelinesPage() {
   const navigate = useNavigate();
   const { enterprises } = useEnterpriseContext();
   const { canCreate, canEdit, canDelete, hasAccess } = usePermissionCheck("pipelines");
-  const { pipelines: dbPipelines, isLoading: pipelinesLoading, deletePipeline, isDeleting } = usePipelines();
+  const { pipelines: dbPipelines, isLoading: pipelinesLoading, deletePipeline, updatePipeline, isDeleting } = usePipelines();
   const { isPipelineLinked, getLinkedBuildJobs } = usePipelineBuildLinks();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pipelineToDelete, setPipelineToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [selectedPipelineIds, setSelectedPipelineIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  const togglePipelineSelection = (id: string) => {
+    setSelectedPipelineIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedPipelineIds.size === filteredPipelines.length) {
+      setSelectedPipelineIds(new Set());
+    } else {
+      setSelectedPipelineIds(new Set(filteredPipelines.map(p => p.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setIsBulkDeleting(true);
+    const ids = Array.from(selectedPipelineIds);
+    const linkedIds = ids.filter(id => {
+      const p = displayPipelines.find(p => p.id === id);
+      return p && isPipelineLinked(p.name);
+    });
+    if (linkedIds.length > 0) {
+      toast.warning(`${linkedIds.length} pipeline(s) are linked to build jobs and were skipped.`);
+    }
+    const deletableIds = ids.filter(id => !linkedIds.includes(id));
+    let deleted = 0;
+    for (const id of deletableIds) {
+      try {
+        await deletePipeline(id);
+        deleted++;
+      } catch {
+        // individual error handled by hook
+      }
+    }
+    if (deleted > 0) toast.success(`Deleted ${deleted} pipeline(s)`);
+    setSelectedPipelineIds(new Set());
+    setBulkDeleteDialogOpen(false);
+    setIsBulkDeleting(false);
+  };
 
   const handleDeletePipeline = async () => {
     if (!pipelineToDelete) return;
-    // Block if linked
     if (isPipelineLinked(pipelineToDelete.name)) {
       toast.error("Cannot delete: This pipeline is linked to build jobs. Unlink it from existing builds first.");
       return;
@@ -245,11 +294,19 @@ export default function PipelinesPage() {
 
   const handleTryEditPipeline = (id: string, name: string) => {
     if (isPipelineLinked(name)) {
-      // Allow viewing in read-only mode
       navigate(`/pipelines/canvas?id=${id}&mode=edit`);
       return;
     }
     navigate(`/pipelines/canvas?id=${id}&mode=edit`);
+  };
+
+  const handleStatusChange = async (pipelineId: string, newStatus: string) => {
+    try {
+      await updatePipeline({ id: pipelineId, status: newStatus as "draft" | "active" | "inactive" | "archived" });
+      toast.success(`Pipeline status changed to ${newStatus}`);
+    } catch {
+      toast.error("Failed to update pipeline status");
+    }
   };
 
   // Tab state
@@ -257,6 +314,8 @@ export default function PipelinesPage() {
   
   // My Pipelines state
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterLinkedOnly, setFilterLinkedOnly] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [pipelinesView, setPipelinesView] = useViewPreference("pipelines", "tile");
   const [hoveredPipeline, setHoveredPipeline] = useState<string | null>(null);
 
@@ -297,9 +356,12 @@ export default function PipelinesPage() {
   })), [dbPipelines]);
 
   // Computed values
-  const filteredPipelines = displayPipelines.filter((pipeline) =>
-    pipeline.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPipelines = displayPipelines.filter((pipeline) => {
+    const matchesSearch = pipeline.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesLinked = !filterLinkedOnly || isPipelineLinked(pipeline.name);
+    const matchesStatus = filterStatus === "all" || pipeline.status === filterStatus;
+    return matchesSearch && matchesLinked && matchesStatus;
+  });
 
   const activePipelines = displayPipelines.filter(p => p.status === "active").length;
   const draftPipelines = displayPipelines.filter(p => p.status === "draft").length;
@@ -521,15 +583,76 @@ export default function PipelinesPage() {
                     className="pl-10 h-11 bg-white/80 backdrop-blur-sm border-slate-200 rounded-xl shadow-sm"
                   />
                 </div>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-[150px] h-11 rounded-xl shadow-sm bg-white/80 backdrop-blur-sm border-slate-200">
+                    <Filter className="w-4 h-4 mr-2 text-slate-400" />
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
-                  variant="outline"
+                  variant={filterLinkedOnly ? "default" : "outline"}
                   size="default"
-                  className="gap-2 h-11 bg-white/80 backdrop-blur-sm border-slate-200 rounded-xl shadow-sm"
+                  className={cn(
+                    "gap-2 h-11 rounded-xl shadow-sm",
+                    filterLinkedOnly
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-white/80 backdrop-blur-sm border-slate-200"
+                  )}
+                  onClick={() => setFilterLinkedOnly(!filterLinkedOnly)}
                 >
-                  <Filter className="w-4 h-4" />
-                  Filters
+                  <Link2 className="w-4 h-4" />
+                  Linked to Builds
                 </Button>
               </motion.div>
+
+              {/* Bulk Action Bar */}
+              <AnimatePresence>
+                {selectedPipelineIds.size > 0 && canDelete && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                    exit={{ opacity: 0, y: -10, height: 0 }}
+                    className="mb-4"
+                  >
+                    <div className="flex items-center gap-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl">
+                      <span className="text-sm font-medium text-red-700">
+                        {selectedPipelineIds.size} selected
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1.5 text-xs text-slate-600 hover:text-slate-900"
+                        onClick={toggleSelectAll}
+                      >
+                        {selectedPipelineIds.size === filteredPipelines.length ? "Deselect All" : "Select All"}
+                      </Button>
+                      <div className="flex-1" />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1.5 text-xs text-slate-500"
+                        onClick={() => setSelectedPipelineIds(new Set())}
+                      >
+                        <X className="w-3.5 h-3.5" /> Clear
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="gap-1.5 text-xs bg-red-600 hover:bg-red-700 text-white"
+                        onClick={() => setBulkDeleteDialogOpen(true)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete Selected
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Pipeline Grid/Table */}
               {pipelinesLoading ? (
@@ -565,6 +688,8 @@ export default function PipelinesPage() {
                       const status = statusConfig[pipeline.status] || statusConfig.draft;
                       const StatusIcon = status.icon;
                       const isHovered = hoveredPipeline === pipeline.id;
+                      const linked = isPipelineLinked(pipeline.name);
+                      const linkedJobs = getLinkedBuildJobs(pipeline.name);
 
                       return (
                         <motion.div
@@ -574,9 +699,28 @@ export default function PipelinesPage() {
                           transition={{ duration: 0.4, delay: index * 0.05, type: "spring", stiffness: 100 }}
                           onMouseEnter={() => setHoveredPipeline(pipeline.id)}
                           onMouseLeave={() => setHoveredPipeline(null)}
-                          className="group relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/80 overflow-hidden shadow-lg shadow-slate-200/50 hover:shadow-2xl transition-all duration-300 cursor-pointer"
+                          className={cn(
+                            "group relative bg-white/80 backdrop-blur-xl rounded-2xl border overflow-hidden shadow-lg shadow-slate-200/50 hover:shadow-2xl transition-all duration-300 cursor-pointer",
+                            selectedPipelineIds.has(pipeline.id) ? "border-blue-400 ring-2 ring-blue-200" : "border-white/80"
+                          )}
                           onClick={() => navigate(`/pipelines/canvas?id=${pipeline.id}&mode=edit`)}
                         >
+                          {/* Selection checkbox */}
+                          {canDelete && (
+                            <div
+                              className={cn(
+                                "absolute top-3 left-3 z-10 transition-opacity",
+                                selectedPipelineIds.size > 0 || isHovered ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Checkbox
+                                checked={selectedPipelineIds.has(pipeline.id)}
+                                onCheckedChange={() => togglePipelineSelection(pipeline.id)}
+                                className="h-5 w-5 border-2 border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                              />
+                            </div>
+                          )}
                           <div
                             className="absolute top-0 left-0 right-0 h-1 opacity-80"
                             style={{ background: `linear-gradient(90deg, ${pipeline.color}, ${pipeline.color}80)` }}
@@ -634,16 +778,40 @@ export default function PipelinesPage() {
                                     <Settings2 className="w-4 h-4" /> Settings
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
+                                  {canEdit && (
+                                    <>
+                                      {[
+                                        { value: "active", label: "Set Active", icon: CheckCircle, show: pipeline.status !== "active" },
+                                        { value: "draft", label: "Set Draft", icon: Clock, show: pipeline.status !== "draft" },
+                                        { value: "inactive", label: "Set Inactive", icon: XCircle, show: pipeline.status !== "inactive" },
+                                        { value: "archived", label: "Archive", icon: Archive, show: pipeline.status !== "archived" },
+                                      ].filter(s => s.show).map((s) => (
+                                        <DropdownMenuItem
+                                          key={s.value}
+                                          className="gap-2 text-xs"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleStatusChange(pipeline.id, s.value);
+                                          }}
+                                        >
+                                          <s.icon className="w-4 h-4" /> {s.label}
+                                        </DropdownMenuItem>
+                                      ))}
+                                    </>
+                                  )}
                                   {canDelete && (
-                                    <DropdownMenuItem
-                                      className="gap-2 text-red-600"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleTryDeletePipeline(pipeline.id, pipeline.name);
-                                      }}
-                                    >
-                                       Delete
-                                    </DropdownMenuItem>
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="gap-2 text-red-600"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleTryDeletePipeline(pipeline.id, pipeline.name);
+                                        }}
+                                      >
+                                         Delete
+                                      </DropdownMenuItem>
+                                    </>
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -663,9 +831,24 @@ export default function PipelinesPage() {
                             </div>
 
                             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                              <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", status.className)}>
-                                <StatusIcon className={cn("w-3 h-3", pipeline.status === "running" && "animate-spin")} />
-                                {status.label}
+                              <div className="flex items-center gap-2">
+                                <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", status.className)}>
+                                  <StatusIcon className={cn("w-3 h-3", pipeline.status === "running" && "animate-spin")} />
+                                  {status.label}
+                                </div>
+                                {linked && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">
+                                        <Link2 className="w-3 h-3" />
+                                        {linkedJobs.length} Build{linkedJobs.length > 1 ? "s" : ""}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                      <p className="text-xs">Linked to: {linkedJobs.join(", ")}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
                               </div>
                               <span className="text-xs text-slate-400">{pipeline.lastRun}</span>
                             </div>
@@ -685,6 +868,15 @@ export default function PipelinesPage() {
                     <table className="w-full">
                       <thead className="bg-slate-50/80">
                         <tr>
+                          {canDelete && (
+                            <th className="px-3 py-4 w-10">
+                              <Checkbox
+                                checked={selectedPipelineIds.size === filteredPipelines.length && filteredPipelines.length > 0}
+                                onCheckedChange={toggleSelectAll}
+                                className="h-4 w-4"
+                              />
+                            </th>
+                          )}
                           <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase">Pipeline</th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase">Type</th>
                           <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase">Status</th>
@@ -697,12 +889,26 @@ export default function PipelinesPage() {
                         {filteredPipelines.map((pipeline) => {
                           const status = statusConfig[pipeline.status] || statusConfig.draft;
                           const StatusIcon = status.icon;
+                          const linked = isPipelineLinked(pipeline.name);
+                          const linkedJobs = getLinkedBuildJobs(pipeline.name);
                           return (
                             <tr
                               key={pipeline.id}
-                              className="hover:bg-slate-50/50 cursor-pointer transition-colors"
+                              className={cn(
+                                "hover:bg-slate-50/50 cursor-pointer transition-colors",
+                                selectedPipelineIds.has(pipeline.id) && "bg-blue-50/50"
+                              )}
                               onClick={() => handleTryEditPipeline(pipeline.id, pipeline.name)}
                             >
+                              {canDelete && (
+                                <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox
+                                    checked={selectedPipelineIds.has(pipeline.id)}
+                                    onCheckedChange={() => togglePipelineSelection(pipeline.id)}
+                                    className="h-4 w-4"
+                                  />
+                                </td>
+                              )}
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-3">
                                   <div
@@ -712,7 +918,22 @@ export default function PipelinesPage() {
                                     <GitBranch className="w-5 h-5" style={{ color: pipeline.color }} />
                                   </div>
                                   <div>
-                                    <p className="font-medium text-slate-900">{pipeline.name}</p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-slate-900">{pipeline.name}</p>
+                                      {linked && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">
+                                              <Link2 className="w-3 h-3" />
+                                              {linkedJobs.length}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="bottom">
+                                            <p className="text-xs">Linked to: {linkedJobs.join(", ")}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                    </div>
                                     <p className="text-xs text-slate-500">{pipeline.description}</p>
                                   </div>
                                 </div>
@@ -739,6 +960,28 @@ export default function PipelinesPage() {
                                     <DropdownMenuItem className="gap-2"><Play className="w-4 h-4" /> Run</DropdownMenuItem>
                                     <DropdownMenuItem className="gap-2"><Eye className="w-4 h-4" /> History</DropdownMenuItem>
                                     <DropdownMenuItem className="gap-2"><Settings2 className="w-4 h-4" /> Settings</DropdownMenuItem>
+                                    {canEdit && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        {[
+                                          { value: "active", label: "Set Active", icon: CheckCircle, show: pipeline.status !== "active" },
+                                          { value: "draft", label: "Set Draft", icon: Clock, show: pipeline.status !== "draft" },
+                                          { value: "inactive", label: "Set Inactive", icon: XCircle, show: pipeline.status !== "inactive" },
+                                          { value: "archived", label: "Archive", icon: Archive, show: pipeline.status !== "archived" },
+                                        ].filter(s => s.show).map((s) => (
+                                          <DropdownMenuItem
+                                            key={s.value}
+                                            className="gap-2 text-xs"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStatusChange(pipeline.id, s.value);
+                                            }}
+                                          >
+                                            <s.icon className="w-4 h-4" /> {s.label}
+                                          </DropdownMenuItem>
+                                        ))}
+                                      </>
+                                    )}
                                     {canDelete && (
                                       <>
                                         <DropdownMenuSeparator />
@@ -1188,6 +1431,29 @@ export default function PipelinesPage() {
               >
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Bulk Delete Confirmation */}
+        <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {selectedPipelineIds.size} Pipeline{selectedPipelineIds.size > 1 ? "s" : ""}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the selected pipeline{selectedPipelineIds.size > 1 ? "s" : ""}. Pipelines linked to build jobs will be skipped. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkDelete}
+                className="bg-red-600 hover:bg-red-700 text-white"
+                disabled={isBulkDeleting}
+              >
+                {isBulkDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                Delete {selectedPipelineIds.size} Pipeline{selectedPipelineIds.size > 1 ? "s" : ""}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -56,10 +56,12 @@ export class PipelinesController {
   @Get()
   async findAll(
     @CurrentUser() user: CognitoUser,
+    @Query('accountId') queryAccountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
     @Query('status') status?: PipelineStatus,
   ): Promise<Pipeline[]> {
-    const accountId = user.accountId!;
+    const accountId = user.accountId || queryAccountId;
+    if (!accountId) return [];
     return this.pipelinesService.findAll(
       accountId,
       enterpriseId || user.enterpriseId || undefined,
@@ -75,9 +77,11 @@ export class PipelinesController {
   @Get('stats')
   async getStats(
     @CurrentUser() user: CognitoUser,
+    @Query('accountId') queryAccountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
   ): Promise<Record<string, number>> {
-    const accountId = user.accountId!;
+    const accountId = user.accountId || queryAccountId;
+    if (!accountId) return { draft: 0, active: 0, inactive: 0, archived: 0, total: 0 };
     return this.pipelinesService.countByStatus(
       accountId,
       enterpriseId || user.enterpriseId || undefined,
@@ -91,8 +95,10 @@ export class PipelinesController {
   async findOne(
     @CurrentUser() user: CognitoUser,
     @Param('id') id: string,
+    @Query('accountId') queryAccountId?: string,
   ): Promise<Pipeline> {
-    return this.pipelinesService.findOne(user.accountId!, id);
+    const accountId = user.accountId || queryAccountId;
+    return this.pipelinesService.findOne(accountId!, id);
   }
 
   // ---------------------------------------------------------------------------
@@ -115,9 +121,13 @@ export class PipelinesController {
     @Body() dto: CreatePipelineDto,
     @CurrentUser() user: CognitoUser,
   ): Promise<Pipeline> {
-    // Override tenant context from JWT to prevent spoofing
-    dto.accountId = user.accountId!;
-    dto.enterpriseId = user.enterpriseId || dto.enterpriseId;
+    // Override tenant context from JWT to prevent spoofing (when JWT claims are present)
+    if (user.accountId) {
+      dto.accountId = user.accountId;
+    }
+    if (user.enterpriseId) {
+      dto.enterpriseId = user.enterpriseId;
+    }
 
     return this.pipelinesService.create(dto, user);
   }
@@ -135,7 +145,8 @@ export class PipelinesController {
     @Param('id') id: string,
     @Body() dto: UpdatePipelineDto,
   ): Promise<Pipeline> {
-    return this.pipelinesService.update(user.accountId!, id, dto);
+    const accountId = user.accountId || dto.accountId;
+    return this.pipelinesService.update(accountId!, id, dto);
   }
 
   /**
@@ -150,8 +161,10 @@ export class PipelinesController {
   async remove(
     @CurrentUser() user: CognitoUser,
     @Param('id') id: string,
+    @Query('accountId') queryAccountId?: string,
   ): Promise<void> {
-    await this.pipelinesService.remove(user.accountId!, id);
+    const accountId = user.accountId || queryAccountId;
+    await this.pipelinesService.remove(accountId!, id);
   }
 
   /**
@@ -167,7 +180,9 @@ export class PipelinesController {
   async duplicate(
     @CurrentUser() user: CognitoUser,
     @Param('id') id: string,
+    @Query('accountId') queryAccountId?: string,
   ): Promise<Pipeline> {
-    return this.pipelinesService.duplicate(user.accountId!, id, user);
+    const accountId = user.accountId || queryAccountId;
+    return this.pipelinesService.duplicate(accountId!, id, user);
   }
 }

@@ -29,7 +29,9 @@ interface FindAllFilters {
 export class WorkstreamsService {
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
-  async findAll(filters: FindAllFilters = {}): Promise<Workstream[]> {
+  async findAll(filters: FindAllFilters = {}): Promise<(Workstream & { tools: WorkstreamTool[] })[]> {
+    let workstreams: Workstream[];
+
     if (filters.accountId) {
       const result = await this.dynamoDb.query({
         KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
@@ -39,28 +41,43 @@ export class WorkstreamsService {
         },
       });
 
-      let workstreams = (result.Items || []).map(this.mapToWorkstream);
+      workstreams = (result.Items || []).map(this.mapToWorkstream);
 
       if (filters.enterpriseId) {
         workstreams = workstreams.filter((w) => w.enterpriseId === filters.enterpriseId);
       }
+    } else {
+      const result = await this.dynamoDb.queryByIndex(
+        'GSI1',
+        'GSI1PK = :pk',
+        { ':pk': 'ENTITY#WORKSTREAM' },
+      );
 
-      return workstreams;
+      workstreams = (result.Items || []).map(this.mapToWorkstream);
+
+      if (filters.enterpriseId) {
+        workstreams = workstreams.filter((w) => w.enterpriseId === filters.enterpriseId);
+      }
     }
 
-    const result = await this.dynamoDb.queryByIndex(
-      'GSI1',
-      'GSI1PK = :pk',
-      { ':pk': 'ENTITY#WORKSTREAM' },
+    // Fetch tools for each workstream
+    const results = await Promise.all(
+      workstreams.map(async (ws) => {
+        const toolsResult = await this.dynamoDb.query({
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `WORKSTREAM#${ws.id}`,
+            ':sk': 'TOOL#',
+          },
+        });
+        return {
+          ...ws,
+          tools: (toolsResult.Items || []).map(this.mapToTool),
+        };
+      }),
     );
 
-    let workstreams = (result.Items || []).map(this.mapToWorkstream);
-
-    if (filters.enterpriseId) {
-      workstreams = workstreams.filter((w) => w.enterpriseId === filters.enterpriseId);
-    }
-
-    return workstreams;
+    return results;
   }
 
   async findOne(id: string): Promise<Workstream & { tools: WorkstreamTool[] }> {
@@ -140,7 +157,7 @@ export class WorkstreamsService {
     return this.mapToWorkstream(workstream);
   }
 
-  async update(id: string, dto: UpdateWorkstreamDto): Promise<Workstream> {
+  async update(id: string, dto: UpdateWorkstreamDto): Promise<Workstream & { tools: WorkstreamTool[] }> {
     const existing = await this.findOne(id);
     if (!existing) {
       throw new NotFoundException(`Workstream with ID ${id} not found`);
@@ -161,7 +178,7 @@ export class WorkstreamsService {
       expressionAttributeValues[':name'] = dto.name;
     }
 
-    const result = await this.dynamoDb.update({
+    await this.dynamoDb.update({
       Key: { PK: `ACCOUNT#${existing.accountId}`, SK: `WORKSTREAM#${id}` },
       UpdateExpression: `SET ${updateExpressions.join(', ')}`,
       ExpressionAttributeNames: expressionAttributeNames,
@@ -169,7 +186,49 @@ export class WorkstreamsService {
       ReturnValues: 'ALL_NEW',
     });
 
-    return this.mapToWorkstream(result.Attributes!);
+    // Handle tools update if provided
+    if (dto.tools !== undefined) {
+      // Delete existing tools
+      const existingTools = await this.dynamoDb.query({
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `WORKSTREAM#${id}`,
+          ':sk': 'TOOL#',
+        },
+      });
+
+      if (existingTools.Items?.length) {
+        const deleteRequests = existingTools.Items.map((item) => ({
+          DeleteRequest: { Key: { PK: item.PK, SK: item.SK } },
+        }));
+        for (let i = 0; i < deleteRequests.length; i += 25) {
+          await this.dynamoDb.batchWrite(deleteRequests.slice(i, i + 25));
+        }
+      }
+
+      // Insert new tools
+      if (dto.tools.length > 0) {
+        const putOperations = dto.tools.map((tool) => {
+          const toolId = uuidv4();
+          return {
+            Put: {
+              Item: {
+                PK: `WORKSTREAM#${id}`,
+                SK: `TOOL#${toolId}`,
+                id: toolId,
+                workstreamId: id,
+                toolName: tool.toolName,
+                category: tool.category,
+                createdAt: now,
+              },
+            },
+          };
+        });
+        await this.dynamoDb.transactWrite(putOperations);
+      }
+    }
+
+    return this.findOne(id);
   }
 
   async remove(id: string): Promise<void> {

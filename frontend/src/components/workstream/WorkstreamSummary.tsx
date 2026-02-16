@@ -66,11 +66,14 @@ export function WorkstreamSummary() {
 
   const handleSaveTools = async (tools: ToolSelection) => {
     if (editingWorkstream) {
-      await updateWorkstream.mutateAsync({
-        id: editingWorkstream.id,
-        tools,
-      });
-      setEditingWorkstream(null);
+      try {
+        await updateWorkstream.mutateAsync({
+          id: editingWorkstream.id,
+          tools,
+        });
+      } finally {
+        setEditingWorkstream(null);
+      }
     }
   };
 

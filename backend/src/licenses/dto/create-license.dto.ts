@@ -6,24 +6,23 @@ import {
   IsDateString,
   IsNumber,
   IsBoolean,
-  IsUUID,
   Min,
 } from 'class-validator';
 
 export class CreateLicenseDto {
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   accountId: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   enterpriseId: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   productId: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   serviceId: string;
 

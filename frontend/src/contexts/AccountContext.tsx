@@ -35,27 +35,42 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const fetchAccountsExternal = async () => {
     setIsLoading(true);
     try {
-      // NestJS returns accounts scoped to the authenticated user's access
-      // Super admins receive all accounts; regular users receive only assigned ones
       const { data, error } = await httpClient.get<Account[]>("/api/accounts");
 
       if (error) throw new Error(error.message);
 
-      const accountList = Array.isArray(data) ? data : [];
+      let accountList = Array.isArray(data) ? data : [];
+
+      // For non-super-admin users, filter accounts to only those the user has access to
+      if (!isSuperAdmin && userAccounts.length > 0) {
+        const accessibleIds = new Set(userAccounts.map(ua => ua.accountId));
+        accountList = accountList.filter(a => accessibleIds.has(a.id));
+      } else if (!isSuperAdmin && userAccounts.length === 0) {
+        // User has no account access at all
+        accountList = [];
+      }
+
       setAccounts(accountList);
 
-      // Set ABC account as default for super admin
       if (!selectedAccount && accountList.length > 0) {
-        const abcAccountById = accountList.find(a => a.id === ABC_ACCOUNT_ID);
-        const abcAccountByName = accountList.find(a => a.name === ABC_ACCOUNT_NAME);
-        const defaultAccount = abcAccountById || abcAccountByName || accountList[0];
-        setSelectedAccount({ id: defaultAccount.id, name: defaultAccount.name });
+        if (isSuperAdmin) {
+          // Super admin defaults to ABC account
+          const abcAccountById = accountList.find(a => a.id === ABC_ACCOUNT_ID);
+          const abcAccountByName = accountList.find(a => a.name === ABC_ACCOUNT_NAME);
+          const defaultAccount = abcAccountById || abcAccountByName || accountList[0];
+          setSelectedAccount({ id: defaultAccount.id, name: defaultAccount.name });
+        } else {
+          // Regular user defaults to their first accessible account
+          setSelectedAccount({ id: accountList[0].id, name: accountList[0].name });
+        }
       } else if (selectedAccount && accountList.length > 0) {
-        // Verify current selection is still accessible
         const stillAccessible = accountList.find(a => a.id === selectedAccount.id);
         if (!stillAccessible) {
           setSelectedAccount({ id: accountList[0].id, name: accountList[0].name });
         }
+      } else if (accountList.length === 0) {
+        setAccounts([]);
+        setSelectedAccount(null);
       }
     } catch (error) {
       console.error("Error fetching accounts from API:", error);

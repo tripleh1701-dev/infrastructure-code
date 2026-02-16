@@ -86,14 +86,47 @@ export function useAccounts() {
     queryFn: async () => {
       // External API mode: NestJS handles all relational joins server-side
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<AccountWithDetails[]>('/api/accounts');
+        const { data, error } = await httpClient.get<any[]>('/api/accounts');
         if (error) throw new Error(error.message);
-        // Ensure addresses/technical_users arrays exist to prevent crashes
-        return (data || []).map(a => ({
-          ...a,
-          addresses: Array.isArray(a.addresses) ? a.addresses : [],
-          technical_users: Array.isArray(a.technical_users) ? a.technical_users : [],
-        }));
+        // Map camelCase API response to snake_case expected by UI
+        return (data || []).map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          master_account_name: a.masterAccountName || a.master_account_name || '',
+          cloud_type: a.cloudType || a.cloud_type || 'public',
+          status: a.status || 'active',
+          created_at: a.createdAt || a.created_at || new Date().toISOString(),
+          updated_at: a.updatedAt || a.updated_at || new Date().toISOString(),
+          addresses: Array.isArray(a.addresses) ? a.addresses.map((addr: any) => ({
+            id: addr.id,
+            account_id: addr.accountId || addr.account_id || a.id,
+            line1: addr.line1,
+            line2: addr.line2 || null,
+            city: addr.city,
+            state: addr.state,
+            country: addr.country,
+            postal_code: addr.postalCode || addr.postal_code || '',
+            created_at: addr.createdAt || addr.created_at || new Date().toISOString(),
+          })) : [],
+          technical_users: Array.isArray(a.technical_users) ? a.technical_users : 
+            (a.technicalUser ? [{
+              id: a.technicalUser.id,
+              account_id: a.id,
+              first_name: a.technicalUser.firstName,
+              middle_name: a.technicalUser.middleName || null,
+              last_name: a.technicalUser.lastName,
+              email: a.technicalUser.email,
+              status: a.technicalUser.status || 'active',
+              start_date: a.technicalUser.startDate,
+              end_date: a.technicalUser.endDate || null,
+              assigned_group: a.technicalUser.assignedGroup,
+              assigned_role: a.technicalUser.assignedRole,
+              created_at: a.technicalUser.createdAt || new Date().toISOString(),
+              updated_at: a.technicalUser.updatedAt || new Date().toISOString(),
+            }] : []),
+          license_count: a.licenseCount || a.license_count || 0,
+          expiring_license_count: a.expiringLicenseCount || a.expiring_license_count || 0,
+        })) as AccountWithDetails[];
       }
 
       const { data: accountsData, error: accountsError } = await supabase
@@ -147,7 +180,31 @@ export function useAccounts() {
   const createAccount = useMutation({
     mutationFn: async (input: CreateAccountInput) => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<Account>('/api/accounts', input);
+        // Map snake_case frontend payload to camelCase expected by backend DTO
+        const apiPayload: any = {
+          name: input.name,
+          masterAccountName: input.master_account_name,
+          cloudType: input.cloud_type,
+          addresses: input.addresses.map(addr => ({
+            line1: addr.line1,
+            line2: addr.line2,
+            city: addr.city,
+            state: addr.state,
+            postalCode: addr.postal_code,
+            country: addr.country,
+          })),
+          technicalUser: {
+            firstName: input.technical_user.first_name,
+            middleName: input.technical_user.middle_name,
+            lastName: input.technical_user.last_name,
+            email: input.technical_user.email,
+            assignedRole: input.technical_user.assigned_role,
+            assignedGroup: input.technical_user.assigned_group,
+            startDate: input.technical_user.start_date,
+            endDate: input.technical_user.end_date || undefined,
+          },
+        };
+        const { data, error } = await httpClient.post<Account>('/api/accounts', apiPayload);
         if (error) throw new Error(error.message);
         return data!;
       }

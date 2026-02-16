@@ -55,33 +55,48 @@ export function useLicenses(accountId?: string) {
       if (!accountId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>('/api/licenses', {
-          params: { accountId },
-        });
-        if (error) throw new Error(error.message);
+        // Fetch licenses and licensed entities (product/service names) in parallel
+        const [licensesRes, entitiesRes] = await Promise.all([
+          httpClient.get<any[]>('/api/licenses', { params: { accountId } }),
+          httpClient.get<{ products: { id: string; name: string }[]; services: { id: string; name: string }[] }>('/api/licenses/licensed-entities', { params: { accountId } }),
+        ]);
+        if (licensesRes.error) throw new Error(licensesRes.error.message);
+        
+        // Build lookup maps for product/service names
+        const productMap = new Map<string, { id: string; name: string }>();
+        const serviceMap = new Map<string, { id: string; name: string }>();
+        if (entitiesRes.data) {
+          (entitiesRes.data.products || []).forEach((p: any) => productMap.set(p.id, p));
+          (entitiesRes.data.services || []).forEach((s: any) => serviceMap.set(s.id, s));
+        }
+
         // Map camelCase API response back to snake_case for UI consistency
-        return (data || []).map((l: any) => ({
-          id: l.id,
-          account_id: l.accountId ?? l.account_id,
-          enterprise_id: l.enterpriseId ?? l.enterprise_id,
-          product_id: l.productId ?? l.product_id,
-          service_id: l.serviceId ?? l.service_id,
-          start_date: l.startDate ?? l.start_date,
-          end_date: l.endDate ?? l.end_date,
-          number_of_users: l.numberOfUsers ?? l.number_of_users,
-          contact_full_name: l.contactFullName ?? l.contact_full_name,
-          contact_email: l.contactEmail ?? l.contact_email,
-          contact_phone: l.contactPhone ?? l.contact_phone ?? null,
-          contact_department: l.contactDepartment ?? l.contact_department ?? null,
-          contact_designation: l.contactDesignation ?? l.contact_designation ?? null,
-          renewal_notify: l.renewalNotify ?? l.renewal_notify,
-          notice_days: l.noticeDays ?? l.notice_days,
-          created_at: l.createdAt ?? l.created_at,
-          updated_at: l.updatedAt ?? l.updated_at,
-          enterprise: l.enterprise ?? null,
-          product: l.product ?? null,
-          service: l.service ?? null,
-        })) as LicenseWithDetails[];
+        return (licensesRes.data || []).map((l: any) => {
+          const productId = l.productId ?? l.product_id;
+          const serviceId = l.serviceId ?? l.service_id;
+          return {
+            id: l.id,
+            account_id: l.accountId ?? l.account_id,
+            enterprise_id: l.enterpriseId ?? l.enterprise_id,
+            product_id: productId,
+            service_id: serviceId,
+            start_date: l.startDate ?? l.start_date,
+            end_date: l.endDate ?? l.end_date,
+            number_of_users: l.numberOfUsers ?? l.number_of_users,
+            contact_full_name: l.contactFullName ?? l.contact_full_name,
+            contact_email: l.contactEmail ?? l.contact_email,
+            contact_phone: l.contactPhone ?? l.contact_phone ?? null,
+            contact_department: l.contactDepartment ?? l.contact_department ?? null,
+            contact_designation: l.contactDesignation ?? l.contact_designation ?? null,
+            renewal_notify: l.renewalNotify ?? l.renewal_notify,
+            notice_days: l.noticeDays ?? l.notice_days,
+            created_at: l.createdAt ?? l.created_at,
+            updated_at: l.updatedAt ?? l.updated_at,
+            enterprise: l.enterprise ?? null,
+            product: productMap.get(productId) || null,
+            service: serviceMap.get(serviceId) || null,
+          };
+        }) as LicenseWithDetails[];
       }
 
       const { data, error } = await supabase

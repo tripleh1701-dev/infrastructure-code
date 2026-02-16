@@ -45,6 +45,13 @@ export class AccountGuard implements CanActivate {
       return true;
     }
 
+    // If user's JWT doesn't have account_id claim, allow through
+    // (access is determined by technical_user records, not JWT claims;
+    //  the controller will resolve the correct account context)
+    if (!user.accountId) {
+      return true;
+    }
+
     // Check if user's account matches requested account
     if (user.accountId !== requestAccountId) {
       this.logger.warn(

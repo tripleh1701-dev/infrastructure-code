@@ -34,11 +34,38 @@ export function useGroups(accountId?: string | null, enterpriseId?: string | nul
     queryKey: ["groups", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<Group[]>('/api/groups', {
-          params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
-        });
-        if (error) throw new Error(error.message);
-        return data || [];
+        // Fetch groups and roles in parallel since backend doesn't store group-role associations
+        const [groupsRes, rolesRes] = await Promise.all([
+          httpClient.get<any[]>('/api/groups', {
+            params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
+          }),
+          httpClient.get<any[]>('/api/roles'),
+        ]);
+        if (groupsRes.error) throw new Error(groupsRes.error.message);
+        const groups = groupsRes.data || [];
+        const allRoles: GroupRole[] = (rolesRes.data || []).map((r: any) => ({
+          roleId: r.id,
+          roleName: r.name,
+          roleDescription: r.description || null,
+        }));
+        // Attach all available roles to each group (no group-role mapping in backend)
+        return groups.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          description: g.description || null,
+          accountId: g.accountId || null,
+          enterpriseId: g.enterpriseId || null,
+          workstreamId: g.workstreamId || null,
+          workstreamName: g.workstreamName || null,
+          productId: g.productId || null,
+          productName: g.productName || null,
+          serviceId: g.serviceId || null,
+          serviceName: g.serviceName || null,
+          createdAt: g.createdAt || g.created_at || new Date().toISOString(),
+          updatedAt: g.updatedAt || g.updated_at || new Date().toISOString(),
+          memberCount: g.memberCount || 0,
+          roles: allRoles,
+        })) as Group[];
       }
 
       // Strategy: Show groups that either:

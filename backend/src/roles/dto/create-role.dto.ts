@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
 
 export class CreateRoleDto {
   @IsString()
@@ -13,23 +13,23 @@ export class CreateRoleDto {
   @IsOptional()
   permissions?: number;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   accountId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   enterpriseId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   productId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   serviceId?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   workstreamId?: string;
 }

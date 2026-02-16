@@ -9,7 +9,6 @@ import {
   IsDateString,
   IsBoolean,
   IsNumber,
-  IsUUID,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -75,15 +74,15 @@ export class TechnicalUserDto {
 }
 
 export class LicenseDto {
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   enterpriseId: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   productId: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   serviceId: string;
 

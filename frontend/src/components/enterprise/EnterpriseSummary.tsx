@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Globe, Package, Wrench, Edit2, Trash2, Lock, Search, X, ArrowUpDown, ArrowUp, ArrowDown, Sparkles, Calendar, Building2, MoreVertical } from "lucide-react";
+import { Globe, Package, Wrench, Edit2, Trash2, Lock, Search, X, ArrowUpDown, ArrowUp, ArrowDown, Sparkles, Calendar, Building2, MoreVertical, Link2, ShieldAlert } from "lucide-react";
 import oracleLogo from "@/assets/logos/oracle.png";
+import sapLogo from "@/assets/logos/sap.svg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,8 @@ interface EnterpriseSummaryProps {
   onEdit: (enterprise: EnterpriseWithDetails) => void;
   onRefresh: () => void;
   view: ViewMode;
+  isEnterpriseLinked?: (id: string) => boolean;
+  getLinkDetails?: (id: string) => { enterprise_id: string; license_count: number; account_names: string[] } | null;
 }
 
 type SortOption = "name-asc" | "name-desc" | "date-asc" | "date-desc";
@@ -68,6 +71,7 @@ const sortLabels: Record<SortOption, string> = {
 // Brand logo mapping for known enterprise names
 const BRAND_LOGOS: Record<string, string> = {
   oracle: oracleLogo,
+  sap: sapLogo,
 };
 
 function getBrandLogo(name: string): string | null {
@@ -78,7 +82,7 @@ function getBrandLogo(name: string): string | null {
   return null;
 }
 
-export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, view }: EnterpriseSummaryProps) {
+export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, view, isEnterpriseLinked, getLinkDetails }: EnterpriseSummaryProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -127,6 +131,18 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
 
   const handleDelete = async () => {
     if (!deleteId) return;
+
+    // Prevent deletion if linked to licenses
+    if (isEnterpriseLinked?.(deleteId)) {
+      const details = getLinkDetails?.(deleteId);
+      toast({
+        title: "Cannot Delete",
+        description: `This enterprise is linked to ${details?.license_count || 'some'} license(s) in account(s): ${details?.account_names.join(", ") || 'unknown'}. Remove the licenses first.`,
+        variant: "destructive",
+      });
+      setDeleteId(null);
+      return;
+    }
 
     setIsDeleting(true);
     try {
@@ -290,7 +306,9 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
         <EnterpriseTableView 
           enterprises={filteredEnterprises} 
           onEdit={onEdit} 
-          onDelete={(id) => setDeleteId(id)} 
+          onDelete={(id) => setDeleteId(id)}
+          isEnterpriseLinked={isEnterpriseLinked}
+          getLinkDetails={getLinkDetails}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -333,9 +351,26 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
                     <h3 className="font-semibold text-sm text-foreground truncate transition-colors duration-200 group-hover:text-primary">
                       {enterprise.name}
                     </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {isGlobalEnterprise(enterprise.id) ? "Default Enterprise" : "Enterprise"}
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <p className="text-xs text-muted-foreground">
+                        {isGlobalEnterprise(enterprise.id) ? "Default Enterprise" : "Enterprise"}
+                      </p>
+                      {isEnterpriseLinked?.(enterprise.id) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0 rounded-full text-[10px] font-semibold border border-amber-300 bg-amber-50 text-amber-700">
+                              <Link2 className="w-2.5 h-2.5" />
+                              Licensed
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">
+                              Linked to {getLinkDetails?.(enterprise.id)?.license_count || 0} license(s)
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                   </div>
                   
                   {/* Type indicator */}
@@ -380,8 +415,19 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
-                            onClick={() => setDeleteId(enterprise.id)} 
-                            className="gap-2 text-destructive focus:text-destructive cursor-pointer"
+                            onClick={() => {
+                              if (isEnterpriseLinked?.(enterprise.id)) {
+                                const details = getLinkDetails?.(enterprise.id);
+                                toast({
+                                  title: "Cannot Delete",
+                                  description: `Linked to ${details?.license_count || 'some'} license(s). Remove the licenses first.`,
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              setDeleteId(enterprise.id);
+                            }} 
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             Delete

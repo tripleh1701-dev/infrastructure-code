@@ -31,9 +31,28 @@ import {
   Package,
   Workflow,
   Box,
+  CheckCircle,
+  Clock,
+  Archive,
+  XCircle,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { DeploymentType, PipelineMode } from "@/types/pipeline";
+
+type PipelineStatus = "draft" | "active" | "inactive" | "archived";
+
+const pipelineStatusOptions: { value: PipelineStatus; label: string; icon: React.ElementType; className: string }[] = [
+  { value: "draft", label: "Draft", icon: Clock, className: "text-slate-500 bg-slate-50 border-slate-200" },
+  { value: "active", label: "Active", icon: CheckCircle, className: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+  { value: "inactive", label: "Inactive", icon: XCircle, className: "text-amber-600 bg-amber-50 border-amber-200" },
+  { value: "archived", label: "Archived", icon: Archive, className: "text-slate-400 bg-slate-50 border-slate-300" },
+];
 
 interface PipelineHeaderBarProps {
   pipelineName: string;
@@ -47,6 +66,8 @@ interface PipelineHeaderBarProps {
   isAutoSaving?: boolean;
   lastAutoSaved?: Date | null;
   mode: PipelineMode;
+  pipelineStatus?: PipelineStatus;
+  onStatusChange?: (status: PipelineStatus) => void;
   onSave: () => void;
   onBack: () => void;
   // Context selectors
@@ -80,6 +101,8 @@ export function PipelineHeaderBar({
   isAutoSaving = false,
   lastAutoSaved = null,
   mode,
+  pipelineStatus = "draft",
+  onStatusChange,
   onSave,
   onBack,
   workstreams = [],
@@ -182,9 +205,49 @@ export function PipelineHeaderBar({
             </button>
           )}
 
-          <span className="text-xs px-2 py-0.5 bg-[#f1f5f9] text-[#64748b] rounded-full capitalize">
-            {mode}
-          </span>
+          {mode !== "create" && (
+            <>
+              <span className="text-xs px-2 py-0.5 bg-[#f1f5f9] text-[#64748b] rounded-full capitalize">
+                {mode}
+              </span>
+              {/* Pipeline Status Dropdown */}
+              {onStatusChange && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    {(() => {
+                      const currentStatus = pipelineStatusOptions.find(s => s.value === pipelineStatus) || pipelineStatusOptions[0];
+                      const StatusIcon = currentStatus.icon;
+                      return (
+                        <button className={cn(
+                          "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors hover:opacity-80",
+                          currentStatus.className
+                        )}>
+                          <StatusIcon className="w-3 h-3" />
+                          {currentStatus.label}
+                        </button>
+                      );
+                    })()}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="bg-white z-50 w-40">
+                    {pipelineStatusOptions.map((opt) => {
+                      const Icon = opt.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={opt.value}
+                          className={cn("gap-2 text-xs", opt.value === pipelineStatus && "font-semibold")}
+                          onClick={() => onStatusChange(opt.value)}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          {opt.label}
+                          {opt.value === pipelineStatus && <Check className="w-3 h-3 ml-auto" />}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -362,30 +425,51 @@ export function PipelineHeaderBar({
           )}
         </AnimatePresence>
 
-        {/* Save Button */}
-        <Button
-          onClick={onSave}
-          disabled={isSaving || !hasUnsavedChanges}
-          size="sm"
-          className={cn(
-            "h-8 px-3 gap-1.5 text-xs",
-            hasUnsavedChanges 
-              ? "bg-[#0171EC] hover:bg-[#0160c7]" 
-              : "bg-[#94a3b8] cursor-not-allowed"
-          )}
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Saving...</span>
-            </>
-          ) : (
-            <>
-              <Save className="w-3.5 h-3.5" />
-              <span>Save</span>
-            </>
-          )}
-        </Button>
+        {/* Create / Save Button */}
+        {mode === "create" ? (
+          <Button
+            onClick={onSave}
+            disabled={isSaving}
+            size="sm"
+            className="h-8 px-4 gap-1.5 text-xs bg-[#10b981] hover:bg-[#059669]"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Creating...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>Create Pipeline</span>
+              </>
+            )}
+          </Button>
+        ) : (
+          <Button
+            onClick={onSave}
+            disabled={isSaving || !hasUnsavedChanges}
+            size="sm"
+            className={cn(
+              "h-8 px-3 gap-1.5 text-xs",
+              hasUnsavedChanges 
+                ? "bg-[#0171EC] hover:bg-[#0160c7]" 
+                : "bg-[#94a3b8] cursor-not-allowed"
+            )}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>Save</span>
+              </>
+            )}
+          </Button>
+        )}
       </div>
     </motion.header>
   );

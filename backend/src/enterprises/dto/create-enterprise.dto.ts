@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsArray, IsOptional, IsUUID } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsOptional } from 'class-validator';
 
 export class CreateEnterpriseDto {
   @IsString()
@@ -6,12 +6,10 @@ export class CreateEnterpriseDto {
   name: string;
 
   @IsArray()
-  @IsUUID('4', { each: true })
   @IsOptional()
   products?: string[];
 
   @IsArray()
-  @IsUUID('4', { each: true })
   @IsOptional()
   services?: string[];
 }

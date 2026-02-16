@@ -4,7 +4,6 @@ import {
   IsOptional,
   IsArray,
   ValidateNested,
-  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -23,11 +22,11 @@ export class CreateWorkstreamDto {
   @IsNotEmpty()
   name: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   accountId: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   enterpriseId: string;
 

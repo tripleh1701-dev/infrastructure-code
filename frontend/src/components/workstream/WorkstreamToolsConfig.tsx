@@ -141,7 +141,7 @@ interface WorkstreamToolsConfigProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedTools: ToolSelection;
-  onSave: (tools: ToolSelection) => void;
+  onSave: (tools: ToolSelection) => void | Promise<void>;
 }
 
 export function WorkstreamToolsConfig({
@@ -151,6 +151,7 @@ export function WorkstreamToolsConfig({
   onSave,
 }: WorkstreamToolsConfigProps) {
   const [localSelection, setLocalSelection] = useState<ToolSelection>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -178,9 +179,17 @@ export function WorkstreamToolsConfig({
     });
   };
 
-  const handleSave = () => {
-    onSave(localSelection);
-    onOpenChange(false);
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onSave(localSelection);
+      onOpenChange(false);
+    } catch (err) {
+      // Error toast is handled by the mutation's onError
+      console.error("Failed to save tools:", err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getCategoryToolCount = (category: string) => {
@@ -313,10 +322,15 @@ export function WorkstreamToolsConfig({
             </Button>
             <Button
               onClick={handleSave}
+              disabled={isSaving}
               className="gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
             >
-              <Save className="w-4 h-4" />
-              Save Configuration
+              {isSaving ? (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {isSaving ? "Saving..." : "Save Configuration"}
             </Button>
           </div>
         </div>

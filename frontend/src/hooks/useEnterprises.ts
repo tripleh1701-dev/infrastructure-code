@@ -29,8 +29,14 @@ export function useEnterprises() {
         const { data, error } = await httpClient.get<EnterpriseWithDetails[]>('/api/enterprises');
         if (error) throw new Error(error.message);
         const list = Array.isArray(data) ? data : [];
-        // Ensure each enterprise has services array for downstream consumers
-        setEnterprises(list.map(e => ({ ...e, services: Array.isArray(e.services) ? e.services : [] })));
+        // Map camelCase from API to snake_case and ensure services array
+        setEnterprises(list.map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          created_at: e.created_at || e.createdAt || new Date().toISOString(),
+          product: e.product || null,
+          services: Array.isArray(e.services) ? e.services : [],
+        })));
         return;
       }
 

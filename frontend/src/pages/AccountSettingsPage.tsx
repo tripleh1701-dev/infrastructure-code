@@ -55,6 +55,7 @@ import { EditEnterpriseForm } from "@/components/enterprise/EditEnterpriseForm";
 import { EnterpriseSummary } from "@/components/enterprise/EnterpriseSummary";
 import { ProductsServicesManager } from "@/components/enterprise/ProductsServicesManager";
 import { useEnterprises } from "@/hooks/useEnterprises";
+import { useEnterpriseLicenseLinks } from "@/hooks/useEnterpriseLicenseLinks";
 import { AddAccountForm } from "@/components/account/AddAccountForm";
 import { EditAccountForm } from "@/components/account/EditAccountForm";
 import { DeleteAccountDialog } from "@/components/account/DeleteAccountDialog";
@@ -161,6 +162,7 @@ export default function AccountSettingsPage() {
   const [cloudTypeFilter, setCloudTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const { enterprises, isLoading: enterprisesLoading, refetch: refetchEnterprises } = useEnterprises();
+  const { isEnterpriseLinked, getLinkDetails } = useEnterpriseLicenseLinks();
   const { accounts, isLoading: accountsLoading, refetch: refetchAccounts } = useAccounts();
   const [accountsView, setAccountsView] = useViewPreference("accounts", "table");
   const [enterpriseListView, setEnterpriseListView] = useViewPreference("enterprises", "tile");
@@ -774,6 +776,8 @@ export default function AccountSettingsPage() {
                 onEdit={handleEdit}
                 onRefresh={refetchEnterprises}
                 view={enterpriseListView}
+                isEnterpriseLinked={isEnterpriseLinked}
+                getLinkDetails={getLinkDetails}
               />
             )}
           </TabsContent>

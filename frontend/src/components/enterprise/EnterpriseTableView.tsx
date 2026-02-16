@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Package, Wrench, Edit2, Trash2, Sparkles, Building2, MoreHorizontal, Calendar } from "lucide-react";
+import { Package, Wrench, Edit2, Trash2, Sparkles, Building2, MoreHorizontal, Calendar, Link2, ShieldAlert } from "lucide-react";
 import oracleLogo from "@/assets/logos/oracle.png";
+import sapLogo from "@/assets/logos/sap.svg";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -14,6 +16,7 @@ import {
 import { GLOBAL_ENTERPRISE_ID } from "@/contexts/EnterpriseContext";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { toast } from "@/hooks/use-toast";
 
 interface EnterpriseWithDetails {
   id: string;
@@ -33,9 +36,11 @@ interface EnterpriseTableViewProps {
   enterprises: EnterpriseWithDetails[];
   onEdit: (enterprise: EnterpriseWithDetails) => void;
   onDelete: (id: string) => void;
+  isEnterpriseLinked?: (id: string) => boolean;
+  getLinkDetails?: (id: string) => { enterprise_id: string; license_count: number; account_names: string[] } | null;
 }
 
-const BRAND_LOGOS: Record<string, string> = { oracle: oracleLogo };
+const BRAND_LOGOS: Record<string, string> = { oracle: oracleLogo, sap: sapLogo };
 function getBrandLogo(name: string): string | null {
   const key = name.toLowerCase().trim();
   for (const [brand, logo] of Object.entries(BRAND_LOGOS)) {
@@ -44,9 +49,22 @@ function getBrandLogo(name: string): string | null {
   return null;
 }
 
-export function EnterpriseTableView({ enterprises, onEdit, onDelete }: EnterpriseTableViewProps) {
+export function EnterpriseTableView({ enterprises, onEdit, onDelete, isEnterpriseLinked, getLinkDetails }: EnterpriseTableViewProps) {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const isGlobalEnterprise = (id: string) => id === GLOBAL_ENTERPRISE_ID;
+
+  const handleTryDelete = (id: string) => {
+    if (isEnterpriseLinked?.(id)) {
+      const details = getLinkDetails?.(id);
+      toast({
+        title: "Cannot Delete",
+        description: `This enterprise is linked to ${details?.license_count || 'some'} license(s). Remove the licenses first.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    onDelete(id);
+  };
 
   return (
     <motion.div 
@@ -98,8 +116,25 @@ export function EnterpriseTableView({ enterprises, onEdit, onDelete }: Enterpris
                       )}
                     </div>
                   )}
-                  <div>
-                    <p className="font-medium text-[#0f172a]">{enterprise.name}</p>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-[#0f172a]">{enterprise.name}</p>
+                      {isEnterpriseLinked?.(enterprise.id) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline" className="gap-1 px-1.5 py-0 text-[10px] font-medium border-amber-300 bg-amber-50 text-amber-700">
+                              <Link2 className="w-3 h-3" />
+                              Licensed
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">
+                              Linked to {getLinkDetails?.(enterprise.id)?.license_count || 0} license(s) in: {getLinkDetails?.(enterprise.id)?.account_names.join(", ") || "—"}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                     <p className="text-xs text-[#64748b]">
                       {isGlobalEnterprise(enterprise.id) ? "Default Enterprise" : "Enterprise"}
                     </p>
@@ -169,8 +204,8 @@ export function EnterpriseTableView({ enterprises, onEdit, onDelete }: Enterpris
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
-                          onClick={() => onDelete(enterprise.id)} 
-                          className="gap-2 text-destructive focus:text-destructive cursor-pointer"
+                          onClick={() => handleTryDelete(enterprise.id)} 
+                          className="gap-2 cursor-pointer text-destructive focus:text-destructive"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           Delete

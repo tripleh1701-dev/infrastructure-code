@@ -132,7 +132,7 @@ function PipelineCanvasContent() {
   const pipelineId = searchParams.get("id");
   const templateId = searchParams.get("template");
   const mode = (searchParams.get("mode") as PipelineMode) || (pipelineId ? "edit" : "create");
-  const initialName = searchParams.get("name") || "New Pipeline";
+  const initialName = searchParams.get("name") || `New Pipeline ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
 
   // State
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -163,6 +163,7 @@ function PipelineCanvasContent() {
   const [lastAutoSaved, setLastAutoSaved] = useState<Date | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [viewMode, setViewMode] = useState<"canvas" | "flow">("canvas");
+  const [pipelineStatus, setPipelineStatus] = useState<"draft" | "active" | "inactive" | "archived">("draft");
 
   // Auto-select first workstream if none selected
   useEffect(() => {
@@ -270,6 +271,7 @@ function PipelineCanvasContent() {
           setPipelineName(pipeline.name);
           setDeploymentType(pipeline.deployment_type as DeploymentType);
           setCurrentPipelineId(pipeline.id);
+          setPipelineStatus((pipeline.status as "draft" | "active" | "inactive" | "archived") || "draft");
           
           // Restore context selections
           if (pipeline.product_id) {
@@ -1121,6 +1123,18 @@ ${edges.map((e) => `  - source: ${e.source}
               isAutoSaving={isAutoSaving}
               lastAutoSaved={lastAutoSaved}
               mode={mode}
+              pipelineStatus={pipelineStatus}
+              onStatusChange={async (status) => {
+                if (currentPipelineId) {
+                  try {
+                    await updatePipeline({ id: currentPipelineId, status });
+                    setPipelineStatus(status);
+                    toast.success(`Pipeline status changed to ${status}`);
+                  } catch (e) {
+                    toast.error("Failed to update status");
+                  }
+                }
+              }}
               onSave={handleSave}
               onBack={() => navigate("/pipelines")}
               workstreams={workstreams.map(w => ({ id: w.id, name: w.name }))}

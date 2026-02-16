@@ -6,15 +6,14 @@ import {
   IsDateString,
   IsBoolean,
   IsArray,
-  IsUUID,
 } from 'class-validator';
 
 export class CreateUserDto {
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   accountId: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   enterpriseId?: string;
 
@@ -43,7 +42,6 @@ export class CreateUserDto {
   assignedGroup?: string; // Legacy: Primary group name (for backward compatibility)
 
   @IsArray()
-  @IsUUID('4', { each: true })
   @IsOptional()
   groupIds?: string[]; // New: Array of group IDs for multi-group assignment
 
@@ -60,7 +58,6 @@ export class CreateUserDto {
   isTechnicalUser?: boolean;
 
   @IsArray()
-  @IsUUID('4', { each: true })
   @IsOptional()
   workstreamIds?: string[];
 

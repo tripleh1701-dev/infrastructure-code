@@ -136,11 +136,26 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
     queryKey: ["workstreams", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<Workstream[]>('/api/workstreams', {
+        const { data, error } = await httpClient.get<any[]>('/api/workstreams', {
           params: { accountId, enterpriseId },
         });
         if (error) throw new Error(error.message);
-        return data || [];
+        // Map camelCase from API to snake_case for frontend
+        return (data || []).map((ws: any) => ({
+          id: ws.id,
+          name: ws.name,
+          account_id: ws.accountId,
+          enterprise_id: ws.enterpriseId,
+          created_at: ws.createdAt,
+          updated_at: ws.updatedAt,
+          tools: (ws.tools || []).map((t: any) => ({
+            id: t.id,
+            workstream_id: t.workstreamId,
+            tool_name: t.toolName,
+            category: t.category,
+            created_at: t.createdAt,
+          })),
+        })) as Workstream[];
       }
 
       let query = supabase
@@ -267,7 +282,12 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
       tools?: { category: string; tool_name: string }[];
     }) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.put(`/api/workstreams/${id}`, { name, tools });
+        const payload: Record<string, any> = {};
+        if (name !== undefined) payload.name = name;
+        if (tools !== undefined) {
+          payload.tools = tools.map(t => ({ toolName: t.tool_name, category: t.category }));
+        }
+        const { error } = await httpClient.put(`/api/workstreams/${id}`, payload);
         if (error) throw new Error(error.message);
         return;
       }
