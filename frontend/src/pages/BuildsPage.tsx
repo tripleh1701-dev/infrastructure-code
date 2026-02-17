@@ -34,6 +34,9 @@ import { BuildDetailPanel } from "@/components/builds/BuildDetailPanel";
 import { CreateBuildJobDialog } from "@/components/builds/CreateBuildJobDialog";
 import { DeleteBuildJobDialog } from "@/components/builds/DeleteBuildJobDialog";
 import { FilterContextIndicator } from "@/components/layout/FilterContextIndicator";
+import { BulkActionBar } from "@/components/shared/BulkActionBar";
+import { useBulkSelection } from "@/hooks/useBulkSelection";
+import { toast } from "sonner";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -128,6 +131,26 @@ export default function BuildsPage() {
     return result;
   }, [buildJobs, searchTerm, statusFilter, sortColumn, sortDirection]);
 
+  // Bulk selection
+  const bulkSelection = useBulkSelection(processedBuilds);
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(bulkSelection.selectedIds);
+    let deleted = 0;
+    for (const id of ids) {
+      try {
+        await deleteBuildJob.mutateAsync(id);
+        deleted++;
+      } catch { /* individual error handled by hook */ }
+    }
+    if (deleted > 0) toast.success(`Deleted ${deleted} build job(s)`);
+    bulkSelection.clear();
+    if (selectedBuildForDetail && ids.includes(selectedBuildForDetail.id)) {
+      setSelectedBuildForDetail(null);
+      setListCollapsed(true);
+    }
+  };
+
   const handleDelete = (job: BuildJob) => setPendingDeleteJob(job);
   const confirmDelete = async () => {
     if (!pendingDeleteJob) return;
@@ -185,6 +208,20 @@ export default function BuildsPage() {
         allColumns={allColumns}
       />
 
+      <AnimatePresence>
+        {bulkSelection.selectedIds.size > 0 && (
+          <BulkActionBar
+            selectedCount={bulkSelection.selectedIds.size}
+            totalCount={processedBuilds.length}
+            entityName="build job"
+            onToggleAll={bulkSelection.toggleAll}
+            onClear={bulkSelection.clear}
+            onDelete={handleBulkDelete}
+            isAllSelected={bulkSelection.isAllSelected}
+          />
+        )}
+      </AnimatePresence>
+
       {isLoading ? (
         <div className="glass-card p-12 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
@@ -227,12 +264,18 @@ export default function BuildsPage() {
           onOpenDetail={handleOpenDetail}
           onDelete={handleDelete}
           selectedBuildId={selectedBuildForDetail?.id}
+          selectedIds={bulkSelection.selectedIds}
+          onToggleSelect={bulkSelection.toggle}
+          onToggleSelectAll={bulkSelection.toggleAll}
+          isAllSelected={bulkSelection.isAllSelected}
         />
       ) : (
         <BuildsCardView
           builds={processedBuilds}
           onOpenDetail={handleOpenDetail}
           onDelete={handleDelete}
+          selectedIds={bulkSelection.selectedIds}
+          onToggleSelect={bulkSelection.toggle}
         />
       )}
     </motion.div>

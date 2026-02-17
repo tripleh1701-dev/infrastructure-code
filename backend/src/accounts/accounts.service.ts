@@ -75,16 +75,51 @@ export class AccountsService {
   ) {}
 
   /**
-   * Get all accounts (from shared table - admin view)
+   * Get all accounts with addresses and technical users (admin view)
    */
-  async findAll(): Promise<Account[]> {
+  async findAll(): Promise<(Account & { addresses: AccountAddress[]; technicalUser?: TechnicalUser })[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
       'GSI1PK = :pk',
       { ':pk': 'ENTITY#ACCOUNT' },
     );
 
-    return (result.Items || []).map(this.mapToAccount);
+    const accounts = (result.Items || []).map(this.mapToAccount);
+
+    // Enrich each account with addresses and technical user
+    const enriched = await Promise.all(
+      accounts.map(async (account) => {
+        const [addressResult, techUserResult] = await Promise.all([
+          this.dynamoDb.query({
+            KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+            ExpressionAttributeValues: {
+              ':pk': `ACCOUNT#${account.id}`,
+              ':sk': 'ADDRESS#',
+            },
+          }),
+          this.dynamoDb.query({
+            KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+            ExpressionAttributeValues: {
+              ':pk': `ACCOUNT#${account.id}`,
+              ':sk': 'TECH_USER#',
+            },
+          }),
+        ]);
+
+        const addresses = (addressResult.Items || []).map(this.mapToAddress);
+        const technicalUser = techUserResult.Items?.[0]
+          ? this.mapToTechnicalUser(techUserResult.Items[0])
+          : undefined;
+
+        return {
+          ...account,
+          addresses,
+          technicalUser,
+        };
+      }),
+    );
+
+    return enriched;
   }
 
   /**

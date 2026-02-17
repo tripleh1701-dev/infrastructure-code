@@ -33,7 +33,8 @@ const docClient = DynamoDBDocumentClient.from(dynamoClient, {
   marshallOptions: { removeUndefinedValues: true, convertEmptyValues: true },
 });
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'app_data';
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || process.env.CONTROL_PLANE_TABLE_NAME;
+if (!TABLE_NAME) { console.error('ERROR: DYNAMODB_TABLE_NAME or CONTROL_PLANE_TABLE_NAME must be set'); process.exit(1); }
 
 // ---------------------------------------------------------------------------
 // Fixed UUIDs from bootstrap-day0.ts (for cross-referencing)

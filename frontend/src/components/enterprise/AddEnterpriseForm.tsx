@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { X, Building2, Package, Wrench, Plus, Check, Sparkles, Save, CheckCircle2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { productsService, servicesService } from "@/lib/api/services/products.service";
@@ -170,11 +170,7 @@ export function AddEnterpriseForm({ open, onOpenChange, onSuccess }: AddEnterpri
       }
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load data",
-        variant: "destructive",
-      });
+      toast.error("Failed to load data");
     } finally {
       setIsFetching(false);
     }
@@ -231,13 +227,9 @@ export function AddEnterpriseForm({ open, onOpenChange, onSuccess }: AddEnterpri
       }
       setNewProductName("");
       setShowNewProduct(false);
-      toast({ title: "Product created successfully" });
+      toast.success("Product created successfully");
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create product",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to create product");
     } finally {
       setIsCreatingProduct(false);
     }
@@ -256,13 +248,9 @@ export function AddEnterpriseForm({ open, onOpenChange, onSuccess }: AddEnterpri
       }
       setNewServiceName("");
       setShowNewService(false);
-      toast({ title: "Service created successfully" });
+      toast.success("Service created successfully");
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create service",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to create service");
     } finally {
       setIsCreatingService(false);
     }
@@ -279,38 +267,22 @@ export function AddEnterpriseForm({ open, onOpenChange, onSuccess }: AddEnterpri
 
     const validationError = validateName(enterpriseName);
     if (!enterpriseName.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter an enterprise name",
-        variant: "destructive",
-      });
+      toast.error("Please enter an enterprise name");
       return;
     }
 
     if (validationError) {
-      toast({
-        title: "Validation Error",
-        description: validationError,
-        variant: "destructive",
-      });
+      toast.error(validationError);
       return;
     }
 
     if (!selectedProduct) {
-      toast({
-        title: "Validation Error",
-        description: "Please select a product",
-        variant: "destructive",
-      });
+      toast.error("Please select a product");
       return;
     }
 
     if (selectedServices.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please select at least one service",
-        variant: "destructive",
-      });
+      toast.error("Please select at least one service");
       return;
     }
 
@@ -325,20 +297,13 @@ export function AddEnterpriseForm({ open, onOpenChange, onSuccess }: AddEnterpri
 
       if (error) throw new Error(error.message);
 
-      toast({
-        title: "Success",
-        description: "Enterprise created successfully",
-      });
+      toast.success("Enterprise created successfully");
 
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error creating enterprise:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create enterprise",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to create enterprise");
     } finally {
       setIsLoading(false);
     }

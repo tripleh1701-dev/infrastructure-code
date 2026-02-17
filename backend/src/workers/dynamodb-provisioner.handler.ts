@@ -49,7 +49,8 @@ export async function handler(event: ProvisionerEvent): Promise<ProvisionerResul
   const region = process.env.AWS_REGION || 'us-east-1';
   const environment = process.env.NODE_ENV || 'dev';
   const projectName = process.env.PROJECT_NAME || 'app';
-  const tableName = process.env.DYNAMODB_TABLE_NAME || `${projectName}_data`;
+  const tableName = process.env.CONTROL_PLANE_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME;
+  if (!tableName) throw new Error('CONTROL_PLANE_TABLE_NAME or DYNAMODB_TABLE_NAME must be set');
   const templateBucket = process.env.CFN_TEMPLATE_BUCKET || `${projectName}-cfn-templates`;
 
   const ssmClient = new SSMClient({ region });

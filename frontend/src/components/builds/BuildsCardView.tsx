@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { BuildJob } from "@/hooks/useBuilds";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Zap, CheckCircle, XCircle, Trash2, FileDown, ExternalLink, GitBranch, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -8,9 +9,11 @@ interface BuildsCardViewProps {
   builds: BuildJob[];
   onOpenDetail: (job: BuildJob) => void;
   onDelete: (job: BuildJob) => void;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
-export function BuildsCardView({ builds, onOpenDetail, onDelete }: BuildsCardViewProps) {
+export function BuildsCardView({ builds, onOpenDetail, onDelete, selectedIds, onToggleSelect }: BuildsCardViewProps) {
   return (
     <div className="responsive-grid-lg">
       {builds.map((build, index) => {
@@ -22,9 +25,28 @@ export function BuildsCardView({ builds, onOpenDetail, onDelete }: BuildsCardVie
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.35, delay: index * 0.06, type: "spring", stiffness: 300, damping: 24 }}
-            className="spark-card-hover p-5 group"
+            className={cn(
+              "spark-card-hover p-5 group relative",
+              selectedIds?.has(build.id) && "ring-2 ring-blue-400 bg-blue-50/30"
+            )}
             onClick={() => onOpenDetail(build)}
           >
+            {/* Selection checkbox */}
+            {onToggleSelect && (
+              <div
+                className={cn(
+                  "absolute top-3 left-3 z-10 transition-opacity",
+                  (selectedIds?.size ?? 0) > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Checkbox
+                  checked={selectedIds?.has(build.id) ?? false}
+                  onCheckedChange={() => onToggleSelect(build.id)}
+                  className="h-5 w-5 border-2 border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                />
+              </div>
+            )}
             {/* Top accent bar */}
             <div className={cn(
               "absolute top-0 left-0 right-0 h-0.5 rounded-t-xl",

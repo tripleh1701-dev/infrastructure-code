@@ -1,5 +1,5 @@
-import { IsString, IsOptional, IsArray, IsObject, IsEnum, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsOptional, IsArray, IsObject, IsEnum, ValidateNested, Allow } from 'class-validator';
+import { Type, Exclude } from 'class-transformer';
 
 /**
  * Pipeline status enum matching the database constraint
@@ -27,6 +27,74 @@ export class PipelineNodeDto {
   @IsObject()
   @IsOptional()
   data?: Record<string, any>;
+
+  /** React Flow adds style, parentId, width, height, etc. — allow them through */
+  @IsOptional()
+  @Allow()
+  style?: any;
+
+  @IsOptional()
+  @Allow()
+  parentId?: string;
+
+  @IsOptional()
+  @Allow()
+  width?: number;
+
+  @IsOptional()
+  @Allow()
+  height?: number;
+
+  @IsOptional()
+  @Allow()
+  draggable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  selectable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  connectable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  deletable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  focusable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  measured?: any;
+
+  @IsOptional()
+  @Allow()
+  extent?: any;
+
+  @IsOptional()
+  @Allow()
+  expandParent?: boolean;
+
+  @IsOptional()
+  @Allow()
+  sourcePosition?: string;
+
+  @IsOptional()
+  @Allow()
+  targetPosition?: string;
+
+  @IsOptional()
+  @Allow()
+  hidden?: boolean;
+
+  @IsOptional()
+  @Allow()
+  zIndex?: number;
+
+  /** Catch-all for any other React Flow properties */
+  [key: string]: any;
 }
 
 /**
@@ -57,6 +125,53 @@ export class PipelineEdgeDto {
   @IsObject()
   @IsOptional()
   data?: Record<string, any>;
+
+  @IsOptional()
+  @Allow()
+  style?: any;
+
+  @IsOptional()
+  @Allow()
+  animated?: boolean;
+
+  @IsOptional()
+  @Allow()
+  hidden?: boolean;
+
+  @IsOptional()
+  @Allow()
+  deletable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  selectable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  focusable?: boolean;
+
+  @IsOptional()
+  @Allow()
+  markerStart?: any;
+
+  @IsOptional()
+  @Allow()
+  markerEnd?: any;
+
+  @IsOptional()
+  @Allow()
+  label?: any;
+
+  @IsOptional()
+  @Allow()
+  labelStyle?: any;
+
+  @IsOptional()
+  @Allow()
+  zIndex?: number;
+
+  /** Catch-all for any other React Flow properties */
+  [key: string]: any;
 }
 
 /**

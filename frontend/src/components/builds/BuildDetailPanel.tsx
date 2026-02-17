@@ -219,7 +219,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               { label: "Product", value: buildJob.product },
               { label: "Service", value: buildJob.service },
               { label: "Artifacts", value: buildJob.scope },
-              { label: "Created", value: new Date(buildJob.created_at).toLocaleDateString() },
+              { label: "Created", value: buildJob.created_at ? new Date(buildJob.created_at).toLocaleDateString() : "—" },
             ].map((item) => (
               <div key={item.label} className="bg-muted/30 rounded-lg p-2.5 border border-border/30">
                 <p className="text-[10px] text-muted-foreground uppercase">{item.label}</p>

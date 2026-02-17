@@ -24,10 +24,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Group } from "@/hooks/useGroups";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface GroupTableRowProps {
   group: Group;
   index: number;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
   onEdit: (group: Group) => void;
   onDelete: (group: Group) => void;
 }
@@ -40,15 +43,27 @@ const memberColors = [
   "bg-rose-500",
 ];
 
-export function GroupTableRow({ group, index, onEdit, onDelete }: GroupTableRowProps) {
+export function GroupTableRow({ group, index, isSelected, onToggleSelect, onEdit, onDelete }: GroupTableRowProps) {
   return (
     <>
       <motion.tr
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: index * 0.03 }}
-        className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors group"
+        className={cn(
+          "border-b border-slate-100 hover:bg-blue-50/30 transition-colors group",
+          isSelected && "bg-blue-50/50"
+        )}
       >
+        {onToggleSelect && (
+          <td className="px-3 py-4 w-10">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggleSelect(group.id)}
+              className="border-slate-300"
+            />
+          </td>
+        )}
         {/* Group Name & Description */}
         <td className="px-5 py-4">
           <div className="flex items-center gap-3">

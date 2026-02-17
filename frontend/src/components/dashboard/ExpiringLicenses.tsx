@@ -20,7 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format, differenceInDays } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 
@@ -109,21 +109,14 @@ export function ExpiringLicenses() {
       }
       
       if (result.success) {
-        toast({
-          title: "Reminders Sent",
-          description: `Successfully sent ${result.emailsSent} renewal reminder${result.emailsSent !== 1 ? "s" : ""}. ${result.logged} logged to history.`,
-        });
+        toast.success(`Successfully sent ${result.emailsSent} renewal reminder${result.emailsSent !== 1 ? "s" : ""}. ${result.logged} logged to history.`);
         queryClient.invalidateQueries({ queryKey: ["notification-history"] });
       } else {
         throw new Error(result.error || "Failed to send reminders");
       }
     } catch (error: any) {
       console.error("Error sending reminders:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to send renewal reminders",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to send renewal reminders");
     } finally {
       setIsSendingReminders(false);
     }

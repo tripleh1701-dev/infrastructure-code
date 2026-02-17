@@ -57,7 +57,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useLicenses, LicenseFormData, LicenseWithDetails } from "@/hooks/useLicenses";
 import { useEnterprises } from "@/hooks/useEnterprises";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { format } from "date-fns";
 
 interface LicenseManagerProps {
@@ -223,7 +223,7 @@ export function LicenseManager({ accountId, accountName, onLicenseCountChange }:
     for (let i = 0; i < formRows.length; i++) {
       const error = validateRow(formRows[i]);
       if (error) {
-        toast({ title: "Validation Error", description: `Row ${i + 1}: ${error}`, variant: "destructive" });
+        toast.error(`Row ${i + 1}: ${error}`);
         return;
       }
     }
@@ -248,11 +248,11 @@ export function LicenseManager({ accountId, accountName, onLicenseCountChange }:
           notice_days: row.notice_days,
         });
       }
-      toast({ title: "Success", description: `${formRows.length} license(s) added successfully` });
+      toast.success(`${formRows.length} license(s) added successfully`);
       setFormRows([{ ...emptyLicenseRow }]);
       setShowAddForm(false);
     } catch (error) {
-      toast({ title: "Error", description: "Failed to save licenses", variant: "destructive" });
+      toast.error("Failed to save licenses");
     } finally {
       setIsSaving(false);
     }
@@ -262,10 +262,10 @@ export function LicenseManager({ accountId, accountName, onLicenseCountChange }:
     if (!editingLicense) return;
     try {
       await updateLicense.mutateAsync({ id: editingLicense.id, data });
-      toast({ title: "Success", description: "License updated successfully" });
+      toast.success("License updated successfully");
       setEditingLicense(null);
     } catch (error) {
-      toast({ title: "Error", description: "Failed to update license", variant: "destructive" });
+      toast.error("Failed to update license");
     }
   };
 
@@ -273,10 +273,10 @@ export function LicenseManager({ accountId, accountName, onLicenseCountChange }:
     if (!deletingLicense) return;
     try {
       await deleteLicense.mutateAsync(deletingLicense.id);
-      toast({ title: "Success", description: "License deleted successfully" });
+      toast.success("License deleted successfully");
       setDeletingLicense(null);
     } catch (error) {
-      toast({ title: "Error", description: "Failed to delete license", variant: "destructive" });
+      toast.error("Failed to delete license");
     }
   };
 

@@ -28,7 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { GLOBAL_ENTERPRISE_ID } from "@/contexts/EnterpriseContext";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -135,11 +135,7 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
     // Prevent deletion if linked to licenses
     if (isEnterpriseLinked?.(deleteId)) {
       const details = getLinkDetails?.(deleteId);
-      toast({
-        title: "Cannot Delete",
-        description: `This enterprise is linked to ${details?.license_count || 'some'} license(s) in account(s): ${details?.account_names.join(", ") || 'unknown'}. Remove the licenses first.`,
-        variant: "destructive",
-      });
+      toast.error(`This enterprise is linked to ${details?.license_count || 'some'} license(s) in account(s): ${details?.account_names.join(", ") || 'unknown'}. Remove the licenses first.`);
       setDeleteId(null);
       return;
     }
@@ -157,14 +153,10 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
         if (error) throw error;
       }
 
-      toast({ title: "Enterprise deleted successfully" });
+      toast.success("Enterprise deleted successfully");
       onRefresh();
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete enterprise",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to delete enterprise");
     } finally {
       setIsDeleting(false);
       setDeleteId(null);
@@ -418,11 +410,7 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
                             onClick={() => {
                               if (isEnterpriseLinked?.(enterprise.id)) {
                                 const details = getLinkDetails?.(enterprise.id);
-                                toast({
-                                  title: "Cannot Delete",
-                                  description: `Linked to ${details?.license_count || 'some'} license(s). Remove the licenses first.`,
-                                  variant: "destructive",
-                                });
+                                toast.error(`Linked to ${details?.license_count || 'some'} license(s). Remove the licenses first.`);
                                 return;
                               }
                               setDeleteId(enterprise.id);

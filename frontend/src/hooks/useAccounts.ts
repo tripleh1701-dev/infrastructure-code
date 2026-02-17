@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
 
@@ -283,17 +283,10 @@ export function useAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      toast({
-        title: "Account Created",
-        description: "The account has been created successfully.",
-      });
+      toast.success("The account has been created successfully.");
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create account",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to create account");
     },
   });
 
@@ -393,17 +386,10 @@ export function useAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      toast({
-        title: "Account Updated",
-        description: "The account has been updated successfully.",
-      });
+      toast.success("The account has been updated successfully.");
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update account",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to update account");
     },
   });
 
@@ -421,17 +407,10 @@ export function useAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      toast({
-        title: "Account Deleted",
-        description: "The account has been deleted successfully.",
-      });
+      toast.success("The account has been deleted successfully.");
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete account",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to delete account");
     },
   });
 

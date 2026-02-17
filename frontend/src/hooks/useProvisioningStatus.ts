@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { provisioningService, type ProvisioningJob } from "@/lib/api";
 
 export type { ProvisioningJob };
@@ -99,16 +99,9 @@ export function useProvisioningStatus() {
           completedIds.push(accountId);
 
           if (job.status === 'completed') {
-            toast({
-              title: "✓ Infrastructure Ready",
-              description: `${job.cloudType === 'private' ? 'Dedicated' : 'Shared'} infrastructure for "${job.accountName}" is now active.`,
-            });
+            toast.success(`${job.cloudType === 'private' ? 'Dedicated' : 'Shared'} infrastructure for "${job.accountName}" is now active.`);
           } else {
-            toast({
-              title: "✗ Provisioning Failed",
-              description: `Failed to provision infrastructure for "${job.accountName}". ${job.error || 'Please contact support.'}`,
-              variant: "destructive",
-            });
+            toast.error(`Failed to provision infrastructure for "${job.accountName}". ${job.error || 'Please contact support.'}`);
           }
         }
       } catch (err) {
@@ -157,11 +150,7 @@ export function useProvisioningStatus() {
       });
 
       if (error) {
-        toast({
-          title: "Error",
-          description: `Failed to start provisioning: ${error.message}`,
-          variant: "destructive",
-        });
+        toast.error(`Failed to start provisioning: ${error.message}`);
         return;
       }
 
@@ -186,19 +175,12 @@ export function useProvisioningStatus() {
       setIsPolling(true);
       notifyStoreListeners();
 
-      toast({
-        title: "Infrastructure Provisioning Started",
-        description: `Setting up ${cloudType} cloud infrastructure for "${accountName}"...`,
-      });
+      toast.info(`Setting up ${cloudType} cloud infrastructure for "${accountName}"...`);
 
       return event;
     } catch (err) {
       console.error("[Provisioning] Failed to start:", err);
-      toast({
-        title: "Error",
-        description: "Failed to start infrastructure provisioning.",
-        variant: "destructive",
-      });
+      toast.error("Failed to start infrastructure provisioning.");
     }
   }, []);
 

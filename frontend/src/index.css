@@ -418,6 +418,44 @@
   }
 }
 
+/* Mobile-first responsive overrides */
+@media (max-width: 767px) {
+  :root {
+    --content-padding: 1rem;
+  }
+
+  /* Sidebar helpers should be zero on mobile (sidebar is overlay) */
+  .main-content-expanded,
+  .main-content-collapsed {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* Make tables scrollable */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Stack stats cards */
+  .responsive-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Responsive dialogs */
+  [role="dialog"] {
+    max-width: calc(100vw - 2rem) !important;
+    max-height: calc(100dvh - 2rem) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .responsive-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Animations */
 @keyframes fade-in {
   0% {

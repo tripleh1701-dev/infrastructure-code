@@ -246,7 +246,7 @@ export function BuildDetailModal({ buildJob, onClose }: BuildDetailModalProps) {
                         </div>
                         <div className="flex items-center gap-3 mt-0.5">
                           <span className="text-xs text-muted-foreground">
-                            {new Date(exec.timestamp).toLocaleString()}
+                            {exec.timestamp ? new Date(exec.timestamp).toLocaleString() : "—"}
                           </span>
                           {exec.duration && (
                             <span className="text-xs text-muted-foreground flex items-center gap-1">

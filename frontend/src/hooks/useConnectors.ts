@@ -41,6 +41,30 @@ export interface CreateConnectorInput {
   workstream_ids: string[];
 }
 
+function mapExternalConnector(c: any): ConnectorRecord {
+  return {
+    id: c.id,
+    name: c.name,
+    description: c.description ?? null,
+    connector_type: c.connectorType ?? c.connector_type ?? "",
+    connector_tool: c.connectorTool ?? c.connector_tool ?? "",
+    category: c.category ?? "",
+    url: c.url ?? null,
+    status: c.status ?? "disconnected",
+    health: c.health ?? "healthy",
+    last_sync_at: c.lastSyncAt ?? c.last_sync_at ?? null,
+    sync_count: c.syncCount ?? c.sync_count ?? 0,
+    account_id: c.accountId ?? c.account_id ?? "",
+    enterprise_id: c.enterpriseId ?? c.enterprise_id ?? "",
+    product_id: c.productId ?? c.product_id ?? null,
+    service_id: c.serviceId ?? c.service_id ?? null,
+    credential_id: c.credentialId ?? c.credential_id ?? null,
+    created_at: c.createdAt ?? c.created_at ?? "",
+    updated_at: c.updatedAt ?? c.updated_at ?? "",
+    workstreams: c.workstreams ?? [],
+  };
+}
+
 export function useConnectors(accountId?: string, enterpriseId?: string) {
   const queryClient = useQueryClient();
 
@@ -48,11 +72,11 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
     queryKey: ["connectors", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<ConnectorRecord[]>("/api/connectors", {
+        const { data, error } = await httpClient.get<any[]>("/api/connectors", {
           params: { accountId, enterpriseId },
         });
         if (error) throw new Error(error.message);
-        return data || [];
+        return (data || []).map(mapExternalConnector) as ConnectorRecord[];
       }
 
       let query = supabase

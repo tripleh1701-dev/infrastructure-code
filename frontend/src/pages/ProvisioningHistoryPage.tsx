@@ -43,7 +43,7 @@ import { useProvisioningStatus, type ProvisioningEvent } from "@/hooks/useProvis
 import { provisioningService } from "@/lib/api";
 import { isExternalApi } from "@/lib/api/config";
 import { format, formatDistanceToNow } from "date-fns";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { PermissionGate } from "@/components/auth/PermissionGate";
 
 // Extend with simulated history for demo
@@ -199,7 +199,7 @@ export default function ProvisioningHistoryPage() {
   const exportCsv = useCallback(() => {
     const rows = buildExportRows(filteredJobs);
     if (rows.length === 0) {
-      toast({ title: "No data", description: "No provisioning jobs to export.", variant: "destructive" });
+      toast.error("No provisioning jobs to export.");
       return;
     }
     const headers = Object.keys(rows[0]);
@@ -220,13 +220,13 @@ export default function ProvisioningHistoryPage() {
     link.download = `provisioning-history-${format(new Date(), "yyyy-MM-dd")}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    toast({ title: "CSV Exported", description: `${rows.length} records exported successfully.` });
+    toast.success(`${rows.length} records exported as CSV successfully.`);
   }, [filteredJobs]);
 
   const exportPdf = useCallback(async () => {
     const rows = buildExportRows(filteredJobs);
     if (rows.length === 0) {
-      toast({ title: "No data", description: "No provisioning jobs to export.", variant: "destructive" });
+      toast.error("No provisioning jobs to export.");
       return;
     }
     const { default: jsPDF } = await import("jspdf");
@@ -299,7 +299,7 @@ export default function ProvisioningHistoryPage() {
     }
 
     doc.save(`provisioning-history-${format(new Date(), "yyyy-MM-dd")}.pdf`);
-    toast({ title: "PDF Exported", description: `${rows.length} records exported successfully.` });
+    toast.success(`${rows.length} records exported as PDF successfully.`);
   }, [filteredJobs, statusFilter, cloudFilter, searchQuery]);
 
   return (

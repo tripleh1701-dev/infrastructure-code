@@ -11,11 +11,11 @@ import {
   Activity,
   Mail,
   ChevronLeft,
-  Zap,
   CloudCog,
   LogOut,
   ChevronUp,
 } from "lucide-react";
+import trumpetLogo from "@/assets/trumpet-logo.png";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/contexts/PermissionContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,9 +45,10 @@ const allNavItems: NavItem[] = [
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  onNavigate?: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -84,12 +85,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <div className="flex items-center h-16 px-4 border-b border-white/10">
         <Link to="/" className="flex items-center gap-3">
           <motion.div
-            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: "linear-gradient(135deg, #0171EC 0%, #05E9FE 100%)" }}
+            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <Zap className="w-5 h-5 text-white" />
+            <img src={trumpetLogo} alt="Trumpet" className="w-full h-full object-cover" />
           </motion.div>
           <AnimatePresence>
             {!collapsed && (
@@ -134,6 +134,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 <li key={item.path}>
                   <Link
                     to={item.path}
+                    onClick={() => onNavigate?.()}
                     onMouseEnter={() => setHoveredItem(item.path)}
                     onMouseLeave={() => setHoveredItem(null)}
                     className={cn(

@@ -50,9 +50,9 @@ import {
   Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAccessControlUsers, AccessControlUser } from "@/hooks/useAccessControlUsers";
-import { useGroups, Group } from "@/hooks/useGroups";
-import { useRoles, Role } from "@/hooks/useRoles";
+import { useAccessControlUsers, useDeleteAccessControlUser, AccessControlUser } from "@/hooks/useAccessControlUsers";
+import { useGroups, useDeleteGroup, Group } from "@/hooks/useGroups";
+import { useRoles, useDeleteRole, Role } from "@/hooks/useRoles";
 import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useLicenses } from "@/hooks/useLicenses";
 import { AddUserDialog } from "@/components/access-control/AddUserDialog";
@@ -71,6 +71,10 @@ import { RoleTableRow } from "@/components/access-control/RoleTableRow";
 import { UserGroupRolesDisplay } from "@/components/access-control/UserGroupRolesDisplay";
 import { format, differenceInDays } from "date-fns";
 import { ViewToggle } from "@/components/ui/view-toggle";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkActionBar } from "@/components/shared/BulkActionBar";
+import { useBulkSelection } from "@/hooks/useBulkSelection";
+import { toast } from "sonner";
 
 // Helper to calculate end date urgency
 const getEndDateUrgency = (endDate: string | null | undefined): { level: "critical" | "soon" | "upcoming" | null; daysLeft: number | null } => {
@@ -353,6 +357,45 @@ export default function AccessControlPage() {
       return matchesSearch && matchesWorkstream && matchesProduct && matchesService;
     });
   }, [roles, searchQuery, roleWorkstreamFilter, roleProductFilter, roleServiceFilter]);
+
+  // Bulk selection for each tab
+  const userBulk = useBulkSelection(filteredUsers);
+  const groupBulk = useBulkSelection(filteredGroups);
+  const roleBulk = useBulkSelection(filteredRoles);
+
+  const deleteUser = useDeleteAccessControlUser();
+  const deleteGroup = useDeleteGroup();
+  const deleteRole = useDeleteRole();
+
+  const handleBulkDeleteUsers = async () => {
+    const ids = Array.from(userBulk.selectedIds);
+    let deleted = 0;
+    for (const id of ids) {
+      try { await deleteUser.mutateAsync(id); deleted++; } catch { /* handled */ }
+    }
+    if (deleted > 0) toast.success(`Deleted ${deleted} user(s)`);
+    userBulk.clear();
+  };
+
+  const handleBulkDeleteGroups = async () => {
+    const ids = Array.from(groupBulk.selectedIds);
+    let deleted = 0;
+    for (const id of ids) {
+      try { await deleteGroup.mutateAsync(id); deleted++; } catch { /* handled */ }
+    }
+    if (deleted > 0) toast.success(`Deleted ${deleted} group(s)`);
+    groupBulk.clear();
+  };
+
+  const handleBulkDeleteRoles = async () => {
+    const ids = Array.from(roleBulk.selectedIds);
+    let deleted = 0;
+    for (const id of ids) {
+      try { await deleteRole.mutateAsync(id); deleted++; } catch { /* handled */ }
+    }
+    if (deleted > 0) toast.success(`Deleted ${deleted} role(s)`);
+    roleBulk.clear();
+  };
   
   // Clear filters when tab changes
   const handleTabChange = (tab: string) => {
@@ -812,6 +855,19 @@ export default function AccessControlPage() {
         {/* Users Tab */}
         {activeTab === "users" && (
           <>
+            <AnimatePresence>
+              {userBulk.selectedIds.size > 0 && (
+                <BulkActionBar
+                  selectedCount={userBulk.selectedIds.size}
+                  totalCount={filteredUsers.length}
+                  entityName="user"
+                  onToggleAll={userBulk.toggleAll}
+                  onClear={userBulk.clear}
+                  onDelete={handleBulkDeleteUsers}
+                  isAllSelected={userBulk.isAllSelected}
+                />
+              )}
+            </AnimatePresence>
             {usersLoading ? (
               <motion.div 
                 variants={itemVariants}
@@ -888,6 +944,13 @@ export default function AccessControlPage() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-50/50">
+                        <th className="px-3 py-4 w-10">
+                          <Checkbox
+                            checked={userBulk.isAllSelected && filteredUsers.length > 0}
+                            onCheckedChange={() => userBulk.toggleAll()}
+                            className="h-4 w-4"
+                          />
+                        </th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">User</th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Groups</th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Roles</th>
@@ -907,8 +970,15 @@ export default function AccessControlPage() {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className="border-b border-border hover:bg-muted/50 transition-colors group"
+                        className={cn("border-b border-border hover:bg-muted/50 transition-colors group", userBulk.selectedIds.has(user.id) && "bg-blue-50/50")}
                       >
+                        <td className="px-3 py-4 w-10">
+                          <Checkbox
+                            checked={userBulk.selectedIds.has(user.id)}
+                            onCheckedChange={() => userBulk.toggle(user.id)}
+                            className="h-4 w-4"
+                          />
+                        </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-full flex items-center justify-center text-primary-foreground text-sm font-bold bg-gradient-to-br from-primary to-primary/70">
@@ -1349,6 +1419,19 @@ export default function AccessControlPage() {
         {/* Roles Tab */}
         {activeTab === "roles" && (
           <>
+            <AnimatePresence>
+              {roleBulk.selectedIds.size > 0 && (
+                <BulkActionBar
+                  selectedCount={roleBulk.selectedIds.size}
+                  totalCount={filteredRoles.length}
+                  entityName="role"
+                  onToggleAll={roleBulk.toggleAll}
+                  onClear={roleBulk.clear}
+                  onDelete={handleBulkDeleteRoles}
+                  isAllSelected={roleBulk.isAllSelected}
+                />
+              )}
+            </AnimatePresence>
             {rolesLoading ? (
               <motion.div 
                 variants={itemVariants}
@@ -1400,7 +1483,14 @@ export default function AccessControlPage() {
                 <div className="table-container">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-50/50">
+                       <tr className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-50/50">
+                        <th className="px-3 py-4 w-10">
+                          <Checkbox
+                            checked={roleBulk.isAllSelected && filteredRoles.length > 0}
+                            onCheckedChange={() => roleBulk.toggleAll()}
+                            className="border-slate-300"
+                          />
+                        </th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Workstream</th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
@@ -1417,6 +1507,8 @@ export default function AccessControlPage() {
                           key={role.id}
                           role={role}
                           index={index}
+                          isSelected={roleBulk.selectedIds.has(role.id)}
+                          onToggleSelect={roleBulk.toggle}
                           onEdit={setEditingRole}
                           onDelete={setDeletingRole}
                         />
@@ -1449,6 +1541,19 @@ export default function AccessControlPage() {
         {/* Groups Tab */}
         {activeTab === "groups" && (
           <>
+            <AnimatePresence>
+              {groupBulk.selectedIds.size > 0 && (
+                <BulkActionBar
+                  selectedCount={groupBulk.selectedIds.size}
+                  totalCount={filteredGroups.length}
+                  entityName="group"
+                  onToggleAll={groupBulk.toggleAll}
+                  onClear={groupBulk.clear}
+                  onDelete={handleBulkDeleteGroups}
+                  isAllSelected={groupBulk.isAllSelected}
+                />
+              )}
+            </AnimatePresence>
             {groupsLoading ? (
               <motion.div 
                 variants={itemVariants}
@@ -1501,6 +1606,13 @@ export default function AccessControlPage() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-50/50">
+                        <th className="px-3 py-4 w-10">
+                          <Checkbox
+                            checked={groupBulk.isAllSelected && filteredGroups.length > 0}
+                            onCheckedChange={() => groupBulk.toggleAll()}
+                            className="border-slate-300"
+                          />
+                        </th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Group</th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Workstream</th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
@@ -1516,6 +1628,8 @@ export default function AccessControlPage() {
                           key={group.id}
                           group={group}
                           index={index}
+                          isSelected={groupBulk.selectedIds.has(group.id)}
+                          onToggleSelect={groupBulk.toggle}
                           onEdit={setEditingGroup}
                           onDelete={setDeletingGroup}
                         />

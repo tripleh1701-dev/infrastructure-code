@@ -16,7 +16,7 @@ import {
 import { GLOBAL_ENTERPRISE_ID } from "@/contexts/EnterpriseContext";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 
 interface EnterpriseWithDetails {
   id: string;
@@ -56,11 +56,7 @@ export function EnterpriseTableView({ enterprises, onEdit, onDelete, isEnterpris
   const handleTryDelete = (id: string) => {
     if (isEnterpriseLinked?.(id)) {
       const details = getLinkDetails?.(id);
-      toast({
-        title: "Cannot Delete",
-        description: `This enterprise is linked to ${details?.license_count || 'some'} license(s). Remove the licenses first.`,
-        variant: "destructive",
-      });
+      toast.error(`This enterprise is linked to ${details?.license_count || 'some'} license(s). Remove the licenses first.`);
       return;
     }
     onDelete(id);

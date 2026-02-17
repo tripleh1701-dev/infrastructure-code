@@ -58,6 +58,39 @@ export interface CreateCredentialData {
   expiry_notify?: boolean;
 }
 
+function mapExternalCredential(c: any): Credential {
+  return {
+    id: c.id,
+    name: c.name,
+    description: c.description ?? null,
+    account_id: c.accountId ?? c.account_id ?? "",
+    enterprise_id: c.enterpriseId ?? c.enterprise_id ?? "",
+    workstream_id: c.workstreamId ?? c.workstream_id ?? null,
+    product_id: c.productId ?? c.product_id ?? null,
+    service_id: c.serviceId ?? c.service_id ?? null,
+    category: c.category ?? "",
+    connector: c.connector ?? "",
+    auth_type: c.authType ?? c.auth_type ?? "",
+    credentials: c.credentials ?? {},
+    oauth_access_token: c.oauthAccessToken ?? c.oauth_access_token ?? null,
+    oauth_refresh_token: c.oauthRefreshToken ?? c.oauth_refresh_token ?? null,
+    oauth_token_expires_at: c.oauthTokenExpiresAt ?? c.oauth_token_expires_at ?? null,
+    oauth_scope: c.oauthScope ?? c.oauth_scope ?? null,
+    status: c.status ?? "active",
+    last_used_at: c.lastUsedAt ?? c.last_used_at ?? null,
+    created_by: c.createdBy ?? c.created_by ?? null,
+    created_at: c.createdAt ?? c.created_at ?? "",
+    updated_at: c.updatedAt ?? c.updated_at ?? "",
+    expires_at: c.expiresAt ?? c.expires_at ?? null,
+    expiry_notice_days: c.expiryNoticeDays ?? c.expiry_notice_days ?? 30,
+    expiry_notify: c.expiryNotify ?? c.expiry_notify ?? false,
+    workstream: c.workstream ?? undefined,
+    product: c.product ?? undefined,
+    service: c.service ?? undefined,
+    workstreams: c.workstreams ?? [],
+  };
+}
+
 export function useCredentials(accountId?: string, enterpriseId?: string) {
   const queryClient = useQueryClient();
 
@@ -65,11 +98,11 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
     queryKey: ["credentials", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<Credential[]>('/api/credentials', {
+        const { data, error } = await httpClient.get<any[]>('/api/credentials', {
           params: { accountId, enterpriseId },
         });
         if (error) throw new Error(error.message);
-        return data || [];
+        return (data || []).map(mapExternalCredential) as Credential[];
       }
 
       let query = supabase

@@ -484,7 +484,7 @@ export default function PipelineCanvasSummaryPage() {
                               </span>
                             </td>
                             <td className="px-5 py-4 text-sm text-[#64748b]">
-                              {new Date(row.lastUpdated).toLocaleDateString()}
+                              {row.lastUpdated ? new Date(row.lastUpdated).toLocaleDateString() : "—"}
                             </td>
                             <td className="px-5 py-4 text-sm text-[#64748b]">{row.createdBy}</td>
                             <td className="px-5 py-4">
@@ -627,7 +627,7 @@ export default function PipelineCanvasSummaryPage() {
                         {status.label}
                       </span>
                       <span className="text-xs text-[#64748b]">
-                        {new Date(row.lastUpdated).toLocaleDateString()}
+                        {row.lastUpdated ? new Date(row.lastUpdated).toLocaleDateString() : "—"}
                       </span>
                     </div>
                   </motion.div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import trumpetLogo from "@/assets/trumpet-logo.png";
 import { motion } from "framer-motion";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -127,10 +128,10 @@ export default function ResetPasswordPage() {
         <div className="relative z-10 flex flex-col justify-between p-12 w-full">
           <div className="flex items-center gap-3">
             <motion.div
-              className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center"
+              className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center"
               whileHover={{ scale: 1.05, rotate: 5 }}
             >
-              <Sparkles className="w-7 h-7 text-white" />
+              <img src={trumpetLogo} alt="Trumpet" className="w-full h-full object-cover" />
             </motion.div>
             <span className="text-2xl font-bold gradient-text">Trumpet DevOps</span>
           </div>
@@ -171,8 +172,8 @@ export default function ResetPasswordPage() {
       >
         <div className="w-full max-w-md space-y-8">
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center">
+              <img src={trumpetLogo} alt="Trumpet" className="w-full h-full object-cover" />
             </div>
             <span className="text-xl font-bold gradient-text">Trumpet DevOps</span>
           </div>

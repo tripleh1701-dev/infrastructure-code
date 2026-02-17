@@ -73,6 +73,10 @@ import { WorkstreamSummary } from "@/components/workstream/WorkstreamSummary";
 import { useAccountGlobalAccess } from "@/hooks/useAccountGlobalAccess";
 import { ProvisioningStatusBanner } from "@/components/account/ProvisioningStatusBanner";
 import { PermissionGate } from "@/components/auth/PermissionGate";
+import { BulkActionBar } from "@/components/shared/BulkActionBar";
+import { useBulkSelection } from "@/hooks/useBulkSelection";
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 
 interface EnterpriseWithDetails {
   id: string;
@@ -201,6 +205,29 @@ export default function AccountSettingsPage() {
   }, [accounts, selectedAccount, hasGlobalAccess, searchQuery, cloudTypeFilter, statusFilter]);
 
   const hasActiveFilters = searchQuery !== "" || cloudTypeFilter !== "all" || statusFilter !== "all";
+
+  // Bulk selection for accounts
+  const accountBulk = useBulkSelection(filteredAccounts);
+
+  const handleBulkDeleteAccounts = async () => {
+    const ids = Array.from(accountBulk.selectedIds);
+    let deleted = 0;
+    for (const id of ids) {
+      const account = filteredAccounts.find(a => a.id === id);
+      if (account) {
+        setDeletingAccount(account);
+        // Individual delete handled by dialog — just count
+      }
+    }
+    // For accounts, we open the first delete dialog since they have complex cascading logic
+    if (ids.length === 1) {
+      const account = filteredAccounts.find(a => a.id === ids[0]);
+      if (account) setDeletingAccount(account);
+    } else {
+      toast.info("Please delete accounts one at a time to review cascade effects.");
+    }
+    accountBulk.clear();
+  };
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -595,6 +622,20 @@ export default function AccountSettingsPage() {
               </AnimatePresence>
             </motion.div>
             
+            <AnimatePresence>
+              {accountBulk.selectedIds.size > 0 && (
+                <BulkActionBar
+                  selectedCount={accountBulk.selectedIds.size}
+                  totalCount={filteredAccounts.length}
+                  entityName="account"
+                  onToggleAll={accountBulk.toggleAll}
+                  onClear={accountBulk.clear}
+                  onDelete={handleBulkDeleteAccounts}
+                  isAllSelected={accountBulk.isAllSelected}
+                />
+              )}
+            </AnimatePresence>
+
             {accountsLoading ? (
               <motion.div 
                 variants={itemVariants}
@@ -685,6 +726,13 @@ export default function AccountSettingsPage() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-50/50">
+                        <th className="px-3 py-4 w-10">
+                          <Checkbox
+                            checked={accountBulk.isAllSelected && filteredAccounts.length > 0}
+                            onCheckedChange={() => accountBulk.toggleAll()}
+                            className="border-slate-300"
+                          />
+                        </th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-10"></th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Account</th>
                         <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cloud Type</th>
@@ -701,6 +749,8 @@ export default function AccountSettingsPage() {
                           account={account}
                           index={index}
                           isExpanded={expandedAccountId === account.id}
+                          isSelected={accountBulk.selectedIds.has(account.id)}
+                          onToggleSelect={accountBulk.toggle}
                           onToggleExpand={() => setExpandedAccountId(
                             expandedAccountId === account.id ? null : account.id
                           )}

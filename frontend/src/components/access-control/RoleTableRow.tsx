@@ -30,15 +30,19 @@ import { Role } from "@/hooks/useRoles";
 import { RoleScopesModal, MenuPermission } from "./RoleScopesModal";
 import { useRolePermissions, useUpdateRolePermissions } from "@/hooks/useRolePermissions";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 
 interface RoleTableRowProps {
   role: Role;
   index: number;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
   onEdit: (role: Role) => void;
   onDelete: (role: Role) => void;
 }
 
-export function RoleTableRow({ role, index, onEdit, onDelete }: RoleTableRowProps) {
+export function RoleTableRow({ role, index, isSelected, onToggleSelect, onEdit, onDelete }: RoleTableRowProps) {
   const [showScopes, setShowScopes] = useState(false);
   const permissionsQuery = useRolePermissions(role.id);
   const updatePermissionsMutation = useUpdateRolePermissions();
@@ -80,8 +84,20 @@ export function RoleTableRow({ role, index, onEdit, onDelete }: RoleTableRowProp
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: index * 0.03 }}
-        className="border-b border-slate-100 hover:bg-violet-50/30 transition-colors group"
+        className={cn(
+          "border-b border-slate-100 hover:bg-violet-50/30 transition-colors group",
+          isSelected && "bg-violet-50/50"
+        )}
       >
+        {onToggleSelect && (
+          <td className="px-3 py-4 w-10">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggleSelect(role.id)}
+              className="border-slate-300"
+            />
+          </td>
+        )}
         {/* Role Name & Description */}
         <td className="px-5 py-4">
           <div className="flex items-center gap-3">

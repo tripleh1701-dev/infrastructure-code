@@ -71,6 +71,9 @@ import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { formatDistanceToNow, differenceInDays, isPast, format } from "date-fns";
 import { PermissionGate } from "@/components/auth/PermissionGate";
+import { BulkActionBar } from "@/components/shared/BulkActionBar";
+import { useBulkSelection } from "@/hooks/useBulkSelection";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Animation variants
 const pageVariants = {
@@ -223,7 +226,7 @@ export default function SecurityPage() {
     const disconnectedServices = connectors.filter(c => c.status === "disconnected").length;
     const healthyConnectors = connectors.filter(c => c.health === "healthy").length;
     const warningConnectors = connectors.filter(c => c.health === "warning").length;
-    const totalSyncs = connectors.reduce((sum, c) => sum + c.sync_count, 0);
+    const totalSyncs = connectors.reduce((sum, c) => sum + (c.sync_count ?? 0), 0);
     const healthyEnvironments = environments.filter(e => e.status === "healthy").length;
     const activeWebhooks = webhooks.filter(w => w.status === "active").length;
     return { 
@@ -415,6 +418,30 @@ export default function SecurityPage() {
   const hasActiveConnectorFilters = connectorStatusFilter !== "all" || connectorTypeFilter !== "all";
   const hasActiveEnvironmentFilters = environmentTypeFilter !== "all";
   const hasActiveWebhookFilters = webhookStatusFilter !== "all";
+
+  // Bulk selection
+  const credentialBulk = useBulkSelection(filteredCredentials);
+  const connectorBulk = useBulkSelection(filteredConnectors);
+
+  const handleBulkDeleteCredentials = async () => {
+    const ids = Array.from(credentialBulk.selectedIds);
+    let deleted = 0;
+    for (const id of ids) {
+      try { await deleteCredential.mutateAsync(id); deleted++; } catch { /* handled */ }
+    }
+    if (deleted > 0) toast.success(`Deleted ${deleted} credential(s)`);
+    credentialBulk.clear();
+  };
+
+  const handleBulkDeleteConnectors = async () => {
+    const ids = Array.from(connectorBulk.selectedIds);
+    let deleted = 0;
+    for (const id of ids) {
+      try { await deleteConnector.mutateAsync(id); deleted++; } catch { /* handled */ }
+    }
+    if (deleted > 0) toast.success(`Deleted ${deleted} connector(s)`);
+    connectorBulk.clear();
+  };
 
   const clearFilters = () => {
     setCredentialTypeFilter("all");
@@ -663,6 +690,20 @@ export default function SecurityPage() {
               )}
             </motion.div>
 
+            <AnimatePresence>
+              {credentialBulk.selectedIds.size > 0 && (
+                <BulkActionBar
+                  selectedCount={credentialBulk.selectedIds.size}
+                  totalCount={filteredCredentials.length}
+                  entityName="credential"
+                  onToggleAll={credentialBulk.toggleAll}
+                  onClear={credentialBulk.clear}
+                  onDelete={handleBulkDeleteCredentials}
+                  isAllSelected={credentialBulk.isAllSelected}
+                />
+              )}
+            </AnimatePresence>
+
             {credentialsLoading ? (
               <motion.div 
                 variants={itemVariants}
@@ -700,8 +741,15 @@ export default function SecurityPage() {
                 className="bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/30 overflow-hidden"
               >
                 <Table>
-                  <TableHeader>
+                   <TableHeader>
                     <TableRow className="bg-slate-50/80">
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={credentialBulk.isAllSelected && filteredCredentials.length > 0}
+                          onCheckedChange={() => credentialBulk.toggleAll()}
+                          className="border-slate-300"
+                        />
+                      </TableHead>
                       <TableHead className="font-semibold">Name</TableHead>
                       <TableHead className="font-semibold">Auth Type</TableHead>
                       <TableHead className="font-semibold">Category</TableHead>
@@ -721,8 +769,18 @@ export default function SecurityPage() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className="group hover:bg-blue-50/50 transition-colors cursor-pointer"
+                        className={cn(
+                          "group hover:bg-blue-50/50 transition-colors cursor-pointer",
+                          credentialBulk.selectedIds.has(credential.id) && "bg-blue-50/50"
+                        )}
                       >
+                        <TableCell>
+                          <Checkbox
+                            checked={credentialBulk.selectedIds.has(credential.id)}
+                            onCheckedChange={() => credentialBulk.toggle(credential.id)}
+                            className="border-slate-300"
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className={cn(
@@ -1028,7 +1086,7 @@ export default function SecurityPage() {
                 },
                 { 
                   label: "Total Syncs", 
-                  value: stats.totalSyncs.toLocaleString(), 
+                  value: (stats.totalSyncs ?? 0).toLocaleString(), 
                   icon: Activity, 
                   color: "from-violet-500 to-violet-600",
                   bgColor: "bg-violet-50"
@@ -1123,6 +1181,20 @@ export default function SecurityPage() {
               </div>
             </motion.div>
 
+            <AnimatePresence>
+              {connectorBulk.selectedIds.size > 0 && (
+                <BulkActionBar
+                  selectedCount={connectorBulk.selectedIds.size}
+                  totalCount={filteredConnectors.length}
+                  entityName="connector"
+                  onToggleAll={connectorBulk.toggleAll}
+                  onClear={connectorBulk.clear}
+                  onDelete={handleBulkDeleteConnectors}
+                  isAllSelected={connectorBulk.isAllSelected}
+                />
+              )}
+            </AnimatePresence>
+
             {connectorsView === "table" ? (
               <motion.div 
                 variants={itemVariants}
@@ -1131,6 +1203,13 @@ export default function SecurityPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50/80">
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={connectorBulk.isAllSelected && filteredConnectors.length > 0}
+                          onCheckedChange={() => connectorBulk.toggleAll()}
+                          className="border-slate-300"
+                        />
+                      </TableHead>
                       <TableHead className="font-semibold">Connector</TableHead>
                       <TableHead className="font-semibold">Type</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
@@ -1149,8 +1228,18 @@ export default function SecurityPage() {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           transition={{ delay: index * 0.03, type: "spring", stiffness: 300, damping: 24 }}
-                          className="group hover:bg-blue-50/50 transition-colors cursor-pointer"
+                          className={cn(
+                            "group hover:bg-blue-50/50 transition-colors cursor-pointer",
+                            connectorBulk.selectedIds.has(connector.id) && "bg-blue-50/50"
+                          )}
                         >
+                          <TableCell>
+                            <Checkbox
+                              checked={connectorBulk.selectedIds.has(connector.id)}
+                              onCheckedChange={() => connectorBulk.toggle(connector.id)}
+                              className="border-slate-300"
+                            />
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <motion.div 
@@ -1218,7 +1307,7 @@ export default function SecurityPage() {
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               <Activity className="w-3.5 h-3.5 text-blue-500" />
-                              <span className="text-slate-600 font-medium">{connector.sync_count.toLocaleString()}</span>
+                              <span className="text-slate-600 font-medium">{(connector.sync_count ?? 0).toLocaleString()}</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-slate-500">{formatLastSync(connector.last_sync_at)}</TableCell>
@@ -1382,7 +1471,7 @@ export default function SecurityPage() {
                           <span className="text-slate-500">Total Syncs</span>
                           <div className="flex items-center gap-1.5">
                             <Activity className="w-3.5 h-3.5 text-blue-500" />
-                            <span className="text-slate-700 font-medium">{connector.sync_count.toLocaleString()}</span>
+                            <span className="text-slate-700 font-medium">{(connector.sync_count ?? 0).toLocaleString()}</span>
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-sm">

@@ -46,7 +46,8 @@ export async function handler(event: SESWorkerEvent): Promise<SESWorkerResult> {
   const loginUrl = process.env.PLATFORM_LOGIN_URL || 'https://portal.example.com/login';
   const platformName = process.env.PLATFORM_NAME || 'License Portal';
   const supportEmail = process.env.PLATFORM_SUPPORT_EMAIL || 'support@example.com';
-  const tableName = process.env.DYNAMODB_TABLE_NAME || 'app_data';
+  const tableName = process.env.CONTROL_PLANE_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME;
+  if (!tableName) throw new Error('CONTROL_PLANE_TABLE_NAME or DYNAMODB_TABLE_NAME must be set');
   const projectName = process.env.PROJECT_NAME || 'app';
 
   const cwClient = new CloudWatchClient({ region });

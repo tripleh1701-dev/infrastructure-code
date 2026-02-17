@@ -20,7 +20,7 @@
  *   AWS_REGION                    — AWS region (default: us-east-1)
  *   AWS_ACCESS_KEY_ID             — IAM credentials
  *   AWS_SECRET_ACCESS_KEY         — IAM credentials
- *   DYNAMODB_TABLE_NAME           — Target table (default: app_data)
+ *   DYNAMODB_TABLE_NAME           — Target table (required, no default)
  *   COGNITO_USER_POOL_ID          — Cognito User Pool ID
  *   SSM_PREFIX                    — SSM path prefix (default: /accounts)
  *   TF_STATE_BUCKET               — Terraform state S3 bucket name
@@ -124,7 +124,8 @@ dotenv.config({ path: '.env.migration' });
 dotenv.config({ path: '.env' });
 
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'app_data';
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || process.env.CONTROL_PLANE_TABLE_NAME;
+if (!TABLE_NAME) { console.error('ERROR: DYNAMODB_TABLE_NAME or CONTROL_PLANE_TABLE_NAME must be set'); process.exit(1); }
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || '';
 const SSM_PREFIX = process.env.SSM_PREFIX || '/accounts';
 const TF_STATE_BUCKET = process.env.TF_STATE_BUCKET || 'license-portal-terraform-state';

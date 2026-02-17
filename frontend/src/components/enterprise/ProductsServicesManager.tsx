@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Package, Wrench, Plus, Edit2, Trash2, X, Save, ArrowLeft } from "lucide-react";
 import { productsService, servicesService } from "@/lib/api/services/products.service";
@@ -95,11 +95,7 @@ export function ProductsServicesManager({ onClose, onUpdate }: ProductsServicesM
       setServices((servicesRes.data || []).map(s => ({ id: s.id, name: s.name, description: s.description })));
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load data",
-        variant: "destructive",
-      });
+      toast.error("Failed to load data");
     } finally {
       setIsLoading(false);
     }
@@ -140,13 +136,9 @@ export function ProductsServicesManager({ onClose, onUpdate }: ProductsServicesM
       
       setNewItemName("");
       setNewItemError("");
-      toast({ title: `${activeTab === "products" ? "Product" : "Service"} added successfully` });
+      toast.success(`${activeTab === "products" ? "Product" : "Service"} added successfully`);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to add item",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to add item");
     } finally {
       setIsAdding(false);
     }
@@ -188,14 +180,10 @@ export function ProductsServicesManager({ onClose, onUpdate }: ProductsServicesM
       }
       
       cancelEdit();
-      toast({ title: "Updated successfully" });
+      toast.success("Updated successfully");
       onUpdate?.();
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to update");
     } finally {
       setIsSaving(false);
     }
@@ -226,14 +214,10 @@ export function ProductsServicesManager({ onClose, onUpdate }: ProductsServicesM
         setServices((prev) => prev.filter((s) => s.id !== deleteItem.id));
       }
       
-      toast({ title: "Deleted successfully" });
+      toast.success("Deleted successfully");
       onUpdate?.();
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete. It may be linked to an enterprise.",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to delete. It may be linked to an enterprise.");
     } finally {
       setIsDeleting(false);
       setDeleteItem(null);

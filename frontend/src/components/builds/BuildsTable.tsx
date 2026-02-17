@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BuildJob, useBuilds } from "@/hooks/useBuilds";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   CheckCircle,
   XCircle,
@@ -33,6 +34,10 @@ interface BuildsTableProps {
   onOpenDetail: (job: BuildJob) => void;
   onDelete: (job: BuildJob) => void;
   selectedBuildId?: string;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: () => void;
+  isAllSelected?: boolean;
 }
 
 export function BuildsTable({
@@ -42,6 +47,10 @@ export function BuildsTable({
   onOpenDetail,
   onDelete,
   selectedBuildId,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  isAllSelected,
 }: BuildsTableProps) {
   const { updateBuildJob } = useBuilds();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -80,10 +89,23 @@ export function BuildsTable({
           className={cn(
             "border-b border-border/40 hover:bg-primary/3 transition-all group cursor-pointer",
             isSelected && "bg-primary/5 border-l-2 border-l-primary shadow-sm",
-            isExpanded && "bg-muted/20"
+            isExpanded && "bg-muted/20",
+            selectedIds?.has(build.id) && "bg-blue-50/50"
           )}
           onClick={() => onOpenDetail(build)}
         >
+          {/* Bulk selection checkbox */}
+          {onToggleSelect && (
+            <td className="px-3 py-4 w-10">
+              <div onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  checked={selectedIds?.has(build.id) ?? false}
+                  onCheckedChange={() => onToggleSelect(build.id)}
+                  className="h-4 w-4"
+                />
+              </div>
+            </td>
+          )}
           <td className="px-3 py-4 w-10">
             <button
               onClick={(e) => {
@@ -216,7 +238,7 @@ export function BuildsTable({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
             >
-              <td colSpan={visibleColumns.length + 2} className="p-0">
+              <td colSpan={visibleColumns.length + (onToggleSelect ? 3 : 2)} className="p-0">
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
@@ -279,6 +301,15 @@ export function BuildsTable({
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-muted/30">
+              {onToggleSelect && (
+                <th className="px-3 py-3 w-10">
+                  <Checkbox
+                    checked={isAllSelected}
+                    onCheckedChange={() => onToggleSelectAll?.()}
+                    className="h-4 w-4"
+                  />
+                </th>
+              )}
               <th className="px-3 py-3 w-10" />
               {visibleColumns.map((col) => (
                 <th

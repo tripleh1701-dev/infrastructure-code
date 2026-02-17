@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import trumpetLogo from "@/assets/trumpet-logo.png";
 import { motion } from "framer-motion";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -262,11 +263,10 @@ export default function LoginPage() {
           {/* Logo */}
           <div className="flex items-center gap-3">
             <motion.div
-              className="w-11 h-11 rounded-xl flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, hsl(213 97% 47%), hsl(186 99% 51%))" }}
+              className="w-11 h-11 rounded-xl flex items-center justify-center overflow-hidden"
               whileHover={{ scale: 1.05, rotate: 5 }}
             >
-              <Sparkles className="w-6 h-6 text-white" />
+              <img src={trumpetLogo} alt="Trumpet" className="w-full h-full object-cover" />
             </motion.div>
             <div>
               <span className="text-xl font-bold text-white tracking-tight">Trumpet DevOps</span>
@@ -371,11 +371,8 @@ export default function LoginPage() {
         <div className="w-full max-w-[420px] space-y-7">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-6">
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, hsl(213 97% 47%), hsl(186 99% 51%))" }}
-            >
-              <Sparkles className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden">
+              <img src={trumpetLogo} alt="Trumpet" className="w-full h-full object-cover" />
             </div>
             <span className="text-xl font-bold gradient-text">Trumpet DevOps</span>
           </div>

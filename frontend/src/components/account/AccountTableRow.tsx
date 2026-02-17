@@ -26,11 +26,14 @@ import { cn } from "@/lib/utils";
 import { AccountWithDetails } from "@/hooks/useAccounts";
 import { useLicenses, LicenseWithDetails } from "@/hooks/useLicenses";
 import { AccountExpandedRow } from "./AccountExpandedRow";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface AccountTableRowProps {
   account: AccountWithDetails;
   index: number;
   isExpanded: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
   onToggleExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -44,6 +47,8 @@ export function AccountTableRow({
   account,
   index,
   isExpanded,
+  isSelected,
+  onToggleSelect,
   onToggleExpand,
   onEdit,
   onDelete,
@@ -69,10 +74,21 @@ export function AccountTableRow({
           "border-b border-[#f1f5f9] hover:bg-[#f8fafc] transition-all duration-200 group cursor-pointer",
           isExpanded && "bg-[#f0f7ff] border-l-4 border-l-[#0171EC] shadow-[inset_0_0_0_1px_rgba(1,113,236,0.15)]",
           !isExpanded && "border-l-4 border-l-transparent",
-          isDropdownOpen && "bg-[#f0f7ff] shadow-[inset_0_0_0_1px_rgba(1,113,236,0.2),0_2px_8px_-2px_rgba(1,113,236,0.15)]"
+          isDropdownOpen && "bg-[#f0f7ff] shadow-[inset_0_0_0_1px_rgba(1,113,236,0.2),0_2px_8px_-2px_rgba(1,113,236,0.15)]",
+          isSelected && "bg-blue-50/50"
         )}
         onClick={onToggleExpand}
       >
+        {onToggleSelect && (
+          <td className="px-3 py-4 w-10">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggleSelect(account.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="border-slate-300"
+            />
+          </td>
+        )}
         <td className="px-5 py-4 w-10">
           <motion.div
             animate={{ rotate: isExpanded ? 90 : 0 }}
@@ -220,7 +236,7 @@ export function AccountTableRow({
       <AnimatePresence>
         {isExpanded && (
           <tr className="bg-[#f8fbff]">
-            <td colSpan={7} className="p-0 border-l-4 border-l-[#0171EC]">
+            <td colSpan={8} className="p-0 border-l-4 border-l-[#0171EC]">
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}

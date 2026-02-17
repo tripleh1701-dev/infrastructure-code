@@ -56,7 +56,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useGroups } from "@/hooks/useGroups";
 import { useEnterprises } from "@/hooks/useEnterprises";
 import { useLicenses, LicenseFormData } from "@/hooks/useLicenses";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { useProvisioningStatus } from "@/hooks/useProvisioningStatus";
@@ -290,11 +290,7 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
     // Validate at least one complete license
     const validLicenses = pendingLicenses.filter(isLicenseComplete);
     if (validLicenses.length === 0) {
-      toast({
-        title: "License Required",
-        description: "Please add at least one complete license before saving.",
-        variant: "destructive",
-      });
+      toast.error("Please add at least one complete license before saving.");
       return;
     }
 
@@ -357,19 +353,12 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
       const cloudType = formData.cloudType as "public" | "private";
       startProvisioning(result.id, formData.accountName, cloudType);
 
-      toast({
-        title: "Account Created",
-        description: `Account "${formData.accountName}" created with ${validLicenses.length} license(s). Infrastructure provisioning started.`,
-      });
+      toast.success(`Account "${formData.accountName}" created with ${validLicenses.length} license(s). Infrastructure provisioning started.`);
 
       onOpenChange(false);
       onSuccess?.();
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create account. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to create account. Please try again.");
     } finally {
       setIsSaving(false);
     }

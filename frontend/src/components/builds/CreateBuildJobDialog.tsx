@@ -47,7 +47,7 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (!form.connector_name.trim()) return;
+    if (!form.connector_name.trim() || !form.pipeline) return;
     setIsSubmitting(true);
     try {
       await createBuildJob.mutateAsync({
@@ -130,7 +130,7 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <GitBranch className="w-4 h-4 text-muted-foreground" />
-              Pipeline
+              Pipeline <span className="text-destructive">*</span>
             </Label>
             <Select value={form.pipeline} onValueChange={(v) => setForm({ ...form, pipeline: v })}>
               <SelectTrigger disabled={pipelines.length === 0}>
@@ -153,7 +153,7 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!form.connector_name.trim() || isSubmitting}
+            disabled={!form.connector_name.trim() || !form.pipeline || isSubmitting}
             className="gap-2"
           >
             {isSubmitting ? (

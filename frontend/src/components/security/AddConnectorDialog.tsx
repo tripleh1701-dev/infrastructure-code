@@ -1065,15 +1065,11 @@ export function AddConnectorDialog({
             </Label>
             <Select value={selectedCredentialId} onValueChange={setSelectedCredentialId}>
               <SelectTrigger className="bg-background/50">
-                <SelectValue placeholder="Select a credential" />
+                <SelectValue placeholder={filteredCredentials.length === 0 ? "No credentials available" : "Select a credential"} />
               </SelectTrigger>
-              <SelectContent>
-                {filteredCredentials.length === 0 ? (
-                  <div className="p-3 text-center text-muted-foreground text-sm">
-                    No credentials available for selected workstreams
-                  </div>
-                ) : (
-                  filteredCredentials.map((cred) => (
+              {filteredCredentials.length > 0 && (
+                <SelectContent>
+                  {filteredCredentials.map((cred) => (
                     <SelectItem key={cred.id} value={cred.id}>
                       <div className="flex items-center gap-2">
                         <span>{cred.name}</span>
@@ -1082,9 +1078,9 @@ export function AddConnectorDialog({
                         </Badge>
                       </div>
                     </SelectItem>
-                  ))
-                )}
-              </SelectContent>
+                  ))}
+                </SelectContent>
+              )}
             </Select>
           </div>
 

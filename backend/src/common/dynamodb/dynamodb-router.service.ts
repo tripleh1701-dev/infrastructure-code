@@ -72,10 +72,12 @@ export class DynamoDBRouterService implements OnModuleInit {
 
     this.ssmClient = new SSMClient({ region, ...(credentials && { credentials }) });  
 
-    // Prefer explicit table name from Terraform, fall back to prefix-based convention
+    // Prefer explicit table name from Terraform — no hardcoded fallback
     this.sharedTableName = this.configService.get('CONTROL_PLANE_TABLE_NAME')
-      || this.configService.get('DYNAMODB_TABLE_NAME')
-      || `${this.configService.get('DYNAMODB_TABLE_PREFIX', 'app_')}data`;
+      || this.configService.get('DYNAMODB_TABLE_NAME');
+    if (!this.sharedTableName) {
+      throw new Error('CONTROL_PLANE_TABLE_NAME or DYNAMODB_TABLE_NAME must be set');
+    }
     
     this.logger.log(`DynamoDB Router initialized. Shared table: ${this.sharedTableName}`);
   }
