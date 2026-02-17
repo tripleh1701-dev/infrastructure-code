@@ -46,8 +46,8 @@ export class DynamoDBService implements OnModuleInit {
     });
 
     // Prefer explicit table name from Terraform — no hardcoded fallback
-    this.tableName = this.configService.get('CONTROL_PLANE_TABLE_NAME')
-      || this.configService.get('DYNAMODB_TABLE_NAME');
+    this.tableName = (this.configService.get<string>('CONTROL_PLANE_TABLE_NAME')
+      || this.configService.get<string>('DYNAMODB_TABLE_NAME')) as string;
     if (!this.tableName) {
       throw new Error('CONTROL_PLANE_TABLE_NAME or DYNAMODB_TABLE_NAME must be set');
     }
