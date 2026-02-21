@@ -349,7 +349,7 @@
   .responsive-grid {
     display: grid;
     gap: var(--spacing-md);
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 360px));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   }
 
   .responsive-grid-sm {
@@ -361,8 +361,7 @@
   .responsive-grid-lg {
     display: grid;
     gap: var(--spacing-lg);
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 360px));
-    justify-content: start;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   }
 
   /* Responsive Flex Containers */

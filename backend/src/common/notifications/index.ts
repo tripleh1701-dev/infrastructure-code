@@ -13,3 +13,7 @@ export {
   CredentialEmailParams,
   renderCredentialProvisionedEmail,
 } from './templates/credential-provisioned.template';
+export {
+  SnsNotificationService,
+  ProvisioningNotificationParams,
+} from './sns-notification.service';

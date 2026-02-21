@@ -16,3 +16,4 @@ export { handler as dynamodbProvisionerHandler } from './dynamodb-provisioner.ha
 export { handler as cognitoProvisionerHandler } from './cognito-provisioner.handler';
 export { handler as sesNotificationHandler } from './ses-notification.handler';
 export { handler as provisioningVerifierHandler } from './provisioning-verifier.handler';
+export { handler as postConfirmationHandler } from './post-confirmation.handler';

@@ -23,6 +23,7 @@ import { CredentialsModule } from './credentials/credentials.module';
 import { BuildsModule } from './builds/builds.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { ScheduledModule } from './scheduled/scheduled.module';
+import { EnvironmentsModule } from './environments/environments.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { ScheduledModule } from './scheduled/scheduled.module';
     ConnectorsModule,
     CredentialsModule,
     BuildsModule,
+    EnvironmentsModule,
     ProvisioningModule,
   ],
 })

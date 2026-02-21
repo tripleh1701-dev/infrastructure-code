@@ -67,6 +67,7 @@ export class DynamoDBRouterService implements OnModuleInit {
       marshallOptions: {
         removeUndefinedValues: true,
         convertEmptyValues: true,
+        convertClassInstanceToMap: true,
       },
     });
 

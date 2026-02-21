@@ -806,6 +806,51 @@ export type Database = {
         }
         Relationships: []
       }
+      environments: {
+        Row: {
+          account_id: string
+          connectivity_status: string
+          connector_name: string | null
+          created_at: string
+          description: string | null
+          enterprise_id: string
+          id: string
+          name: string
+          product_id: string | null
+          service_id: string | null
+          updated_at: string
+          workstream_id: string | null
+        }
+        Insert: {
+          account_id: string
+          connectivity_status?: string
+          connector_name?: string | null
+          created_at?: string
+          description?: string | null
+          enterprise_id: string
+          id?: string
+          name: string
+          product_id?: string | null
+          service_id?: string | null
+          updated_at?: string
+          workstream_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          connectivity_status?: string
+          connector_name?: string | null
+          created_at?: string
+          description?: string | null
+          enterprise_id?: string
+          id?: string
+          name?: string
+          product_id?: string | null
+          service_id?: string | null
+          updated_at?: string
+          workstream_id?: string | null
+        }
+        Relationships: []
+      }
       group_roles: {
         Row: {
           created_at: string
@@ -1114,6 +1159,53 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      provisioning_notification_subscribers: {
+        Row: {
+          account_id: string
+          cloud_type_filter: string[] | null
+          created_at: string
+          created_by: string | null
+          display_name: string | null
+          email: string
+          filter_type: string
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          cloud_type_filter?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          display_name?: string | null
+          email: string
+          filter_type?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          cloud_type_filter?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          display_name?: string | null
+          email?: string
+          filter_type?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provisioning_notification_subscribers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       role_permissions: {
         Row: {

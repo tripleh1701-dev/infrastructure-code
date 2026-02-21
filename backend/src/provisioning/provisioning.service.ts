@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { AccountProvisionerService, ProvisioningStatus } from '../common/dynamodb/account-provisioner.service';
 import { CloudWatchMetricsService } from '../common/metrics/cloudwatch-metrics.service';
+import { SnsNotificationService } from '../common/notifications/sns-notification.service';
 import { CreateProvisioningDto } from './dto/create-provisioning.dto';
 import { ProvisioningJobDto, ProvisioningResourceDto, ProvisioningStatusDto } from './dto/provisioning-status.dto';
 import {
@@ -26,6 +27,7 @@ export class ProvisioningService {
     private configService: ConfigService,
     private accountProvisioner: AccountProvisionerService,
     private metricsService: CloudWatchMetricsService,
+    private snsNotificationService: SnsNotificationService,
   ) {
     const awsRegion = this.configService.get('AWS_REGION', 'us-east-1');
     this.environment = this.configService.get('NODE_ENV', 'dev');
@@ -142,6 +144,14 @@ export class ProvisioningService {
         durationMs,
       });
 
+      // ── Send SNS deprovisioning notification ────────────────────────────
+      await this.snsNotificationService.notifyDeprovisioningEvent({
+        accountId,
+        cloudType,
+        status: 'completed',
+        durationMs,
+      });
+
       return { message: `Account ${accountId} deprovisioned successfully` };
     } catch (error: any) {
       const durationMs = Date.now() - startTime;
@@ -153,6 +163,16 @@ export class ProvisioningService {
         success: false,
         durationMs,
         errorCode: error.code || error.name || 'UnknownError',
+      });
+
+      // ── Send SNS deprovisioning failure notification ────────────────────
+      await this.snsNotificationService.notifyDeprovisioningEvent({
+        accountId,
+        cloudType,
+        status: 'failed',
+        durationMs,
+        errorCode: error.code || error.name || 'UnknownError',
+        message: error.message,
       });
 
       throw error;
@@ -212,6 +232,17 @@ export class ProvisioningService {
         durationMs,
         resourceCount: job.resources.length,
       });
+
+      // ── Send SNS email notification ─────────────────────────────────────
+      await this.snsNotificationService.notifyProvisioningEvent({
+        accountId: dto.accountId,
+        accountName: dto.accountName,
+        cloudType: resolvedCloudType as 'public' | 'private',
+        status: 'completed',
+        durationMs,
+        resourceCount: job.resources.length,
+        stackId: result.stackId,
+      });
     } catch (error: any) {
       const durationMs = Date.now() - startTime;
 
@@ -236,6 +267,17 @@ export class ProvisioningService {
         success: false,
         durationMs,
         errorCode: error.code || error.name || 'UnknownError',
+      });
+
+      // ── Send SNS failure notification ───────────────────────────────────
+      await this.snsNotificationService.notifyProvisioningEvent({
+        accountId: dto.accountId,
+        accountName: dto.accountName,
+        cloudType: resolvedCloudType as 'public' | 'private',
+        status: 'failed',
+        durationMs,
+        errorCode: error.code || error.name || 'UnknownError',
+        message: error.message,
       });
     }
   }

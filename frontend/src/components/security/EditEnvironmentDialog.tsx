@@ -1,0 +1,332 @@
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { X, Save, Globe, Loader2 } from "lucide-react";
+import type { EnvironmentRecord } from "@/hooks/useEnvironments";
+import { useWorkstreams } from "@/hooks/useWorkstreams";
+import { useAccountContext } from "@/contexts/AccountContext";
+import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { supabase } from "@/integrations/supabase/client";
+import { isExternalApi } from "@/lib/api/config";
+import { httpClient } from "@/lib/api/http-client";
+
+const CONNECTOR_OPTIONS = [
+  "GitHub", "Jira", "Cloud Foundry", "ServiceNow", "Jenkins", "GitLab", "Bitbucket", "Azure DevOps",
+];
+
+const formSchema = z.object({
+  name: z.string().min(1, "Environment Name is required").max(100),
+  description: z.string().max(500).optional(),
+  workstream_id: z.string().min(1, "Workstream is required"),
+  product_id: z.string().min(1, "Product is required"),
+  service_id: z.string().min(1, "Service is required"),
+  connector_name: z.string().optional(),
+  connectivity_status: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+interface EditEnvironmentDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  environment: EnvironmentRecord | null;
+  onSave: (id: string, data: Record<string, any>) => Promise<void>;
+}
+
+export function EditEnvironmentDialog({
+  open,
+  onOpenChange,
+  environment,
+  onSave,
+}: EditEnvironmentDialogProps) {
+  const { selectedAccount } = useAccountContext();
+  const { selectedEnterprise } = useEnterpriseContext();
+  const accountId = selectedAccount?.id;
+  const enterpriseId = selectedEnterprise?.id;
+
+  const { workstreams } = useWorkstreams(accountId, enterpriseId);
+  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
+  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchMeta = async () => {
+      if (isExternalApi()) {
+        const [pRes, sRes] = await Promise.all([
+          httpClient.get<any[]>("/api/products"),
+          httpClient.get<any[]>("/api/services"),
+        ]);
+        setProducts((pRes.data || []).map((p: any) => ({ id: p.id, name: p.name })));
+        setServices((sRes.data || []).map((s: any) => ({ id: s.id, name: s.name })));
+      } else {
+        const [pRes, sRes] = await Promise.all([
+          supabase.from("products").select("id, name"),
+          supabase.from("services").select("id, name"),
+        ]);
+        setProducts((pRes.data || []) as { id: string; name: string }[]);
+        setServices((sRes.data || []) as { id: string; name: string }[]);
+      }
+    };
+    fetchMeta();
+  }, []);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      workstream_id: "",
+      product_id: "",
+      service_id: "",
+      connector_name: "",
+      connectivity_status: "unknown",
+    },
+  });
+
+  useEffect(() => {
+    if (environment && open) {
+      form.reset({
+        name: environment.name,
+        description: environment.description || "",
+        workstream_id: environment.workstream_id || "",
+        product_id: environment.product_id || "",
+        service_id: environment.service_id || "",
+        connector_name: environment.connector_name || "",
+        connectivity_status: environment.connectivity_status || "unknown",
+      });
+    }
+  }, [environment, open, form]);
+
+  const handleSubmit = async (data: FormValues) => {
+    if (!environment) return;
+    setIsSaving(true);
+    try {
+      await onSave(environment.id, {
+        name: data.name,
+        description: data.description || undefined,
+        workstream_id: data.workstream_id,
+        product_id: data.product_id,
+        service_id: data.service_id,
+        connector_name: data.connector_name === "none" ? null : (data.connector_name || null),
+        connectivity_status: data.connectivity_status,
+      });
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Failed to update environment:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-[580px] p-0 overflow-hidden rounded-2xl border shadow-2xl bg-card"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        <VisuallyHidden>
+          <DialogTitle>Edit Environment</DialogTitle>
+        </VisuallyHidden>
+
+        {/* Gradient Header */}
+        <div className="relative bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-500 px-6 py-5">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjEpIi8+PC9zdmc+')] opacity-60" />
+          <div className="relative flex items-center gap-3">
+              <motion.div
+                className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center"
+                initial={{ rotate: -10, scale: 0.8 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 200 }}
+              >
+                <Globe className="w-6 h-6 text-white" />
+              </motion.div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Edit Environment</h2>
+                <p className="text-white/70 text-xs">Update environment settings and connectors</p>
+              </div>
+          </div>
+        </div>
+
+        {/* Form */}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1.5">
+                    Environment Name <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="e.g. Production - US East" className="bg-background" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} placeholder="Brief description" className="bg-background resize-none h-20" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="workstream_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1.5">
+                    Workstream <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue placeholder="Select workstream" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="z-[200] bg-popover border shadow-lg">
+                      {workstreams.map((ws) => (
+                        <SelectItem key={ws.id} value={ws.id}>{ws.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="product_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1.5">
+                    Product <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue placeholder="Select product" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="z-[200] bg-popover border shadow-lg">
+                      {products.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="service_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1.5">
+                    Service <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue placeholder="Select service" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="z-[200] bg-popover border shadow-lg">
+                      {services.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="connector_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Connector</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue placeholder="Select connector (optional)" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="z-[200] bg-popover border shadow-lg">
+                      <SelectItem value="none">None</SelectItem>
+                      {CONNECTOR_OPTIONS.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription className="text-xs">Optionally link a connector tool</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl">
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-xl gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
+              >
+                {isSaving ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                ) : (
+                  <><Save className="w-4 h-4" /> Save Changes</>
+                )}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

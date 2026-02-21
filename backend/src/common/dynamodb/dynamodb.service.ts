@@ -42,6 +42,7 @@ export class DynamoDBService implements OnModuleInit {
       marshallOptions: {
         removeUndefinedValues: true,
         convertEmptyValues: true,
+        convertClassInstanceToMap: true,
       },
     });
 

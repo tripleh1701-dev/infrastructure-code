@@ -96,7 +96,7 @@ export function AddGroupDialog({ open, onOpenChange }: AddGroupDialogProps) {
   );
 
   // Fetch licenses for current account/enterprise to get products/services
-  const { licenses = [] } = useLicenses(selectedAccount?.id);
+  const { licenses = [] } = useLicenses(selectedAccount?.id, selectedEnterprise?.id);
 
   // Filter licenses by enterprise
   const filteredLicenses = useMemo(() => {

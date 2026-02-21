@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import { instanceToPlain } from 'class-transformer';
 import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { CreatePipelineDto, PipelineStatus } from './dto/create-pipeline.dto';
@@ -207,8 +208,8 @@ export class PipelinesService {
       serviceIds: dto.serviceIds || [],
       deploymentType: dto.deploymentType || 'cloud',
       status,
-      nodes: dto.nodes || [],
-      edges: dto.edges || [],
+      nodes: instanceToPlain(dto.nodes || []),
+      edges: instanceToPlain(dto.edges || []),
       yamlContent: dto.yamlContent || null,
       createdBy: user.sub,
       createdAt: now,
@@ -258,11 +259,15 @@ export class PipelinesService {
       ['yamlContent', 'yamlContent'],
     ];
 
+    const plainArrayFields = new Set<string>(['nodes', 'edges']);
+
     for (const [dtoKey, dbKey] of fieldMap) {
       if (dto[dtoKey] !== undefined) {
         updateExpressions.push(`#${dbKey} = :${dbKey}`);
         names[`#${dbKey}`] = dbKey;
-        values[`:${dbKey}`] = dto[dtoKey];
+        values[`:${dbKey}`] = plainArrayFields.has(dbKey)
+          ? instanceToPlain(dto[dtoKey])
+          : dto[dtoKey];
       }
     }
 
@@ -342,8 +347,8 @@ export class PipelinesService {
       serviceIds: existing.serviceIds,
       deploymentType: existing.deploymentType,
       status: PipelineStatus.DRAFT,
-      nodes: existing.nodes,
-      edges: existing.edges,
+      nodes: instanceToPlain(existing.nodes) as any[],
+      edges: instanceToPlain(existing.edges) as any[],
       yamlContent: existing.yamlContent,
     };
 

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { AddressFields } from "@/components/account/AddressFields";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -863,56 +864,14 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
                           </span>
                         </div>
 
-                        <div className="form-grid">
-                          <div className="space-y-2 md:col-span-2">
-                            <Label className="text-sm">Address Line 1 <span className="text-destructive">*</span></Label>
-                            <Input
-                              {...register(`addresses.${index}.line1`)}
-                              placeholder="Street address"
-                              className={cn("h-10 input-glow", errors.addresses?.[index]?.line1 && "border-destructive")}
-                            />
-                          </div>
-                          <div className="space-y-2 md:col-span-2">
-                            <Label className="text-sm">Address Line 2</Label>
-                            <Input
-                              {...register(`addresses.${index}.line2`)}
-                              placeholder="Apt, suite, etc. (optional)"
-                              className="h-10 input-glow"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">City <span className="text-destructive">*</span></Label>
-                            <Input
-                              {...register(`addresses.${index}.city`)}
-                              placeholder="City"
-                              className={cn("h-10 input-glow", errors.addresses?.[index]?.city && "border-destructive")}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">State / Province <span className="text-destructive">*</span></Label>
-                            <Input
-                              {...register(`addresses.${index}.state`)}
-                              placeholder="State"
-                              className={cn("h-10 input-glow", errors.addresses?.[index]?.state && "border-destructive")}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">Country <span className="text-destructive">*</span></Label>
-                            <Input
-                              {...register(`addresses.${index}.country`)}
-                              placeholder="Country"
-                              className={cn("h-10 input-glow", errors.addresses?.[index]?.country && "border-destructive")}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">Postal Code <span className="text-destructive">*</span></Label>
-                            <Input
-                              {...register(`addresses.${index}.postalCode`)}
-                              placeholder="Postal code"
-                              className={cn("h-10 input-glow", errors.addresses?.[index]?.postalCode && "border-destructive")}
-                            />
-                          </div>
-                        </div>
+                        <AddressFields
+                          index={index}
+                          control={control}
+                          register={register}
+                          errors={errors}
+                          setValue={setValue}
+                          watch={watch}
+                        />
                       </motion.div>
                     ))}
                   </div>
