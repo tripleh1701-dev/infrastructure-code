@@ -37,3 +37,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "post_confirmation_lambda_arn" {
+  description = "ARN of the Post-Confirmation Lambda trigger (empty = no trigger)"
+  type        = string
+  default     = ""
+}

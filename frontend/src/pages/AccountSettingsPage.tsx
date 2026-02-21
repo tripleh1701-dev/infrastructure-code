@@ -72,6 +72,7 @@ import { FilterContextIndicator } from "@/components/layout/FilterContextIndicat
 import { WorkstreamSummary } from "@/components/workstream/WorkstreamSummary";
 import { useAccountGlobalAccess } from "@/hooks/useAccountGlobalAccess";
 import { ProvisioningStatusBanner } from "@/components/account/ProvisioningStatusBanner";
+import { NotificationPreferences } from "@/components/notifications/NotificationPreferences";
 import { PermissionGate } from "@/components/auth/PermissionGate";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
@@ -854,6 +855,9 @@ export default function AccountSettingsPage() {
 
           {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
+            {/* Provisioning Notification Preferences */}
+            <NotificationPreferences />
+
             {/* Workstream Summary Section */}
             <WorkstreamSummary />
 

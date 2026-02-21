@@ -16,3 +16,8 @@ output "alarm_names" {
     aws_cloudwatch_metric_alarm.sns_delivery_failures.alarm_name,
   ]
 }
+
+output "provisioning_sns_topic_arn" {
+  description = "SNS topic ARN for provisioning lifecycle notifications"
+  value       = length(aws_sns_topic.provisioning) > 0 ? aws_sns_topic.provisioning[0].arn : ""
+}

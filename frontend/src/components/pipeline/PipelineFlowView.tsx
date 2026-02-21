@@ -8,7 +8,7 @@ import { Node, Edge } from "@xyflow/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Monitor, FlaskConical, Rocket, Server,
-  ArrowRight, ChevronUp, X,
+  ChevronUp, X,
   Settings, Clock, Loader2, AlertCircle, AlertTriangle,
   CheckCircle, XCircle, SkipForward, Mail, MessageSquare,
   Bell, Webhook, RotateCcw, Zap,
@@ -63,7 +63,7 @@ const STAGE_THEMES: Record<string, { bg: string; border: string; headerBg: strin
   env_qa: { bg: "#dbeafe", border: "#2563eb", headerBg: "#2563eb", text: "#ffffff", icon: FlaskConical },
   env_staging: { bg: "#fef9c3", border: "#ca8a04", headerBg: "#ca8a04", text: "#ffffff", icon: Server },
   env_uat: { bg: "#f3e8ff", border: "#7c3aed", headerBg: "#7c3aed", text: "#ffffff", icon: FlaskConical },
-  env_prod: { bg: "#fee2e2", border: "#dc2626", headerBg: "#dc2626", text: "#ffffff", icon: Rocket },
+  env_prod: { bg: "#ccfbf1", border: "#0d9488", headerBg: "#0d9488", text: "#ffffff", icon: Rocket },
 };
 
 const DEFAULT_STAGE_THEME = { bg: "#e0e7ff", border: "#4f46e5", headerBg: "#4f46e5", text: "#ffffff", icon: Server };
@@ -196,7 +196,15 @@ function PipelineFlowViewComponent({ nodes, edges, onUpdateNode }: PipelineFlowV
                 )}
               </motion.div>
 
-              {idx < stages.length - 1 && <StageArrow delay={0.2 + idx * 0.1} />}
+              {idx < stages.length - 1 && (
+                <StageConnector
+                  delay={0.2 + idx * 0.1}
+                  fromTheme={theme}
+                  toTheme={STAGE_THEMES[stages[idx + 1].nodeType] || DEFAULT_STAGE_THEME}
+                  hasFromNodes={stage.children.length > 0}
+                  hasToNodes={stages[idx + 1].children.length > 0}
+                />
+              )}
             </div>
           );
         })}
@@ -515,19 +523,76 @@ function EventActionSelect({ label, icon: Icon, bgClass, labelClass, iconClass, 
   );
 }
 
-/** Horizontal arrow connector between stages */
-function StageArrow({ delay = 0 }: { delay?: number }) {
+/** Subtle node-to-node connector between environment stages */
+interface StageConnectorProps {
+  delay?: number;
+  fromTheme: { border: string; headerBg: string };
+  toTheme: { border: string; headerBg: string };
+  hasFromNodes: boolean;
+  hasToNodes: boolean;
+}
+
+function StageConnector({ delay = 0, fromTheme, toTheme, hasFromNodes, hasToNodes }: StageConnectorProps) {
+  // Gradient id must be unique per connector pair
+  const gradId = `grad-${fromTheme.border.replace("#", "")}-${toTheme.border.replace("#", "")}`;
+
+  // When both stages have nodes, draw a curved SVG path that arcs from the bottom
+  // of the last node (left side) to the top of the first node (right side).
+  // The connector sits at approximately node-centre height.
+  const nodeYOffset = hasFromNodes && hasToNodes ? 120 : 48;
+
   return (
     <motion.div
-      initial={{ opacity: 0, scaleX: 0 }}
-      animate={{ opacity: 1, scaleX: 1 }}
-      transition={{ delay, duration: 0.2 }}
-      className="flex items-center self-start mt-[14px] mx-1"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay, duration: 0.5 }}
+      className="flex items-start justify-center flex-shrink-0"
+      style={{ width: 72, marginTop: nodeYOffset }}
     >
-      <div className="w-8 h-px bg-border" />
-      <ArrowRight className="w-4 h-4 text-muted-foreground -ml-1" />
+      <svg
+        width="72"
+        height="40"
+        viewBox="0 0 72 40"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="overflow-visible"
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={fromTheme.border} stopOpacity="0.5" />
+            <stop offset="100%" stopColor={toTheme.border} stopOpacity="0.5" />
+          </linearGradient>
+          <marker
+            id={`arrow-${gradId}`}
+            markerWidth="6"
+            markerHeight="6"
+            refX="5"
+            refY="3"
+            orient="auto"
+          >
+            <path d="M0,0 L0,6 L6,3 z" fill={toTheme.border} fillOpacity="0.6" />
+          </marker>
+        </defs>
+
+        {/* Subtle dashed path from left-centre to right-centre */}
+        <motion.path
+          d="M 2 20 C 20 20, 52 20, 70 20"
+          stroke={`url(#${gradId})`}
+          strokeWidth="1.5"
+          strokeDasharray="4 3"
+          strokeLinecap="round"
+          markerEnd={`url(#arrow-${gradId})`}
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ delay: delay + 0.1, duration: 0.6, ease: "easeOut" }}
+        />
+
+        {/* Small dot at start */}
+        <circle cx="2" cy="20" r="2.5" fill={fromTheme.border} fillOpacity="0.4" />
+      </svg>
     </motion.div>
   );
 }
 
 export const PipelineFlowView = memo(PipelineFlowViewComponent);
+

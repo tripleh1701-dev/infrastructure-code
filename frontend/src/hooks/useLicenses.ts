@@ -46,19 +46,21 @@ export interface LicenseFormData {
   notice_days: number;
 }
 
-export function useLicenses(accountId?: string) {
+export function useLicenses(accountId?: string, enterpriseId?: string) {
   const queryClient = useQueryClient();
 
   const licensesQuery = useQuery({
-    queryKey: ["licenses", accountId],
+    queryKey: ["licenses", accountId, enterpriseId],
     queryFn: async () => {
       if (!accountId) return [];
 
       if (isExternalApi()) {
         // Fetch licenses and licensed entities (product/service names) in parallel
+        const params: Record<string, string> = { accountId };
+        if (enterpriseId) params.enterpriseId = enterpriseId;
         const [licensesRes, entitiesRes] = await Promise.all([
-          httpClient.get<any[]>('/api/licenses', { params: { accountId } }),
-          httpClient.get<{ products: { id: string; name: string }[]; services: { id: string; name: string }[] }>('/api/licenses/licensed-entities', { params: { accountId } }),
+          httpClient.get<any[]>('/api/licenses', { params }),
+          httpClient.get<{ products: { id: string; name: string }[]; services: { id: string; name: string }[] }>('/api/licenses/licensed-entities', { params }),
         ]);
         if (licensesRes.error) throw new Error(licensesRes.error.message);
         

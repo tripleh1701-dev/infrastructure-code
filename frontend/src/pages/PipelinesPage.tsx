@@ -81,6 +81,7 @@ import {
   X,
   Archive,
   XCircle,
+  Copy,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
@@ -214,7 +215,7 @@ export default function PipelinesPage() {
   const navigate = useNavigate();
   const { enterprises } = useEnterpriseContext();
   const { canCreate, canEdit, canDelete, hasAccess } = usePermissionCheck("pipelines");
-  const { pipelines: dbPipelines, isLoading: pipelinesLoading, deletePipeline, updatePipeline, isDeleting } = usePipelines();
+  const { pipelines: dbPipelines, isLoading: pipelinesLoading, deletePipeline, updatePipeline, duplicatePipeline, isDeleting, isDuplicating } = usePipelines();
   const { isPipelineLinked, getLinkedBuildJobs } = usePipelineBuildLinks();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pipelineToDelete, setPipelineToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -768,7 +769,7 @@ export default function PipelinesPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
-                                  <DropdownMenuItem className="gap-2">
+                                   <DropdownMenuItem className="gap-2">
                                     <Play className="w-4 h-4" /> Run Pipeline
                                   </DropdownMenuItem>
                                   <DropdownMenuItem className="gap-2">
@@ -777,6 +778,21 @@ export default function PipelinesPage() {
                                   <DropdownMenuItem className="gap-2">
                                     <Settings2 className="w-4 h-4" /> Settings
                                   </DropdownMenuItem>
+                                  {canCreate && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="gap-2"
+                                        disabled={isDuplicating}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          duplicatePipeline(pipeline.id);
+                                        }}
+                                      >
+                                        <Copy className="w-4 h-4" /> Duplicate
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                   <DropdownMenuSeparator />
                                   {canEdit && (
                                     <>
@@ -960,6 +976,21 @@ export default function PipelinesPage() {
                                     <DropdownMenuItem className="gap-2"><Play className="w-4 h-4" /> Run</DropdownMenuItem>
                                     <DropdownMenuItem className="gap-2"><Eye className="w-4 h-4" /> History</DropdownMenuItem>
                                     <DropdownMenuItem className="gap-2"><Settings2 className="w-4 h-4" /> Settings</DropdownMenuItem>
+                                    {canCreate && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="gap-2"
+                                          disabled={isDuplicating}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            duplicatePipeline(pipeline.id);
+                                          }}
+                                        >
+                                          <Copy className="w-4 h-4" /> Duplicate
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
                                     {canEdit && (
                                       <>
                                         <DropdownMenuSeparator />

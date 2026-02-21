@@ -15,7 +15,10 @@ import type {
   ApiResponse, 
   ProvisioningJob, 
   StartProvisioningInput,
-  ProvisioningEvent 
+  ProvisioningEvent,
+  BackendProvisioningJob,
+  BackendProvisioningStatus,
+  ProvisioningResource,
 } from '../types';
 
 // Endpoints
@@ -27,17 +30,73 @@ const ENDPOINTS = {
 };
 
 /**
+ * Map backend resource DTO to frontend ProvisioningResource
+ */
+function mapBackendResource(r: BackendProvisioningJob['resources'][number]): ProvisioningResource {
+  return {
+    logicalId: r.name,
+    type: r.type,
+    status: r.status === 'active' ? 'CREATE_COMPLETE' 
+         : r.status === 'creating' ? 'CREATE_IN_PROGRESS'
+         : r.status === 'failed' ? 'CREATE_FAILED'
+         : r.status === 'deleting' ? 'DELETE_IN_PROGRESS'
+         : 'NOT_STARTED',
+    physicalId: r.arn,
+  };
+}
+
+/**
+ * Map backend ProvisioningJobDto to frontend ProvisioningJob
+ */
+function mapBackendJob(job: BackendProvisioningJob): ProvisioningJob {
+  return {
+    id: job.id,
+    accountId: job.accountId,
+    accountName: job.accountName,
+    cloudType: job.cloudType === 'hybrid' ? 'private' : job.cloudType,
+    status: job.status,
+    message: job.message,
+    progress: job.progress,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    stackId: job.stackId,
+    resources: job.resources?.map(mapBackendResource) || [],
+  };
+}
+
+/**
+ * Map backend ProvisioningStatusDto to frontend ProvisioningJob
+ */
+function mapBackendStatus(status: BackendProvisioningStatus): ProvisioningJob {
+  return {
+    id: status.accountId, // Status DTO doesn't have a separate id
+    accountId: status.accountId,
+    accountName: status.accountName,
+    cloudType: status.cloudType === 'hybrid' ? 'private' : status.cloudType,
+    status: status.status,
+    message: status.message,
+    progress: status.progress,
+    startedAt: status.startedAt,
+    completedAt: status.completedAt,
+    stackId: status.stackId,
+    error: status.error,
+    resources: status.resources?.map(mapBackendResource) || [],
+  };
+}
+
+/**
  * Start infrastructure provisioning for a new account
  */
 export async function startProvisioning(
   input: StartProvisioningInput
 ): Promise<ApiResponse<ProvisioningJob>> {
   if (!isExternalApi()) {
-    // Return simulated response when not using external API
     return simulateStartProvisioning(input);
   }
 
-  return httpClient.post<ProvisioningJob>(ENDPOINTS.provisioning, input);
+  const response = await httpClient.post<BackendProvisioningJob>(ENDPOINTS.provisioning, input);
+  if (response.error || !response.data) return { data: null as any, error: response.error };
+  return { data: mapBackendJob(response.data), error: null };
 }
 
 /**
@@ -50,7 +109,9 @@ export async function getProvisioningStatus(
     return simulateGetStatus(accountId);
   }
 
-  return httpClient.get<ProvisioningJob>(ENDPOINTS.provisioningStatus(accountId));
+  const response = await httpClient.get<BackendProvisioningStatus>(ENDPOINTS.provisioningStatus(accountId));
+  if (response.error || !response.data) return { data: null as any, error: response.error };
+  return { data: mapBackendStatus(response.data), error: null };
 }
 
 /**

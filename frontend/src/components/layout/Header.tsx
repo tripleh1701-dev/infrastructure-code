@@ -7,7 +7,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useEnterpriseContext, GLOBAL_ENTERPRISE_ID } from "@/contexts/EnterpriseContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEffect, useState, useMemo } from "react";
 import { isExternalApi } from "@/lib/api/config";
@@ -24,6 +25,7 @@ interface HeaderProps {
 export function Header({ title, subtitle, actions }: HeaderProps) {
   const { enterprises, selectedEnterprise, setSelectedEnterprise, isLoading: enterpriseLoading, getEnterpriseDisplayName } = useEnterpriseContext();
   const { accounts, selectedAccount, setSelectedAccount, isLoading: accountsLoading } = useAccountContext();
+  const { isSuperAdmin } = useAuth();
   
   const [accountEnterpriseIds, setAccountEnterpriseIds] = useState<string[]>([]);
   const [loadingEnterpriseIds, setLoadingEnterpriseIds] = useState(false);
@@ -58,7 +60,8 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
         setAccountEnterpriseIds(uniqueIds);
 
-        if (uniqueIds.length > 0 && selectedEnterprise && !uniqueIds.includes(selectedEnterprise.id)) {
+        // For non-super admins, reset enterprise if not in licensed list
+        if (!isSuperAdmin && uniqueIds.length > 0 && selectedEnterprise && !uniqueIds.includes(selectedEnterprise.id)) {
           const firstEnterprise = enterprises.find(e => e.id === uniqueIds[0]);
           if (firstEnterprise) {
             setSelectedEnterprise(firstEnterprise);
@@ -75,9 +78,13 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   }, [selectedAccount?.id, enterprises, selectedEnterprise, setSelectedEnterprise]);
 
   const filteredEnterprises = useMemo(() => {
-    if (accountEnterpriseIds.length === 0) return [];
-    return enterprises.filter(e => accountEnterpriseIds.includes(e.id));
-  }, [enterprises, accountEnterpriseIds]);
+    // Super admins see all enterprises
+    if (isSuperAdmin) return enterprises;
+    // Non-super admins: filter by license linkage, always include Global
+    if (accountEnterpriseIds.length === 0) return enterprises.filter(e => e.id === GLOBAL_ENTERPRISE_ID);
+    const filtered = enterprises.filter(e => accountEnterpriseIds.includes(e.id) || e.id === GLOBAL_ENTERPRISE_ID);
+    return filtered;
+  }, [enterprises, accountEnterpriseIds, isSuperAdmin]);
 
   const hasDuplicateNamesInFiltered = (enterpriseName: string): boolean => {
     return filteredEnterprises.filter(e => e.name === enterpriseName).length > 1;
@@ -90,7 +97,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
     return enterprise.name;
   };
 
-  const hasNoLicenses = selectedAccount && !loadingEnterpriseIds && accountEnterpriseIds.length === 0;
+  const hasNoLicenses = !isSuperAdmin && selectedAccount && !loadingEnterpriseIds && accountEnterpriseIds.length === 0;
 
 
   return (

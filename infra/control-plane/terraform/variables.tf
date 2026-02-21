@@ -136,3 +136,27 @@ variable "platform_support_email" {
   type        = string
   default     = "support@example.com"
 }
+
+variable "provisioning_notification_email" {
+  description = "(Legacy) Single email for provisioning SNS notifications."
+  type        = string
+  default     = ""
+}
+
+variable "provisioning_notification_emails" {
+  description = "Emails that receive ALL provisioning events"
+  type        = list(string)
+  default     = []
+}
+
+variable "provisioning_failure_only_emails" {
+  description = "Emails that receive ONLY provisioning failure events"
+  type        = list(string)
+  default     = []
+}
+
+variable "provisioning_cloud_type_emails" {
+  description = "Map of email → cloud types to filter. Example: { \"ops@co.com\" = [\"private\"] }"
+  type        = map(list(string))
+  default     = {}
+}

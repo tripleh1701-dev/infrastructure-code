@@ -131,6 +131,18 @@ variable "enable_ses" {
   default     = false
 }
 
+variable "enable_sns_publish" {
+  description = "Whether to create SNS Publish IAM policy for provisioning notifications"
+  type        = bool
+  default     = false
+}
+
+variable "sns_topic_arn" {
+  description = "SNS topic ARN for provisioning notifications"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Resource tags"
   type        = map(string)

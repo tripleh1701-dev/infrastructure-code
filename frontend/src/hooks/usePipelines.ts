@@ -264,6 +264,46 @@ export function usePipelines() {
     },
   });
 
+  // Duplicate a pipeline
+  const duplicatePipelineMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.post<any>(
+          `/api/pipelines/${id}/duplicate`,
+          {},
+        );
+        if (error) throw new Error(error.message);
+        return mapExternalPipeline(data);
+      }
+
+      // Supabase path: fetch original, then insert a copy
+      const { data: original, error: fetchErr } = await supabase
+        .from("pipelines")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (fetchErr || !original) throw new Error("Pipeline not found");
+
+      const { id: _id, created_at, updated_at, ...rest } = original as any;
+      const { data, error } = await supabase
+        .from("pipelines")
+        .insert({ ...rest, name: `${original.name} (Copy)`, status: "draft" })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Pipeline;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      toast.success(`Pipeline duplicated as "${data.name}"`);
+    },
+    onError: (error) => {
+      toast.error("Failed to duplicate pipeline: " + error.message);
+    },
+  });
+
   return {
     pipelines,
     isLoading,
@@ -273,9 +313,11 @@ export function usePipelines() {
     createPipeline: createPipelineMutation.mutateAsync,
     updatePipeline: updatePipelineMutation.mutateAsync,
     deletePipeline: deletePipelineMutation.mutateAsync,
+    duplicatePipeline: duplicatePipelineMutation.mutateAsync,
     isCreating: createPipelineMutation.isPending,
     isUpdating: updatePipelineMutation.isPending,
     isDeleting: deletePipelineMutation.isPending,
+    isDuplicating: duplicatePipelineMutation.isPending,
     selectedAccountId,
     selectedEnterpriseId,
   };

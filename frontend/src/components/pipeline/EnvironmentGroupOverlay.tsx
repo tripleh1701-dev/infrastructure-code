@@ -76,15 +76,25 @@ export function generateEnvFlowEdges(
 }
 
 /** Default dimensions for environment group nodes */
-export const ENV_GROUP_WIDTH = 220;
+export const ENV_GROUP_WIDTH = 260;
 export const ENV_GROUP_HEIGHT = 200;
-export const ENV_GROUP_SPACING = 300;
+export const ENV_GROUP_SPACING = 340;
 
 /** Child node dimensions for layout */
+const CHILD_NODE_WIDTH = 170;
 const CHILD_NODE_HEIGHT = 55;
 const CHILD_VERTICAL_GAP = 20;
-const CHILD_TOP_OFFSET = 50;
+const CHILD_TOP_OFFSET = 55;
 const CHILD_LEFT_PADDING = 40;
+
+/** Compute group dimensions to snugly fit all children */
+function computeGroupSize(childCount: number): { width: number; height: number } {
+  const count = Math.max(childCount, 1);
+  return {
+    width: CHILD_LEFT_PADDING + CHILD_NODE_WIDTH + 40,          // left pad + node + right pad
+    height: CHILD_TOP_OFFSET + count * (CHILD_NODE_HEIGHT + CHILD_VERTICAL_GAP) + 24,
+  };
+}
 
 /**
  * Determines which workflow nodes belong to which environment node
@@ -187,19 +197,22 @@ export function autoLayoutWithGroups(
 
   orderedEnvs.forEach((group) => {
     const children = groupChildMap.get(group.id) || [];
-    const childCount = Math.max(children.length, 1);
-    const groupHeight =
-      CHILD_TOP_OFFSET +
-      childCount * (CHILD_NODE_HEIGHT + CHILD_VERTICAL_GAP) +
-      20;
-    const groupWidth = ENV_GROUP_WIDTH;
+    const { width: groupWidth, height: groupHeight } = computeGroupSize(children.length);
 
-    // Convert env node to environmentGroup type
+    // Convert env node to environmentGroup type, preserving existing size if already set
+    const existingStyle = group.style as Record<string, number> | undefined;
+    const finalWidth = (existingStyle?.width && existingStyle.width >= groupWidth)
+      ? existingStyle.width
+      : groupWidth;
+    const finalHeight = (existingStyle?.height && existingStyle.height >= groupHeight)
+      ? existingStyle.height
+      : groupHeight;
+
     layoutedNodes.push({
       ...group,
       type: "environmentGroup",
       position: { x: currentX, y: startY },
-      style: { ...group.style, width: groupWidth, height: groupHeight },
+      style: { ...group.style, width: finalWidth, height: finalHeight },
     });
 
     // Position children vertically inside group
@@ -213,6 +226,7 @@ export function autoLayoutWithGroups(
         },
         parentId: group.id,
         extent: "parent" as const,
+        expandParent: true,
       });
 
       // Connect children sequentially within the group
@@ -236,7 +250,7 @@ export function autoLayoutWithGroups(
       }
     });
 
-    currentX += groupWidth + 80;
+    currentX += finalWidth + 80;
   });
 
   // Non-parented non-env orphan nodes: place after all groups

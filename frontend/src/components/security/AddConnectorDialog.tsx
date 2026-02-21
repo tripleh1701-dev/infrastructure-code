@@ -382,14 +382,14 @@ export function AddConnectorDialog({
     return Array.from(allConnectors);
   }, [selectedWorkstreamIds, selectedCategory, workstreams]);
 
-  // Get filtered credentials based on selected workstreams AND connector tool
+  // Get filtered credentials based on selected workstreams AND category
   const filteredCredentials = useMemo(() => {
-    if (!selectedWorkstreamIds || selectedWorkstreamIds.length === 0) return [];
+    if (!selectedWorkstreamIds || selectedWorkstreamIds.length === 0 || !selectedConnector) return [];
     
     return credentials.filter(cred => 
       cred.status === "active" &&
-      cred.workstreams?.some(ws => selectedWorkstreamIds.includes(ws.id)) &&
-      (!selectedConnector || cred.connector.toLowerCase() === selectedConnector.toLowerCase())
+      cred.connector.toLowerCase() === selectedConnector.toLowerCase() &&
+      cred.workstreams?.some(ws => selectedWorkstreamIds.includes(ws.id))
     );
   }, [credentials, selectedWorkstreamIds, selectedConnector]);
 
@@ -1067,9 +1067,13 @@ export function AddConnectorDialog({
               <SelectTrigger className="bg-background/50">
                 <SelectValue placeholder={filteredCredentials.length === 0 ? "No credentials available" : "Select a credential"} />
               </SelectTrigger>
-              {filteredCredentials.length > 0 && (
-                <SelectContent>
-                  {filteredCredentials.map((cred) => (
+              <SelectContent className="z-[200] bg-popover border shadow-lg">
+                {filteredCredentials.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-sm text-muted-foreground">
+                    No matching credentials found for {selectedConnector}
+                  </div>
+                ) : (
+                  filteredCredentials.map((cred) => (
                     <SelectItem key={cred.id} value={cred.id}>
                       <div className="flex items-center gap-2">
                         <span>{cred.name}</span>
@@ -1078,9 +1082,9 @@ export function AddConnectorDialog({
                         </Badge>
                       </div>
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              )}
+                  ))
+                )}
+              </SelectContent>
             </Select>
           </div>
 

@@ -178,6 +178,22 @@ resource "aws_iam_role_policy" "step_functions" {
   })
 }
 
+# SNS publish access (for provisioning notifications)
+resource "aws_iam_role_policy" "sns_publish" {
+  count = var.enable_sns_publish ? 1 : 0
+  name  = "${var.function_name}-sns-publish"
+  role  = aws_iam_role.worker.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sns:Publish"]
+      Resource = var.sns_topic_arn
+    }]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "worker" {
   name              = "/aws/lambda/${var.function_name}"
   retention_in_days = var.log_retention_days

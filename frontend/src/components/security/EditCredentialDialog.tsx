@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -55,6 +55,9 @@ import {
   Box,
   Wrench,
   Layers,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from "lucide-react";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
@@ -76,6 +79,106 @@ const authTypeDisplayMap: Record<string, string> = {
   bot_token: "Bot Token",
   webhook: "Webhook",
   app_password: "App Password",
+};
+
+// Connector-specific auth field configurations (same as RotateCredentialDialog)
+const CONNECTOR_AUTH_CONFIG: Record<string, Record<string, { label: string; type: "text" | "password"; placeholder: string }[]>> = {
+  Jira: {
+    username_api_key: [
+      { label: "Username/Email", type: "text", placeholder: "Enter your Jira username or email" },
+      { label: "API Key", type: "password", placeholder: "Enter your API key" },
+    ],
+    personal_access_token: [
+      { label: "Personal Access Token", type: "password", placeholder: "Enter your PAT" },
+    ],
+  },
+  GitHub: {
+    username_token: [
+      { label: "Username", type: "text", placeholder: "Enter your GitHub username" },
+      { label: "Personal Access Token", type: "password", placeholder: "Enter your Personal Access Token" },
+    ],
+    github_app: [
+      { label: "GitHub Installation ID", type: "text", placeholder: "Enter Installation ID" },
+      { label: "GitHub Application ID", type: "text", placeholder: "Enter Application ID" },
+      { label: "GitHub Private Key", type: "password", placeholder: "Enter Private Key" },
+    ],
+  },
+  GitLab: {
+    personal_access_token: [
+      { label: "Personal Access Token", type: "password", placeholder: "Enter your Personal Access Token" },
+    ],
+  },
+  "Azure Repos": {
+    personal_access_token: [
+      { label: "Personal Access Token", type: "password", placeholder: "Enter your Azure DevOps PAT" },
+    ],
+  },
+  Bitbucket: {
+    app_password: [
+      { label: "Username", type: "text", placeholder: "Enter your Bitbucket username" },
+      { label: "App Password", type: "password", placeholder: "Enter your App Password" },
+    ],
+  },
+  Jenkins: {
+    username_token: [
+      { label: "Username", type: "text", placeholder: "Enter your Jenkins username" },
+      { label: "API Token", type: "password", placeholder: "Enter your API Token" },
+    ],
+  },
+  ServiceNow: {
+    basic_auth: [
+      { label: "Username", type: "text", placeholder: "Enter your ServiceNow username" },
+      { label: "Password", type: "password", placeholder: "Enter your password" },
+    ],
+    oauth2: [
+      { label: "Client ID", type: "text", placeholder: "Enter your Client ID" },
+      { label: "Client Secret", type: "password", placeholder: "Enter your Client Secret" },
+      { label: "Token URL", type: "text", placeholder: "https://your-instance.service-now.com/oauth_token.do" },
+    ],
+  },
+  "Cloud Foundry": {
+    oauth2: [
+      { label: "Client ID", type: "text", placeholder: "Enter your Client ID" },
+      { label: "Client Secret", type: "password", placeholder: "Enter your Client Secret" },
+      { label: "Token URL", type: "text", placeholder: "Enter your Token URL" },
+    ],
+  },
+  Slack: {
+    bot_token: [
+      { label: "Bot Token", type: "password", placeholder: "xoxb-your-token" },
+    ],
+  },
+  "Microsoft Teams": {
+    webhook: [
+      { label: "Webhook URL", type: "text", placeholder: "Enter your Teams webhook URL" },
+    ],
+  },
+};
+
+// Default auth fields for connectors not specifically configured
+const DEFAULT_AUTH_FIELDS: Record<string, { label: string; type: "text" | "password"; placeholder: string }[]> = {
+  api_key: [
+    { label: "API Key", type: "password", placeholder: "Enter your API key" },
+  ],
+  basic_auth: [
+    { label: "Username", type: "text", placeholder: "Enter username" },
+    { label: "Password", type: "password", placeholder: "Enter password" },
+  ],
+  oauth2: [
+    { label: "Client ID", type: "text", placeholder: "Enter your Client ID" },
+    { label: "Client Secret", type: "password", placeholder: "Enter your Client Secret" },
+    { label: "Token URL", type: "text", placeholder: "Enter your Token URL" },
+  ],
+  personal_access_token: [
+    { label: "Personal Access Token", type: "password", placeholder: "Enter your PAT" },
+  ],
+  username_token: [
+    { label: "Username", type: "text", placeholder: "Enter username" },
+    { label: "Token", type: "password", placeholder: "Enter your token" },
+  ],
+  bot_token: [
+    { label: "Bot Token", type: "password", placeholder: "Enter your bot token" },
+  ],
 };
 
 const statusConfig = {
@@ -117,11 +220,23 @@ export function EditCredentialDialog({
   const { updateCredential } = useCredentials(selectedAccount?.id, selectedEnterprise?.id);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [credentialFieldValues, setCredentialFieldValues] = useState<Record<string, string>>({});
+  const [credentialFieldsDirty, setCredentialFieldsDirty] = useState(false);
   
   // Track credential name for duplicate checking
   const [credentialName, setCredentialName] = useState("");
-  
-  // Check for duplicate credential name within the same account + enterprise combination (excluding current credential)
+
+  // Get auth fields for the current credential
+  const authFields = useMemo(() => {
+    if (!credential) return [];
+    const connectorConfig = CONNECTOR_AUTH_CONFIG[credential.connector];
+    if (connectorConfig && connectorConfig[credential.auth_type]) {
+      return connectorConfig[credential.auth_type];
+    }
+    return DEFAULT_AUTH_FIELDS[credential.auth_type] || DEFAULT_AUTH_FIELDS.api_key;
+  }, [credential]);
+
   const { isDuplicate: isNameDuplicate, isChecking: isCheckingName } = useCheckCredentialNameExists(
     credentialName,
     selectedAccount?.id,
@@ -226,8 +341,20 @@ export function EditCredentialDialog({
         expiry_notify: credential.expiry_notify ?? true,
       });
       setCredentialName(credential.name);
+      
+      // Initialize credential field values from existing credentials
+      const existingCreds = credential.credentials as Record<string, unknown> || {};
+      const fieldKey = (label: string) => label.toLowerCase().replace(/[^a-z0-9]/g, "_");
+      const initialValues: Record<string, string> = {};
+      authFields.forEach((f) => {
+        const key = fieldKey(f.label);
+        initialValues[key] = (existingCreds[key] as string) || "";
+      });
+      setCredentialFieldValues(initialValues);
+      setCredentialFieldsDirty(false);
+      setShowPasswords({});
     }
-  }, [credential, open, form]);
+  }, [credential, open, form, authFields]);
 
   const handleSubmit = async (data: FormValues) => {
     if (!credential || isNameDuplicate) return;
@@ -235,7 +362,7 @@ export function EditCredentialDialog({
     setIsSubmitting(true);
 
     try {
-      await updateCredential.mutateAsync({
+      const updatePayload: Parameters<typeof updateCredential.mutateAsync>[0] = {
         id: credential.id,
         name: data.name,
         description: data.description || null,
@@ -246,7 +373,14 @@ export function EditCredentialDialog({
         expires_at: data.expires_at ? new Date(data.expires_at).toISOString() : null,
         expiry_notice_days: data.expiry_notice_days,
         expiry_notify: data.expiry_notify,
-      } as Parameters<typeof updateCredential.mutateAsync>[0]);
+      };
+
+      // Include credentials if any field was modified
+      if (credentialFieldsDirty) {
+        (updatePayload as Record<string, unknown>).credentials = credentialFieldValues;
+      }
+
+      await updateCredential.mutateAsync(updatePayload);
 
       onSave?.();
       onOpenChange(false);
@@ -563,6 +697,70 @@ export function EditCredentialDialog({
                 )}
               </motion.div>
 
+              {/* Credential Fields Section */}
+              {credential.auth_type !== "oauth" && authFields.length > 0 && (
+                <motion.div
+                  className="space-y-4 pt-5 border-t"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.25 }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-primary-foreground">
+                      <KeyRound className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-semibold text-foreground">Credentials</span>
+                      <p className="text-xs text-muted-foreground">Update the authentication values for this credential</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {authFields.map((authField) => {
+                      const fieldKey = authField.label.toLowerCase().replace(/[^a-z0-9]/g, "_");
+                      const isPassword = authField.type === "password";
+                      const showPassword = showPasswords[fieldKey] || false;
+
+                      return (
+                        <div key={fieldKey} className="space-y-1.5">
+                          <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                            {isPassword && <Lock className="w-3.5 h-3.5 text-muted-foreground" />}
+                            {authField.label}
+                          </label>
+                          <div className="relative">
+                            <Input
+                              type={isPassword && !showPassword ? "password" : "text"}
+                              placeholder={authField.placeholder}
+                              value={credentialFieldValues[fieldKey] || ""}
+                              onChange={(e) => {
+                                setCredentialFieldValues(prev => ({
+                                  ...prev,
+                                  [fieldKey]: e.target.value,
+                                }));
+                                setCredentialFieldsDirty(true);
+                              }}
+                              className={cn(
+                                "bg-background transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                                isPassword && "pr-10"
+                              )}
+                            />
+                            {isPassword && (
+                              <button
+                                type="button"
+                                onClick={() => setShowPasswords(prev => ({ ...prev, [fieldKey]: !showPassword }))}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+
               {/* Expiration Settings Section */}
               <motion.div 
                 className="space-y-4 pt-5 border-t"
@@ -694,7 +892,7 @@ export function EditCredentialDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting || !form.formState.isDirty || isNameDuplicate}
+                disabled={isSubmitting || (!form.formState.isDirty && !credentialFieldsDirty) || isNameDuplicate}
                 className="gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-md"
               >
                 {isSubmitting ? (

@@ -92,7 +92,7 @@ function PipelineCanvasContent() {
   const { workstreams } = useWorkstreams(selectedAccountId || undefined, selectedEnterpriseId || undefined);
 
   // Licenses hook for products/services
-  const { licenses } = useLicenses(selectedAccountId || undefined);
+  const { licenses } = useLicenses(selectedAccountId || undefined, selectedEnterpriseId || undefined);
 
   // Filter products and services from active licenses for this enterprise
   const availableProducts = useMemo(() => {
@@ -296,7 +296,7 @@ function PipelineCanvasContent() {
                 type: n.type || "pipeline",
                 position: n.position,
                 data: n.data,
-                ...(n.parentId ? { parentId: n.parentId, extent: "parent" as const } : {}),
+                ...(n.parentId ? { parentId: n.parentId, extent: "parent" as const, expandParent: true } : {}),
                 ...(n.style ? { style: n.style } : {}),
               }))
             );
@@ -806,7 +806,7 @@ function PipelineCanvasContent() {
             ? { x: position.x - parentGroup.position.x, y: position.y - parentGroup.position.y }
             : position,
           data: { label, nodeType: type, category, isCustomEnvironment: isCustomEnv },
-          ...(parentGroup ? { parentId: parentGroup.id, extent: "parent" as const } : {}),
+          ...(parentGroup ? { parentId: parentGroup.id, extent: "parent" as const, expandParent: true } : {}),
         };
 
         setNodes((nds) => nds.concat(newNode));
@@ -854,7 +854,7 @@ function PipelineCanvasContent() {
     const currentParent = draggedNode.parentId as string | undefined;
 
     if (targetGroup && currentParent !== targetGroup.id) {
-      // Reparent to new group
+      // Reparent to new group — expandParent ensures the group grows to fit
       setNodes((nds) =>
         nds.map((n) =>
           n.id === draggedNode.id
@@ -862,6 +862,7 @@ function PipelineCanvasContent() {
                 ...n,
                 parentId: targetGroup!.id,
                 extent: "parent" as const,
+                expandParent: true,
                 position: {
                   x: absX - targetGroup!.position.x,
                   y: absY - targetGroup!.position.y,
@@ -1205,7 +1206,7 @@ ${edges.map((e) => `  - source: ${e.source}
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="flex-1 flex relative">
+      <div className="flex-1 flex relative min-h-0 overflow-hidden">
         {/* Expanded Sidebar */}
         <AnimatePresence>
           {sidebarOpen && (
@@ -1214,7 +1215,7 @@ ${edges.map((e) => `  - source: ${e.source}
               animate={{ width: 280, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="flex-none border-r border-border bg-background overflow-hidden shadow-lg z-20"
+              className="flex-none self-stretch border-r border-border bg-background overflow-hidden shadow-lg z-20"
             >
               <PipelineSidebar onClose={() => setSidebarOpen(false)} onAddNode={handleAddNode} />
             </motion.div>

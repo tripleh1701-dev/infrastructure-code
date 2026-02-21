@@ -63,6 +63,7 @@ import { DeleteCredentialDialog } from "@/components/security/DeleteCredentialDi
 import { AddConnectorDialog } from "@/components/security/AddConnectorDialog";
 import { EditConnectorDialog } from "@/components/security/EditConnectorDialog";
 import { DeleteConnectorDialog } from "@/components/security/DeleteConnectorDialog";
+import { EnvironmentsTab } from "@/components/security/EnvironmentsTab";
 import type { Credential } from "@/hooks/useCredentials";
 import { useCredentials } from "@/hooks/useCredentials";
 import { useConnectors, type ConnectorRecord } from "@/hooks/useConnectors";
@@ -132,20 +133,7 @@ const authTypeDisplayMap: Record<string, string> = {
 
 // Connector type removed - using ConnectorRecord from useConnectors hook
 
-interface Environment {
-  id: string;
-  name: string;
-  type: "production" | "staging" | "development";
-  url: string;
-  status: "healthy" | "degraded" | "offline";
-}
-
-const environments: Environment[] = [
-  { id: "1", name: "Production", type: "production", url: "https://prod.sap-cpi.com", status: "healthy" },
-  { id: "2", name: "Staging", type: "staging", url: "https://staging.sap-cpi.com", status: "healthy" },
-  { id: "3", name: "Development", type: "development", url: "https://dev.sap-cpi.com", status: "healthy" },
-  { id: "4", name: "Test Environment", type: "development", url: "https://test.sap-cpi.com", status: "degraded" },
-];
+// Environment types removed - now handled by EnvironmentsTab
 
 interface WebhookItem {
   id: string;
@@ -192,6 +180,7 @@ export default function SecurityPage() {
   const [rotateCredentialOpen, setRotateCredentialOpen] = useState(false);
   const [deleteCredentialOpen, setDeleteCredentialOpen] = useState(false);
   const [addConnectorOpen, setAddConnectorOpen] = useState(false);
+  const [addEnvironmentOpen, setAddEnvironmentOpen] = useState(false);
   const [editConnectorOpen, setEditConnectorOpen] = useState(false);
   const [deleteConnectorOpen, setDeleteConnectorOpen] = useState(false);
   const [selectedConnector, setSelectedConnector] = useState<ConnectorRecord | null>(null);
@@ -227,7 +216,7 @@ export default function SecurityPage() {
     const healthyConnectors = connectors.filter(c => c.health === "healthy").length;
     const warningConnectors = connectors.filter(c => c.health === "warning").length;
     const totalSyncs = connectors.reduce((sum, c) => sum + (c.sync_count ?? 0), 0);
-    const healthyEnvironments = environments.filter(e => e.status === "healthy").length;
+    const healthyEnvironments = 0; // Now managed by EnvironmentsTab
     const activeWebhooks = webhooks.filter(w => w.status === "active").length;
     return { 
       activeCredentials, expiredCredentials, pendingCredentials, expiringCredentials, 
@@ -392,15 +381,7 @@ export default function SecurityPage() {
     }
   };
 
-  const filteredEnvironments = useMemo(() => {
-    return environments.filter((env) => {
-      const searchLower = searchQuery.toLowerCase();
-      const matchesSearch = env.name.toLowerCase().includes(searchLower) ||
-        env.url.toLowerCase().includes(searchLower);
-      const matchesType = environmentTypeFilter === "all" || env.type === environmentTypeFilter;
-      return matchesSearch && matchesType;
-    });
-  }, [searchQuery, environmentTypeFilter]);
+  // filteredEnvironments removed - now handled by EnvironmentsTab
 
   const filteredWebhooks = useMemo(() => {
     return webhooks.filter((hook) => {
@@ -477,7 +458,9 @@ export default function SecurityPage() {
       case "connectors":
         setAddConnectorOpen(true);
         break;
-      // Future: add other dialogs for environments, webhooks
+      case "environments":
+        setAddEnvironmentOpen(true);
+        break;
       default:
         break;
     }
@@ -1488,177 +1471,7 @@ export default function SecurityPage() {
 
           {/* Environments Tab */}
           <TabsContent value="environments" className="space-y-4">
-            {/* Filters */}
-            <motion.div 
-              variants={itemVariants}
-              className="flex flex-wrap items-center gap-3 mb-4"
-            >
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Filter className="w-4 h-4" />
-                <span>Filters:</span>
-              </div>
-              <Select value={environmentTypeFilter} onValueChange={setEnvironmentTypeFilter}>
-                <SelectTrigger className="w-36 h-9 bg-white/80">
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="production">Production</SelectItem>
-                  <SelectItem value="staging">Staging</SelectItem>
-                  <SelectItem value="development">Development</SelectItem>
-                </SelectContent>
-              </Select>
-              {hasActiveEnvironmentFilters && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setEnvironmentTypeFilter("all")}
-                  className="gap-1 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-3 h-3" />
-                  Clear
-                </Button>
-              )}
-            </motion.div>
-
-            {environmentsView === "table" ? (
-              <motion.div 
-                variants={itemVariants}
-                className="bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/30 overflow-hidden"
-              >
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-slate-50/80">
-                      <TableHead className="font-semibold">Environment</TableHead>
-                      <TableHead className="font-semibold">Type</TableHead>
-                      <TableHead className="font-semibold">URL</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredEnvironments.map((env, index) => (
-                      <motion.tr
-                        key={env.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="group hover:bg-blue-50/50 transition-colors cursor-pointer"
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-3 h-3 rounded-full",
-                              env.status === "healthy" && "bg-emerald-500",
-                              env.status === "degraded" && "bg-amber-500",
-                              env.status === "offline" && "bg-red-500"
-                            )} />
-                            <span className="font-medium text-slate-800">{env.name}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={cn(
-                            "uppercase text-xs",
-                            env.type === "production" && "bg-red-100 text-red-700",
-                            env.type === "staging" && "bg-amber-100 text-amber-700",
-                            env.type === "development" && "bg-blue-100 text-blue-700"
-                          )}>
-                            {env.type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2 text-slate-600">
-                            <Globe className="w-3.5 h-3.5" />
-                            <span className="font-mono text-sm">{env.url}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={cn(
-                            env.status === "healthy" && "bg-emerald-100 text-emerald-700",
-                            env.status === "degraded" && "bg-amber-100 text-amber-700",
-                            env.status === "offline" && "bg-red-100 text-red-700"
-                          )}>
-                            {env.status === "healthy" ? "Healthy" : env.status === "degraded" ? "Degraded" : "Offline"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                              <ExternalLink className="w-4 h-4" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem className="gap-2">
-                                  <Pencil className="w-4 h-4" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="gap-2 text-destructive">
-                                  <Trash2 className="w-4 h-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </TableCell>
-                      </motion.tr>
-                    ))}
-                  </TableBody>
-                </Table>
-              </motion.div>
-            ) : (
-              <div className="responsive-grid-lg">
-                {filteredEnvironments.map((env, index) => (
-                  <motion.div
-                    key={env.id}
-                    variants={cardHoverVariants}
-                    initial="rest"
-                    whileHover="hover"
-                    className="bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-5 cursor-pointer shadow-lg shadow-slate-200/30"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "w-3 h-3 rounded-full",
-                        env.status === "healthy" && "bg-emerald-500",
-                        env.status === "degraded" && "bg-amber-500",
-                        env.status === "offline" && "bg-red-500"
-                      )} />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <h3 className="font-semibold text-slate-800">
-                            {env.name}
-                          </h3>
-                          <Badge className={cn(
-                            "uppercase text-xs",
-                            env.type === "production" && "bg-red-100 text-red-700",
-                            env.type === "staging" && "bg-amber-100 text-amber-700",
-                            env.type === "development" && "bg-blue-100 text-blue-700"
-                          )}>
-                            {env.type}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-slate-500 mt-1 flex items-center gap-2">
-                          <Globe className="w-3.5 h-3.5" />
-                          {env.url}
-                        </p>
-                      </div>
-                      <Badge className={cn(
-                        env.status === "healthy" && "bg-emerald-100 text-emerald-700",
-                        env.status === "degraded" && "bg-amber-100 text-amber-700",
-                        env.status === "offline" && "bg-red-100 text-red-700"
-                      )}>
-                        {env.status === "healthy" ? "Healthy" : env.status === "degraded" ? "Degraded" : "Offline"}
-                      </Badge>
-                      <ChevronRight className="w-5 h-5 text-slate-400" />
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
+            <EnvironmentsTab externalAddOpen={addEnvironmentOpen} onExternalAddOpenChange={setAddEnvironmentOpen} viewMode={environmentsView} />
           </TabsContent>
 
           {/* Webhooks Tab */}
@@ -1923,6 +1736,8 @@ export default function SecurityPage() {
           setSelectedConnector(null);
         }}
       />
+
+      {/* Environment dialogs are now inside EnvironmentsTab */}
     </div>
     </TooltipProvider>
     </PermissionGate>

@@ -66,15 +66,36 @@ export interface CreateExecutionInput {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const buildsService = {
+  // ── Mapping helper ─────────────────────────────────────────────────────────
+  mapApiToBuildJob(item: any): BuildJob {
+    return {
+      id: item.id,
+      account_id: item.accountId ?? item.account_id,
+      enterprise_id: item.enterpriseId ?? item.enterprise_id,
+      connector_name: item.connectorName ?? item.connector_name ?? '',
+      description: item.description ?? null,
+      entity: item.entity ?? null,
+      pipeline: item.pipeline ?? null,
+      product: item.product ?? '',
+      service: item.service ?? '',
+      status: item.status ?? '',
+      scope: item.scope ?? null,
+      connector_icon_name: item.connectorIconName ?? item.connector_icon_name ?? null,
+      pipeline_stages_state: item.pipelineStagesState ?? item.pipeline_stages_state ?? null,
+      created_at: item.createdAt ?? item.created_at ?? '',
+      updated_at: item.updatedAt ?? item.updated_at ?? '',
+    };
+  },
+
   // ── Build Jobs ──────────────────────────────────────────────────────────────
 
   async getBuildJobs(accountId: string, enterpriseId: string): Promise<BuildJob[]> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<BuildJob[]>('/api/builds/jobs', {
+      const { data, error } = await httpClient.get<any[]>('/api/builds/jobs', {
         params: { accountId, enterpriseId },
       });
       if (error) throw new Error(error.message);
-      return data || [];
+      return (data || []).map(this.mapApiToBuildJob);
     }
 
     const { data, error } = await (supabase
@@ -104,7 +125,7 @@ export const buildsService = {
         connectorIconName: input.connector_icon_name || undefined,
       });
       if (error) throw new Error(error.message);
-      return data!;
+      return this.mapApiToBuildJob(data);
     }
 
     const { data, error } = await (supabase
@@ -139,7 +160,7 @@ export const buildsService = {
       }
       const { data, error } = await httpClient.put<BuildJob>(`/api/builds/jobs/${id}`, camelCaseUpdates);
       if (error) throw new Error(error.message);
-      return data!;
+      return this.mapApiToBuildJob(data);
     }
 
     const { data, error } = await (supabase

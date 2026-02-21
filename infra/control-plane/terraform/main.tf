@@ -65,18 +65,79 @@ module "vpc" {
 }
 
 # =============================================================================
-# 2. Authentication (Optional Cognito)
+# 2a. Post-Confirmation Worker Lambda (must be created before Cognito)
+# =============================================================================
+# This Lambda is triggered by Cognito after user email confirmation.
+# It auto-provisions new signups in DynamoDB with default account/enterprise.
+# NOTE: Cognito IAM permissions are added AFTER the Cognito module (see 2c).
+module "post_confirmation_worker" {
+  source = "../../modules/worker-lambda"
+
+  function_name             = "${local.name_prefix}-post-confirmation"
+  description               = "Cognito Post-Confirmation: provisions new users in default account"
+  handler                   = "dist/workers/post-confirmation.handler.handler"
+  timeout                   = 30
+  memory_size               = 256
+  package_path              = var.lambda_package_path
+  dynamodb_table_arn        = module.control_plane_dynamodb.table_arn
+  enable_dynamodb           = true
+  enable_cognito            = false  # Added separately below to break circular dep
+  enable_cloudwatch_metrics = true
+  vpc_subnet_ids            = module.vpc.private_subnet_ids
+  vpc_security_group_ids    = [module.vpc.lambda_security_group_id]
+
+  environment_variables = {
+    NODE_ENV                 = var.environment
+    CONTROL_PLANE_TABLE_NAME = module.control_plane_dynamodb.table_name
+    DEFAULT_ACCOUNT_ID       = "a0000000-0000-0000-0000-000000000001"
+    DEFAULT_ENTERPRISE_ID    = "00000000-0000-0000-0000-000000000001"
+  }
+
+  tags = local.common_tags
+}
+
+# =============================================================================
+# 2b. Authentication (Cognito) — with post-confirmation trigger
 # =============================================================================
 module "cognito" {
   source = "../../modules/cognito"
 
-  project_name             = var.project_name
-  environment              = var.environment
-  enable_mfa               = var.enable_mfa
-  enable_advanced_security = var.enable_advanced_security
-  callback_urls            = var.cognito_callback_urls
-  logout_urls              = var.cognito_logout_urls
-  tags                     = local.common_tags
+  project_name                    = var.project_name
+  environment                     = var.environment
+  enable_mfa                      = var.enable_mfa
+  enable_advanced_security        = var.enable_advanced_security
+  callback_urls                   = var.cognito_callback_urls
+  logout_urls                     = var.cognito_logout_urls
+  post_confirmation_lambda_arn    = module.post_confirmation_worker.function_arn
+  tags                            = local.common_tags
+}
+
+# =============================================================================
+# 2c. Post-Confirmation: Cognito IAM + invoke permission (breaks circular dep)
+# =============================================================================
+resource "aws_lambda_permission" "cognito_post_confirmation" {
+  statement_id  = "AllowCognitoInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = module.post_confirmation_worker.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = module.cognito.user_pool_arn
+}
+
+resource "aws_iam_role_policy" "post_confirmation_cognito" {
+  name = "${local.name_prefix}-post-confirmation-cognito"
+  role = "${local.name_prefix}-post-confirmation-role"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "cognito-idp:AdminUpdateUserAttributes",
+        "cognito-idp:AdminAddUserToGroup",
+      ]
+      Resource = module.cognito.user_pool_arn
+    }]
+  })
 }
 
 # =============================================================================
@@ -122,6 +183,8 @@ module "lambda" {
   data_plane_region           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
   cognito_user_pool_arn       = module.cognito.user_pool_arn
   enable_cognito              = true
+  enable_sns_publish          = module.monitoring.provisioning_sns_topic_arn != ""
+  sns_topic_arn               = module.monitoring.provisioning_sns_topic_arn
 
   environment_variables = {
     COGNITO_USER_POOL_ID             = module.cognito.user_pool_id
@@ -136,6 +199,7 @@ module "lambda" {
     PLATFORM_LOGIN_URL               = var.platform_login_url != "" ? var.platform_login_url : "https://${module.frontend.cloudfront_domain_name}/login"
     PLATFORM_NAME                    = var.platform_name
     PLATFORM_SUPPORT_EMAIL           = var.platform_support_email
+    SNS_PROVISIONING_TOPIC_ARN       = module.monitoring.provisioning_sns_topic_arn
   }
 
   account_registry_dynamodb_arn = module.account_registry_dynamodb.table_arn
@@ -307,6 +371,7 @@ module "create_admin_worker" {
   tags = local.common_tags
 }
 
+
 # =============================================================================
 # 5b. Pipeline Executor Lambda (Build Execution Engine)
 # =============================================================================
@@ -389,15 +454,19 @@ module "frontend" {
 module "monitoring" {
   source = "../../modules/monitoring"
 
-  project_name         = var.project_name
-  environment          = var.environment
-  alarm_email          = var.alarm_email
-  lambda_function_name = module.lambda.function_name
-  api_gateway_name     = "${var.project_name}-${var.environment}-api"
-  dynamodb_table_name  = module.control_plane_dynamodb.table_name
-  cognito_user_pool_id = module.cognito.user_pool_id
-  cognito_client_id    = module.cognito.client_id
-  tags                 = local.common_tags
+  project_name                     = var.project_name
+  environment                      = var.environment
+  alarm_email                      = var.alarm_email
+  provisioning_notification_email  = var.provisioning_notification_email
+  provisioning_notification_emails = var.provisioning_notification_emails
+  provisioning_failure_only_emails = var.provisioning_failure_only_emails
+  provisioning_cloud_type_emails   = var.provisioning_cloud_type_emails
+  lambda_function_name             = module.lambda.function_name
+  api_gateway_name                 = "${var.project_name}-${var.environment}-api"
+  dynamodb_table_name              = module.control_plane_dynamodb.table_name
+  cognito_user_pool_id             = module.cognito.user_pool_id
+  cognito_client_id                = module.cognito.client_id
+  tags                             = local.common_tags
 }
 
 # =============================================================================

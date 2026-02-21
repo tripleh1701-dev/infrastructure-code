@@ -126,6 +126,13 @@ EOT
     advanced_security_mode = var.enable_advanced_security ? "ENFORCED" : "OFF"
   }
 
+  dynamic "lambda_config" {
+    for_each = var.post_confirmation_lambda_arn != "" ? [1] : []
+    content {
+      post_confirmation = var.post_confirmation_lambda_arn
+    }
+  }
+
   tags = var.tags
 }
 

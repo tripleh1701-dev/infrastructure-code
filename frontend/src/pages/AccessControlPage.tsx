@@ -239,7 +239,7 @@ export default function AccessControlPage() {
   
   // Fetch workstreams and licenses for filter options
   const { workstreams } = useWorkstreams(accountId, enterpriseId);
-  const { licenses } = useLicenses(accountId);
+  const { licenses } = useLicenses(accountId, enterpriseId);
   
   // Derive unique products and services from licenses (filtered by enterprise if selected)
   const filterOptions = useMemo(() => {

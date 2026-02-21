@@ -346,3 +346,50 @@ export interface ProvisioningEvent {
   timestamp: string;
   details: Record<string, unknown>;
 }
+
+/**
+ * Shape returned by backend GET /api/provisioning/:accountId/status
+ * Maps to ProvisioningStatusDto on the backend
+ */
+export interface BackendProvisioningStatus {
+  accountId: string;
+  accountName: string;
+  cloudType: 'public' | 'private' | 'hybrid';
+  status: ProvisioningStatus;
+  message: string;
+  progress: number;
+  startedAt: string;
+  completedAt?: string;
+  stackId?: string;
+  tableName?: string;
+  tableArn?: string;
+  resources: Array<{
+    type: 'dynamodb' | 'iam' | 'ssm' | 'cloudformation';
+    name: string;
+    status: 'pending' | 'creating' | 'active' | 'failed' | 'deleting';
+    arn?: string;
+  }>;
+  error?: string;
+}
+
+/**
+ * Shape returned by backend POST /api/provisioning (ProvisioningJobDto)
+ */
+export interface BackendProvisioningJob {
+  id: string;
+  accountId: string;
+  accountName: string;
+  cloudType: 'public' | 'private' | 'hybrid';
+  status: ProvisioningStatus;
+  message: string;
+  progress: number;
+  startedAt: string;
+  completedAt?: string;
+  stackId?: string;
+  resources: Array<{
+    type: 'dynamodb' | 'iam' | 'ssm' | 'cloudformation';
+    name: string;
+    status: 'pending' | 'creating' | 'active' | 'failed' | 'deleting';
+    arn?: string;
+  }>;
+}

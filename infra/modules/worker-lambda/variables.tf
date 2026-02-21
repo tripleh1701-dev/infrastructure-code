@@ -108,6 +108,18 @@ variable "enable_cloudwatch_metrics" {
   default     = false
 }
 
+variable "enable_sns_publish" {
+  description = "Whether to create SNS Publish IAM policy"
+  type        = bool
+  default     = false
+}
+
+variable "sns_topic_arn" {
+  description = "SNS topic ARN for provisioning notifications"
+  type        = string
+  default     = ""
+}
+
 variable "environment_variables" {
   type    = map(string)
   default = {}

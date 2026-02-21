@@ -74,6 +74,30 @@ variable "sns_failure_threshold" {
   default = 1
 }
 
+variable "provisioning_notification_email" {
+  description = "(Legacy) Single email for provisioning SNS notifications. Prefer provisioning_notification_emails."
+  type        = string
+  default     = ""
+}
+
+variable "provisioning_notification_emails" {
+  description = "Emails that receive ALL provisioning events (completion + failure)"
+  type        = list(string)
+  default     = []
+}
+
+variable "provisioning_failure_only_emails" {
+  description = "Emails that receive ONLY provisioning failure events (filtered via SNS)"
+  type        = list(string)
+  default     = []
+}
+
+variable "provisioning_cloud_type_emails" {
+  description = "Map of email → list of cloud types to receive. Example: { \"ops@co.com\" = [\"private\"], \"all@co.com\" = [\"public\", \"private\"] }"
+  type        = map(list(string))
+  default     = {}
+}
+
 variable "tags" {
   description = "Resource tags"
   type        = map(string)

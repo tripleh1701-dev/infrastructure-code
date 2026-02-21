@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getCountryByName } from "@/lib/data/countries";
 
 // Password validation with detailed requirements
 const passwordSchema = z
@@ -9,7 +10,7 @@ const passwordSchema = z
   .regex(/[0-9]/, "Password must contain at least one number")
   .regex(/[!@#$%^&*]/, "Password must contain at least one special character (!@#$%^&*)");
 
-// Address schema
+// Address schema with country-aware postal code validation
 export const addressSchema = z.object({
   id: z.string().optional(),
   line1: z.string().min(1, "Address line 1 is required").max(200, "Address line 1 must be less than 200 characters"),
@@ -17,8 +18,33 @@ export const addressSchema = z.object({
   city: z.string().min(1, "City is required").max(100, "City must be less than 100 characters"),
   state: z.string().min(1, "State/Province is required").max(100, "State must be less than 100 characters"),
   country: z.string().min(1, "Country is required").max(100, "Country must be less than 100 characters"),
-  postalCode: z.string().min(1, "Postal code is required").max(20, "Postal code must be less than 20 characters").regex(/^\d+$/, "Postal code must contain only numbers"),
+  postalCode: z.string().min(1, "Postal code is required").max(20, "Postal code must be less than 20 characters"),
+}).superRefine((data, ctx) => {
+  if (data.country && data.postalCode) {
+    const countryData = getCountryByName(data.country);
+    if (countryData && !countryData.postalCodePattern.test(data.postalCode.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid ${countryData.postalCodeLabel}. Example: ${countryData.postalCodeExample}`,
+        path: ["postalCode"],
+      });
+    }
+  }
 });
+
+// Phone validation helper
+const phoneSchema = z.string()
+  .max(20, "Phone must be less than 20 characters")
+  .refine(
+    (val) => {
+      if (!val || !val.trim()) return true; // Optional
+      const cleaned = val.replace(/[\s\-()]/g, "");
+      return /^\+?\d{7,15}$/.test(cleaned);
+    },
+    { message: "Invalid phone number. Use format: +1234567890" }
+  )
+  .optional()
+  .or(z.literal(""));
 
 // Technical user schema
 export const technicalUserSchema = z.object({
