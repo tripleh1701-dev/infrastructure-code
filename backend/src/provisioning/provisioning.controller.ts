@@ -40,51 +40,38 @@ export class ProvisioningController {
   @Roles('admin', 'super_admin')
   async startProvisioning(
     @Body() dto: CreateProvisioningDto,
-  ): Promise<{ data: ProvisioningJobDto; error: null }> {
-    const job = await this.provisioningService.startProvisioning(dto);
-    return { data: job, error: null };
+  ): Promise<ProvisioningJobDto> {
+    return this.provisioningService.startProvisioning(dto);
   }
 
   /**
    * Get all active provisioning jobs
-   * 
-   * @returns List of active provisioning jobs
    */
   @Get()
   @Roles('admin', 'super_admin', 'viewer')
-  async getActiveJobs(): Promise<{ data: ProvisioningJobDto[]; error: null }> {
-    const jobs = await this.provisioningService.getActiveJobs();
-    return { data: jobs, error: null };
+  async getActiveJobs(): Promise<ProvisioningJobDto[]> {
+    return this.provisioningService.getActiveJobs();
   }
 
   /**
    * Get provisioning status for a specific account
-   * 
-   * @param accountId - The account ID
-   * @returns The provisioning status
    */
   @Get(':accountId/status')
   @Roles('admin', 'super_admin', 'viewer')
   async getStatus(
     @Param('accountId') accountId: string,
-  ): Promise<{ data: ProvisioningStatusDto; error: null }> {
-    const status = await this.provisioningService.getProvisioningStatus(accountId);
-    return { data: status, error: null };
+  ): Promise<ProvisioningStatusDto> {
+    return this.provisioningService.getProvisioningStatus(accountId);
   }
 
   /**
    * Deprovision an account (delete infrastructure)
-   * 
-   * @param accountId - The account ID to deprovision
-   * @returns Success message
    */
   @Delete(':accountId')
   @HttpCode(HttpStatus.OK)
   @Roles('admin', 'super_admin')
   async deprovision(
     @Param('accountId') accountId: string,
-  ): Promise<{ data: { message: string }; error: null }> {
-    const result = await this.provisioningService.deprovision(accountId);
-    return { data: result, error: null };
+  ): Promise<{ message: string }> {
+    return this.provisioningService.deprovision(accountId);
   }
-}

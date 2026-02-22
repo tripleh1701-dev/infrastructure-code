@@ -25,6 +25,7 @@ export class StageHandlersService {
     executionId: string,
     nodeId: string,
     stage: ParsedStage,
+    approverEmails?: string[],
   ): Promise<StageResult> {
     const prefix = `[EXECUTION:${executionId}][NODE:${nodeId}]`;
 
@@ -69,7 +70,12 @@ export class StageHandlersService {
           await this.handleTest(executionId, nodeId, stage);
           break;
         case 'approval':
-          console.log(`${prefix}[STAGE:${stage.id}] WAITING_APPROVAL — manual approval required`);
+          // Skip approval if no approvers configured
+          if (!approverEmails || approverEmails.length === 0) {
+            console.log(`${prefix}[STAGE:${stage.id}] SKIPPED — no approvers configured`);
+            return { status: 'SKIPPED', message: 'No approvers configured — skipping approval' };
+          }
+          console.log(`${prefix}[STAGE:${stage.id}] WAITING_APPROVAL — manual approval required from: ${approverEmails.join(', ')}`);
           return { status: 'WAITING_APPROVAL', message: 'Awaiting manual approval' };
         default:
           await this.handleGeneric(executionId, nodeId, stage);

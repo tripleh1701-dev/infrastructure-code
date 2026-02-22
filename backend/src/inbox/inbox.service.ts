@@ -9,7 +9,7 @@ import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.servic
 import { NotificationService } from '../common/notifications/notification.service';
 
 export type NotificationType = 'APPROVAL_REQUEST' | 'APPROVAL_GRANTED' | 'APPROVAL_REJECTED' | 'INFO';
-export type NotificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISMISSED';
+export type NotificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISMISSED' | 'STALE';
 
 export interface InboxNotification {
   notificationId: string;
@@ -171,13 +171,93 @@ export class InboxService {
     userId: string,
     userEmail: string,
   ): Promise<InboxNotification> {
-    return this.updateNotificationStatus(
+    const notification = await this.updateNotificationStatus(
       accountId,
       notificationId,
       'APPROVED',
       userId,
       userEmail,
     );
+
+    // Mark sibling approval notifications for the same execution+stage as STALE
+    if (notification.context?.executionId && notification.context?.stageId) {
+      await this.markSiblingNotificationsStale(
+        accountId,
+        notificationId,
+        notification.context.executionId,
+        notification.context.stageId,
+      );
+    }
+
+    return notification;
+  }
+
+  /**
+   * Mark all other PENDING approval notifications for the same execution+stage as STALE.
+   * Called when one approver approves — remaining approvers see a stale status.
+   */
+  private async markSiblingNotificationsStale(
+    accountId: string,
+    approvedNotificationId: string,
+    executionId: string,
+    stageId: string,
+  ): Promise<void> {
+    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
+
+    // Query all notifications for this account
+    const result = isPrivate
+      ? await this.dynamoDbRouter.queryByIndex(
+          accountId,
+          'GSI1',
+          'GSI1PK = :pk',
+          { ':pk': 'ENTITY#INBOX' },
+        )
+      : await this.dynamoDb.queryByIndex(
+          'GSI1',
+          'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
+          { ':pk': 'ENTITY#INBOX', ':sk': 'INBOX#' },
+        );
+
+    const siblings = (result.Items || []).filter((item) =>
+      item.entityType === 'INBOX_NOTIFICATION' &&
+      item.notificationId !== approvedNotificationId &&
+      item.status === 'PENDING' &&
+      item.type === 'APPROVAL_REQUEST' &&
+      item.context?.executionId === executionId &&
+      item.context?.stageId === stageId,
+    );
+
+    const now = new Date().toISOString();
+    for (const sibling of siblings) {
+      const key = isPrivate
+        ? { PK: 'INBOX#LIST', SK: `INBOX#${sibling.notificationId || sibling.id}` }
+        : { PK: `ACCT#${accountId}`, SK: `INBOX#${sibling.notificationId || sibling.id}` };
+
+      const params = {
+        Key: key,
+        UpdateExpression: 'SET #status = :status, updatedAt = :now',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': 'STALE',
+          ':now': now,
+        },
+      };
+
+      try {
+        if (isPrivate) {
+          await this.dynamoDbRouter.update(accountId, params);
+        } else {
+          await this.dynamoDb.update(params);
+        }
+        this.logger.log(
+          `[INBOX] Marked notification ${sibling.notificationId || sibling.id} as STALE`,
+        );
+      } catch (err: any) {
+        this.logger.error(
+          `[INBOX] Failed to mark notification as STALE: ${err.message}`,
+        );
+      }
+    }
   }
 
   /**

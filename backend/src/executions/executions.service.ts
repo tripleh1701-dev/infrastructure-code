@@ -383,6 +383,7 @@ export class ExecutionsService {
               executionId,
               node.id,
               stage,
+              approverEmails,
             );
 
             // Update stage record
