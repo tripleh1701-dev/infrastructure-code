@@ -239,6 +239,8 @@ export class NotificationService {
         reason: error.message,
         auditId: auditEntry?.id,
       };
+    }
+  }
 
   /**
    * Send approval request email to a designated approver via SES.
@@ -335,7 +337,5 @@ export class NotificationService {
 
       return { sent: false, skipped: false, reason: error.message };
     }
-  }
-}
   }
 }

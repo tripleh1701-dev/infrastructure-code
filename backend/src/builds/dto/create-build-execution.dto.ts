@@ -2,8 +2,7 @@ import { IsString, IsOptional, IsArray } from 'class-validator';
 
 export class CreateBuildExecutionDto {
   @IsString()
-  @IsOptional()
-  buildJobId?: string;
+  buildJobId: string;
 
   @IsString()
   buildNumber: string;
