@@ -205,6 +205,9 @@ export class BuildsService {
 
   async createExecution(dto: CreateBuildExecutionDto): Promise<BuildExecution> {
     // Verify build job exists
+    if (!dto.buildJobId) {
+      throw new Error('buildJobId is required');
+    }
     await this.findOneJob(dto.buildJobId);
 
     const id = uuidv4();

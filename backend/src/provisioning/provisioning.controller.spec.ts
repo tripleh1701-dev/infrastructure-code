@@ -205,7 +205,7 @@ describe('ProvisioningController', () => {
         progress: expect.any(Number),
         startedAt: expect.any(String),
       });
-      expect(data.resources).toBeInstanceOf(Array);
+      expect((data as any).resources).toBeInstanceOf(Array);
       // Must NOT be double-wrapped
       expect(data).not.toHaveProperty('error');
     });
@@ -225,7 +225,7 @@ describe('ProvisioningController', () => {
         progress: expect.any(Number),
         startedAt: expect.any(String),
       });
-      expect(data.resources).toBeInstanceOf(Array);
+      expect((data as any).resources).toBeInstanceOf(Array);
     });
   });
 });

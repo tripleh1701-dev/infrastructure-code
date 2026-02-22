@@ -75,3 +75,4 @@ export class ProvisioningController {
   ): Promise<{ message: string }> {
     return this.provisioningService.deprovision(accountId);
   }
+}
