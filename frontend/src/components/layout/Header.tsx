@@ -43,7 +43,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         let uniqueIds: string[] = [];
 
         if (isExternalApi()) {
-          const { data, error } = await httpClient.get<any[]>('/api/licenses', {
+          const { data, error } = await httpClient.get<any[]>('/licenses', {
             params: { accountId: selectedAccount.id, fields: 'enterprise_id' },
           });
           if (error) throw new Error(error.message);

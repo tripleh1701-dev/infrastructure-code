@@ -43,7 +43,7 @@ export function useRoles(accountId?: string | null, enterpriseId?: string | null
     enabled: !!accountId,
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<Role[]>('/api/roles', {
+        const { data, error } = await httpClient.get<Role[]>('/roles', {
           params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
         });
         if (error) throw new Error(error.message);
@@ -300,7 +300,7 @@ export function useCreateRole() {
   return useMutation({
     mutationFn: async (data: CreateRoleData) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.post<any>('/api/roles', data);
+        const { data: result, error } = await httpClient.post<any>('/roles', data);
         if (error) throw new Error(error.message);
         return result;
       }
@@ -354,7 +354,7 @@ export function useUpdateRole() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: CreateRoleData }) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.put<any>(`/api/roles/${id}`, data);
+        const { data: result, error } = await httpClient.put<any>(`/roles/${id}`, data);
         if (error) throw new Error(error.message);
         return result;
       }
@@ -417,7 +417,7 @@ export function useDeleteRole() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/roles/${id}`);
+        const { error } = await httpClient.delete(`/roles/${id}`);
         if (error) throw new Error(error.message);
         return;
       }

@@ -128,8 +128,8 @@ export function AddEnterpriseForm({ open, onOpenChange, onSuccess }: AddEnterpri
         const [productsRes, servicesRes, enterprisesRes, enterpriseProductsRes] = await Promise.all([
           productsService.getAll(),
           servicesService.getAll(),
-          httpClient.get<{ id: string; name: string }[]>("/api/enterprises"),
-          httpClient.get<{ enterprise_id: string; product_id: string }[]>("/api/enterprise-products"),
+          httpClient.get<{ id: string; name: string }[]>("/enterprises"),
+          httpClient.get<{ enterprise_id: string; product_id: string }[]>("/enterprise-products"),
         ]);
 
         const filteredProducts = (productsRes.data || []).filter(p => p.id !== GLOBAL_ITEM_ID);

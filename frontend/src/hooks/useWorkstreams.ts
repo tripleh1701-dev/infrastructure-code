@@ -44,7 +44,7 @@ async function ensureDefaultWorkstreamExternal(accountId: string, enterpriseId: 
   try {
     // NestJS endpoint handles idempotent creation of Default workstream
     // Returns { id } of the existing or newly created workstream
-    const { data, error } = await httpClient.post<{ id: string }>('/api/workstreams/ensure-default', {
+    const { data, error } = await httpClient.post<{ id: string }>('/workstreams/ensure-default', {
       accountId,
       enterpriseId,
     });
@@ -136,7 +136,7 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
     queryKey: ["workstreams", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>('/api/workstreams', {
+        const { data, error } = await httpClient.get<any[]>('/workstreams', {
           params: { accountId, enterpriseId },
         });
         if (error) throw new Error(error.message);
@@ -227,7 +227,7 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
         if (data.tools && data.tools.length > 0) {
           payload.tools = data.tools.map(t => ({ toolName: t.tool_name, category: t.category }));
         }
-        const { data: result, error } = await httpClient.post<Workstream>('/api/workstreams', payload);
+        const { data: result, error } = await httpClient.post<Workstream>('/workstreams', payload);
         if (error) throw new Error(error.message);
         return result;
       }
@@ -287,7 +287,7 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
         if (tools !== undefined) {
           payload.tools = tools.map(t => ({ toolName: t.tool_name, category: t.category }));
         }
-        const { error } = await httpClient.put(`/api/workstreams/${id}`, payload);
+        const { error } = await httpClient.put(`/workstreams/${id}`, payload);
         if (error) throw new Error(error.message);
         return;
       }
@@ -334,7 +334,7 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
   const deleteWorkstream = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/workstreams/${id}`);
+        const { error } = await httpClient.delete(`/workstreams/${id}`);
         if (error) throw new Error(error.message);
         return;
       }
@@ -353,7 +353,7 @@ export function useWorkstreams(accountId?: string, enterpriseId?: string) {
 
   const getWorkstreamTools = async (workstreamId: string) => {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<WorkstreamTool[]>(`/api/workstreams/${workstreamId}/tools`);
+      const { data, error } = await httpClient.get<WorkstreamTool[]>(`/workstreams/${workstreamId}/tools`);
       if (error) throw new Error(error.message);
       return data || [];
     }

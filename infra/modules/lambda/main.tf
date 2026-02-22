@@ -193,6 +193,62 @@ resource "aws_iam_role_policy" "sns_publish" {
   })
 }
 
+# S3 access for CloudFormation templates (private cloud provisioning)
+resource "aws_iam_role_policy" "cfn_template_s3" {
+  count = var.enable_cfn_template_bucket ? 1 : 0
+  name  = "${var.function_name}-cfn-template-s3"
+  role  = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+      ]
+      Resource = [
+        var.cfn_template_bucket_arn,
+        "${var.cfn_template_bucket_arn}/*"
+      ]
+    }]
+  })
+}
+
+# CloudFormation permissions (for direct stack provisioning / status polling)
+resource "aws_iam_role_policy" "cloudformation" {
+  count = var.enable_cloudformation ? 1 : 0
+  name  = "${var.function_name}-cloudformation"
+  role  = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudformation:CreateStack",
+          "cloudformation:DeleteStack",
+          "cloudformation:DescribeStacks",
+          "cloudformation:DescribeStackEvents",
+          "cloudformation:DescribeStackResources",
+          "cloudformation:UpdateStack"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = "*"
+        Condition = {
+          StringEquals = { "iam:PassedToService" = "cloudformation.amazonaws.com" }
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.function_name}"
   retention_in_days = var.log_retention_days

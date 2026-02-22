@@ -143,7 +143,7 @@ export function EnterpriseSummary({ enterprises, isLoading, onEdit, onRefresh, v
     setIsDeleting(true);
     try {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/enterprises/${deleteId}`);
+        const { error } = await httpClient.delete(`/enterprises/${deleteId}`);
         if (error) throw new Error(error.message);
       } else {
         const { error } = await supabase

@@ -48,7 +48,7 @@ export function useAccessControlUsers(accountId?: string | null, enterpriseId?: 
     queryFn: async () => {
       // External API mode: NestJS handles relational joins, workstream defaults, and filtering server-side
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<AccessControlUser[]>('/api/users', {
+        const { data, error } = await httpClient.get<AccessControlUser[]>('/users', {
           params: {
             accountId: accountId || undefined,
             enterpriseId: enterpriseId || undefined,
@@ -259,7 +259,7 @@ export function useCreateAccessControlUser() {
   return useMutation({
     mutationFn: async (data: CreateUserData) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.post<any>('/api/users', {
+        const { data: result, error } = await httpClient.post<any>('/users', {
           firstName: data.firstName,
           middleName: data.middleName,
           lastName: data.lastName,
@@ -323,7 +323,7 @@ export function useUpdateAccessControlUser() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<CreateUserData> }) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.put<any>(`/api/users/${id}`, {
+        const { data: result, error } = await httpClient.put<any>(`/users/${id}`, {
           firstName: data.firstName,
           middleName: data.middleName,
           lastName: data.lastName,
@@ -378,7 +378,7 @@ export function useDeleteAccessControlUser() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/users/${id}`);
+        const { error } = await httpClient.delete(`/users/${id}`);
         if (error) throw new Error(error.message);
         return;
       }
@@ -420,7 +420,7 @@ export function useCheckUserEmailExists(
     setIsChecking(true);
     try {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<{ exists: boolean }>('/api/users/check-email', {
+        const { data, error } = await httpClient.get<{ exists: boolean }>('/users/check-email', {
           params: {
             email: trimmedEmail,
             accountId: accountId || undefined,

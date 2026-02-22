@@ -1,8 +1,11 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import { BuildJob } from "@/hooks/useBuilds";
 import { usePipelines } from "@/hooks/usePipelines";
 import { useConnectors, ConnectorRecord } from "@/hooks/useConnectors";
+import { useEnvironments, EnvironmentRecord } from "@/hooks/useEnvironments";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +62,7 @@ interface StagesState {
   selectedEnvironments: Record<string, string>;
   connectorRepositoryUrls: Record<string, string>;
   selectedBranches: Record<string, string>;
+  selectedApprovers: Record<string, string[]>;
   [key: string]: any;
 }
 
@@ -208,25 +212,40 @@ const ENV_TAB_CONFIG: Record<string, { icon: React.ElementType; color: string }>
 
 // ─── Stage Config Row ───────────────────────────────────────────────────────
 
+interface AccountUser {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  is_technical_user: boolean;
+}
+
 interface StageConfigRowProps {
   stage: ParsedStage;
   envId: string;
   stagesState: StagesState;
   connectors: ConnectorRecord[];
   connectorsLoading: boolean;
+  accountUsers: AccountUser[];
+  accountUsersLoading: boolean;
+  environments: EnvironmentRecord[];
+  environmentsLoading: boolean;
   onConnectorChange: (key: string, val: string) => void;
   onEnvironmentChange: (key: string, val: string) => void;
   onRepoUrlChange: (key: string, val: string) => void;
   onBranchChange: (key: string, val: string) => void;
+  onApproverChange: (key: string, emails: string[]) => void;
 }
 
 function StageConfigRow({
   stage, envId, stagesState, connectors, connectorsLoading,
-  onConnectorChange, onEnvironmentChange, onRepoUrlChange, onBranchChange,
+  accountUsers, accountUsersLoading, environments, environmentsLoading,
+  onConnectorChange, onEnvironmentChange, onRepoUrlChange, onBranchChange, onApproverChange,
 }: StageConfigRowProps) {
   const stageKey = `${envId}__${stage.id}`;
   const isDeploy = stage.category === "deploy";
   const isCode = stage.category === "code";
+  const isApproval = stage.category === "approval";
   const NodeIcon = PIPELINE_NODE_ICONS[stage.type];
 
   const availableConnectors = connectors.filter(
@@ -237,7 +256,8 @@ function StageConfigRow({
   const selectedEnv = stagesState.selectedEnvironments[stageKey] || "";
   const repoUrl = stagesState.connectorRepositoryUrls[stageKey] || "";
   const branch = stagesState.selectedBranches[stageKey] || "";
-  const isConfigured = !!(selectedConnectorId || selectedEnv);
+  const selectedApproverEmails = stagesState.selectedApprovers?.[stageKey] || [];
+  const isConfigured = !!(selectedConnectorId || selectedEnv || (isApproval && selectedApproverEmails.length > 0));
 
   return (
     <div className="flex items-start gap-4 p-3 rounded-lg border border-border/40 bg-card/50 hover:bg-card/80 transition-colors">
@@ -261,19 +281,101 @@ function StageConfigRow({
 
       {/* Config Fields */}
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {isDeploy ? (
+        {isApproval ? (
+          <div className="space-y-1 col-span-2">
+            <Label className="text-[10px] text-muted-foreground">Approvers (Users & Technical Users)</Label>
+            <Select
+              value="__multi"
+              onValueChange={(userId) => {
+                if (userId === "__multi") return;
+                const user = accountUsers.find((u) => u.id === userId);
+                if (!user) return;
+                const isAlready = selectedApproverEmails.includes(user.email);
+                const next = isAlready
+                  ? selectedApproverEmails.filter((e) => e !== user.email)
+                  : [...selectedApproverEmails, user.email];
+                onApproverChange(stageKey, next);
+              }}
+            >
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue placeholder={
+                  accountUsersLoading ? "Loading users..." :
+                  accountUsers.length === 0 ? "No users available" :
+                  selectedApproverEmails.length === 0 ? "Select approvers..." :
+                  `${selectedApproverEmails.length} approver(s) selected`
+                } />
+              </SelectTrigger>
+              <SelectContent className="bg-popover z-[100]">
+                {accountUsersLoading ? (
+                  <SelectItem value="__loading" disabled>Loading...</SelectItem>
+                ) : accountUsers.length === 0 ? (
+                  <SelectItem value="__empty" disabled>No users found</SelectItem>
+                ) : (
+                  accountUsers.map((user) => {
+                    const isSelected = selectedApproverEmails.includes(user.email);
+                    return (
+                      <SelectItem key={user.id} value={user.id}>
+                        <div className="flex items-center gap-2">
+                          <span className={isSelected ? "font-semibold" : ""}>{user.first_name} {user.last_name}</span>
+                          <span className="text-[10px] text-muted-foreground">({user.email})</span>
+                          {user.is_technical_user && (
+                            <Badge variant="outline" className="text-[8px] px-0.5 h-3">Tech</Badge>
+                          )}
+                          {isSelected && <span className="text-primary text-[10px]">✓</span>}
+                        </div>
+                      </SelectItem>
+                    );
+                  })
+                )}
+              </SelectContent>
+            </Select>
+            {selectedApproverEmails.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {selectedApproverEmails.map((email) => {
+                  const user = accountUsers.find((u) => u.email === email);
+                  return (
+                    <span key={email} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30 text-[9px] text-primary">
+                      {user ? `${user.first_name} ${user.last_name}` : email}
+                      <button
+                        type="button"
+                        className="hover:text-destructive ml-0.5"
+                        onClick={() => onApproverChange(stageKey, selectedApproverEmails.filter((e) => e !== email))}
+                      >×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {selectedApproverEmails.length === 0 && (
+              <p className="text-[9px] text-amber-500">No approvers selected — this stage will be skipped during execution</p>
+            )}
+          </div>
+        ) : isDeploy ? (
           <div className="space-y-1">
             <Label className="text-[10px] text-muted-foreground">Environment</Label>
             <Select value={selectedEnv} onValueChange={(v) => onEnvironmentChange(stageKey, v)}>
               <SelectTrigger className="h-7 text-xs">
-                <SelectValue placeholder="Select environment..." />
+                <SelectValue placeholder={
+                  environmentsLoading ? "Loading..." :
+                  environments.length === 0 ? "No environments" :
+                  "Select environment..."
+                } />
               </SelectTrigger>
               <SelectContent className="bg-popover z-[100]">
-                <SelectItem value="development">Development</SelectItem>
-                <SelectItem value="qa">QA</SelectItem>
-                <SelectItem value="staging">Staging</SelectItem>
-                <SelectItem value="uat">UAT</SelectItem>
-                <SelectItem value="production">Production</SelectItem>
+                {environments.length === 0 ? (
+                  <SelectItem value="__none" disabled>No environments configured</SelectItem>
+                ) : (
+                  environments.map((env) => (
+                    <SelectItem key={env.id} value={env.name}>
+                      <div className="flex items-center gap-2">
+                        <span>{env.name}</span>
+                        {env.connectivity_status === "connected" && (
+                          <span className="text-[9px] text-primary">● Connected</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -345,6 +447,25 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
     selectedAccount?.id,
     selectedEnterprise?.id
   );
+  const { environments, isLoading: environmentsLoading } = useEnvironments(
+    selectedAccount?.id,
+    selectedEnterprise?.id
+  );
+
+  // Fetch account users for approval stage dropdowns
+  const { data: accountUsers = [], isLoading: accountUsersLoading } = useQuery({
+    queryKey: ["account_users_for_approval", selectedAccount?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("account_technical_users")
+        .select("id, email, first_name, last_name, is_technical_user")
+        .eq("account_id", selectedAccount!.id)
+        .eq("status", "active");
+      if (error) throw error;
+      return (data || []) as AccountUser[];
+    },
+    enabled: !!selectedAccount?.id,
+  });
 
   const [stagesState, setStagesState] = useState<StagesState>(() => {
     const existing = build.pipeline_stages_state as any;
@@ -354,12 +475,14 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
           selectedEnvironments: existing.selectedEnvironments || {},
           connectorRepositoryUrls: existing.connectorRepositoryUrls || {},
           selectedBranches: existing.selectedBranches || {},
+          selectedApprovers: existing.selectedApprovers || {},
         }
       : {
           selectedConnectors: {},
           selectedEnvironments: {},
           connectorRepositoryUrls: {},
           selectedBranches: {},
+          selectedApprovers: {},
         };
   });
 
@@ -405,6 +528,14 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
     setStagesState((prev) => ({
       ...prev,
       selectedBranches: { ...prev.selectedBranches, [stageKey]: branch },
+    }));
+    setIsDirty(true);
+  };
+
+  const handleApproverChange = (stageKey: string, emails: string[]) => {
+    setStagesState((prev) => ({
+      ...prev,
+      selectedApprovers: { ...prev.selectedApprovers, [stageKey]: emails },
     }));
     setIsDirty(true);
   };
@@ -518,10 +649,15 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
                         stagesState={stagesState}
                         connectors={connectors}
                         connectorsLoading={connectorsLoading}
+                        accountUsers={accountUsers}
+                        accountUsersLoading={accountUsersLoading}
+                        environments={environments}
+                        environmentsLoading={environmentsLoading}
                         onConnectorChange={handleConnectorChange}
                         onEnvironmentChange={handleEnvironmentChange}
                         onRepoUrlChange={handleRepoUrlChange}
                         onBranchChange={handleBranchChange}
+                        onApproverChange={handleApproverChange}
                       />
                     </motion.div>
                   ))}

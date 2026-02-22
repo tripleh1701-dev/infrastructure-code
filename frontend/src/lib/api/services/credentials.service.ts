@@ -79,7 +79,7 @@ export interface UpdateCredentialInput {
 export const credentialsService = {
   async getAll(accountId: string, enterpriseId: string): Promise<Credential[]> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<Credential[]>("/api/credentials", {
+      const { data, error } = await httpClient.get<Credential[]>("/credentials", {
         params: { accountId, enterpriseId },
       });
       if (error) throw new Error(error.message);
@@ -131,7 +131,7 @@ export const credentialsService = {
         expiryNoticeDays: input.expiry_notice_days,
         expiryNotify: input.expiry_notify,
       };
-      const { data, error } = await httpClient.post<Credential>("/api/credentials", payload);
+      const { data, error } = await httpClient.post<Credential>("/credentials", payload);
       if (error) throw new Error(error.message);
       return data!;
     }
@@ -187,7 +187,7 @@ export const credentialsService = {
       if (updates.expiry_notice_days !== undefined) payload.expiryNoticeDays = updates.expiry_notice_days;
       if (updates.expiry_notify !== undefined) payload.expiryNotify = updates.expiry_notify;
       if (updates.workstream_ids !== undefined) payload.workstreamIds = updates.workstream_ids;
-      const { error } = await httpClient.patch(`/api/credentials/${id}`, payload);
+      const { error } = await httpClient.patch(`/credentials/${id}`, payload);
       if (error) throw new Error(error.message);
       return;
     }
@@ -226,7 +226,7 @@ export const credentialsService = {
 
   async rotate(id: string, credentials: Record<string, unknown>): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.post(`/api/credentials/${id}/rotate`, { credentials });
+      const { error } = await httpClient.post(`/credentials/${id}/rotate`, { credentials });
       if (error) throw new Error(error.message);
       return;
     }
@@ -245,7 +245,7 @@ export const credentialsService = {
 
   async delete(id: string): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.delete(`/api/credentials/${id}`);
+      const { error } = await httpClient.delete(`/credentials/${id}`);
       if (error) throw new Error(error.message);
       return;
     }
@@ -261,7 +261,7 @@ export const credentialsService = {
   ): Promise<{ id: string; name: string }[]> {
     if (isExternalApi()) {
       const { data, error } = await httpClient.get<{ id: string; name: string }[]>(
-        "/api/credentials/check-name",
+        "/credentials/check-name",
         { params: { name, accountId, enterpriseId } }
       );
       if (error) throw new Error(error.message);
@@ -288,7 +288,7 @@ export const credentialsService = {
   ): Promise<{ authorizationUrl: string; state: string } | null> {
     if (isExternalApi()) {
       const { data, error } = await httpClient.post<{ authorizationUrl: string; state: string }>(
-        "/api/connectors/oauth/initiate",
+        "/connectors/oauth/initiate",
         { provider, credentialId, redirectUri }
       );
       if (error) throw new Error(error.message);
@@ -305,7 +305,7 @@ export const credentialsService = {
   async checkOAuthStatus(credentialId: string): Promise<{ status: string } | null> {
     if (isExternalApi()) {
       const { data, error } = await httpClient.get<{ status: string }>(
-        `/api/connectors/oauth/status/${credentialId}`
+        `/connectors/oauth/status/${credentialId}`
       );
       if (error) throw new Error(error.message);
       return data;
@@ -321,7 +321,7 @@ export const credentialsService = {
   async revokeOAuth(credentialId: string): Promise<{ success: boolean } | null> {
     if (isExternalApi()) {
       const { data, error } = await httpClient.post<{ success: boolean }>(
-        "/api/connectors/oauth/revoke",
+        "/connectors/oauth/revoke",
         { credentialId }
       );
       if (error) throw new Error(error.message);

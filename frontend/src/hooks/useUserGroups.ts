@@ -18,7 +18,7 @@ export function useUserGroups(userId?: string | null) {
       if (!userId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<UserGroupAssignment[]>(`/api/users/${userId}/groups`);
+        const { data, error } = await httpClient.get<UserGroupAssignment[]>(`/users/${userId}/groups`);
         if (error) throw new Error(error.message);
         return data || [];
       }
@@ -54,7 +54,7 @@ export function useUpdateUserGroups() {
   return useMutation({
     mutationFn: async ({ userId, groupIds }: { userId: string; groupIds: string[] }) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.put(`/api/users/${userId}/groups`, { groupIds });
+        const { error } = await httpClient.put(`/users/${userId}/groups`, { groupIds });
         if (error) throw new Error(error.message);
         return { userId, groupIds };
       }

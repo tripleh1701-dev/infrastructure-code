@@ -26,7 +26,7 @@ export function useEnterprises() {
     try {
       // External API mode: NestJS returns fully-joined enterprise data
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<EnterpriseWithDetails[]>('/api/enterprises');
+        const { data, error } = await httpClient.get<EnterpriseWithDetails[]>('/enterprises');
         if (error) throw new Error(error.message);
         const list = Array.isArray(data) ? data : [];
         // Map camelCase from API to snake_case and ensure services array

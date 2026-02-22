@@ -102,7 +102,7 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
     queryKey: ["credentials", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>('/api/credentials', {
+        const { data, error } = await httpClient.get<any[]>('/credentials', {
           params: { accountId, enterpriseId },
         });
         if (error) throw new Error(error.message);
@@ -166,7 +166,7 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
         };
         // Remove undefined keys to avoid backend validation errors
         Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-        const { data: result, error } = await httpClient.post<Credential>('/api/credentials', payload);
+        const { data: result, error } = await httpClient.post<Credential>('/credentials', payload);
         if (error) throw new Error(error.message);
         return result;
       }
@@ -256,7 +256,7 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
       if (workstream_ids !== undefined) updateData.workstream_ids = workstream_ids;
 
       if (isExternalApi()) {
-        const { error } = await httpClient.patch(`/api/credentials/${id}`, updateData);
+        const { error } = await httpClient.patch(`/credentials/${id}`, updateData);
         if (error) throw new Error(error.message);
       } else {
         // Supabase-specific: handle workstream_id backward compat and credential_workstreams join table
@@ -325,7 +325,7 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
       credentials: credentialsData,
     }: { id: string; credentials: Record<string, unknown> }) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.post(`/api/credentials/${id}/rotate`, {
+        const { error } = await httpClient.post(`/credentials/${id}/rotate`, {
           credentials: credentialsData,
         });
         if (error) throw new Error(error.message);
@@ -355,7 +355,7 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
   const deleteCredential = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/credentials/${id}`);
+        const { error } = await httpClient.delete(`/credentials/${id}`);
         if (error) throw new Error(error.message);
         return;
       }
@@ -404,7 +404,7 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
   const checkOAuthStatus = async (credentialId: string) => {
     try {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<{ status: string }>(`/api/connectors/oauth/status/${credentialId}`);
+        const { data, error } = await httpClient.get<{ status: string }>(`/connectors/oauth/status/${credentialId}`);
         if (error) throw new Error(error.message);
         return data;
       }
@@ -424,7 +424,7 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
   const revokeOAuth = async (credentialId: string) => {
     try {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<{ success: boolean }>("/api/connectors/oauth/revoke", { credentialId });
+        const { data, error } = await httpClient.post<{ success: boolean }>("/connectors/oauth/revoke", { credentialId });
         if (error) throw new Error(error.message);
         queryClient.invalidateQueries({ queryKey: ["credentials"] });
         toast.success("OAuth access revoked");

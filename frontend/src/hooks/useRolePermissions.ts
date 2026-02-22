@@ -44,7 +44,7 @@ export function useRolePermissions(roleId?: string) {
       if (!roleId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<RolePermission[]>(`/api/roles/${roleId}/permissions`);
+        const { data, error } = await httpClient.get<RolePermission[]>(`/roles/${roleId}/permissions`);
         if (error) throw new Error(error.message);
         return data || [];
       }
@@ -84,7 +84,7 @@ export function useCreateRolePermissions() {
       if (permissions.length === 0) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<any[]>('/api/role-permissions', permissions);
+        const { data, error } = await httpClient.post<any[]>('/role-permissions', permissions);
         if (error) throw new Error(error.message);
         return data || [];
       }
@@ -124,7 +124,7 @@ export function useUpdateRolePermissions() {
   return useMutation({
     mutationFn: async ({ roleId, permissions }: { roleId: string; permissions: CreateRolePermissionData[] }) => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.put<any[]>(`/api/roles/${roleId}/permissions`, permissions);
+        const { data, error } = await httpClient.put<any[]>(`/roles/${roleId}/permissions`, permissions);
         if (error) throw new Error(error.message);
         return data || [];
       }
@@ -175,7 +175,7 @@ export function useDeleteRolePermissions() {
   return useMutation({
     mutationFn: async (roleId: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/roles/${roleId}/permissions`);
+        const { error } = await httpClient.delete(`/roles/${roleId}/permissions`);
         if (error) throw new Error(error.message);
         return;
       }

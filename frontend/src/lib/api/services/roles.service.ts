@@ -250,32 +250,32 @@ async function getRolesExternal(
   accountId?: string | null,
   enterpriseId?: string | null
 ): Promise<ApiResponse<Role[]>> {
-  return httpClient.get<Role[]>('/api/roles', {
+  return httpClient.get<Role[]>('/roles', {
     params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
   });
 }
 
 async function createRoleExternal(input: CreateRoleInput): Promise<ApiResponse<Role>> {
-  return httpClient.post<Role>('/api/roles', input);
+  return httpClient.post<Role>('/roles', input);
 }
 
 async function updateRoleExternal(id: string, input: CreateRoleInput): Promise<ApiResponse<Role>> {
-  return httpClient.put<Role>(`/api/roles/${id}`, input);
+  return httpClient.put<Role>(`/roles/${id}`, input);
 }
 
 async function deleteRoleExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/roles/${id}`);
+  return httpClient.delete<void>(`/roles/${id}`);
 }
 
 async function getRolePermissionsExternal(roleId: string): Promise<ApiResponse<RolePermission[]>> {
-  return httpClient.get<RolePermission[]>(`/api/roles/${roleId}/permissions`);
+  return httpClient.get<RolePermission[]>(`/roles/${roleId}/permissions`);
 }
 
 async function updateRolePermissionsExternal(
   roleId: string,
   permissions: CreateRolePermissionInput[]
 ): Promise<ApiResponse<RolePermission[]>> {
-  return httpClient.put<RolePermission[]>(`/api/roles/${roleId}/permissions`, { permissions });
+  return httpClient.put<RolePermission[]>(`/roles/${roleId}/permissions`, { permissions });
 }
 
 // ============= Public API =============

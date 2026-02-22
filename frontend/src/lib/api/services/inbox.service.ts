@@ -16,7 +16,7 @@ export interface InboxNotification {
   senderEmail: string;
   senderUserId?: string;
   type: "APPROVAL_REQUEST" | "APPROVAL_GRANTED" | "APPROVAL_REJECTED" | "INFO";
-  status: "PENDING" | "APPROVED" | "REJECTED" | "DISMISSED";
+  status: "PENDING" | "APPROVED" | "REJECTED" | "DISMISSED" | "STALE";
   title: string;
   message: string;
   context?: {

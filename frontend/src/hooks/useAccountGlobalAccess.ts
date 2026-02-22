@@ -25,7 +25,7 @@ export function useAccountGlobalAccess(accountId: string | null | undefined) {
       try {
         if (isExternalApi()) {
           const { data, error } = await httpClient.get<{ hasGlobalAccess: boolean }>(
-            `/api/accounts/${accountId}/global-access`
+            `/accounts/${accountId}/global-access`
           );
           if (error) throw error;
           setHasGlobalAccess(data?.hasGlobalAccess ?? false);

@@ -37,10 +37,10 @@ export function useGroups(accountId?: string | null, enterpriseId?: string | nul
       if (isExternalApi()) {
         // Fetch groups and roles in parallel since backend doesn't store group-role associations
         const [groupsRes, rolesRes] = await Promise.all([
-          httpClient.get<any[]>('/api/groups', {
+          httpClient.get<any[]>('/groups', {
             params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
           }),
-          httpClient.get<any[]>('/api/roles'),
+          httpClient.get<any[]>('/roles'),
         ]);
         if (groupsRes.error) throw new Error(groupsRes.error.message);
         const groups = groupsRes.data || [];
@@ -226,7 +226,7 @@ export function useCreateGroup() {
   return useMutation({
     mutationFn: async (data: CreateGroupData) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.post<any>('/api/groups', data);
+        const { data: result, error } = await httpClient.post<any>('/groups', data);
         if (error) throw new Error(error.message);
         return result;
       }
@@ -282,7 +282,7 @@ export function useUpdateGroup() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: CreateGroupData }) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.put<any>(`/api/groups/${id}`, data);
+        const { data: result, error } = await httpClient.put<any>(`/groups/${id}`, data);
         if (error) throw new Error(error.message);
         return result;
       }
@@ -343,7 +343,7 @@ export function useDeleteGroup() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/groups/${id}`);
+        const { error } = await httpClient.delete(`/groups/${id}`);
         if (error) throw new Error(error.message);
         return;
       }

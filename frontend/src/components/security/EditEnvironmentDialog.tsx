@@ -80,8 +80,8 @@ export function EditEnvironmentDialog({
     const fetchMeta = async () => {
       if (isExternalApi()) {
         const [pRes, sRes] = await Promise.all([
-          httpClient.get<any[]>("/api/products"),
-          httpClient.get<any[]>("/api/services"),
+          httpClient.get<any[]>("/products"),
+          httpClient.get<any[]>("/services"),
         ]);
         setProducts((pRes.data || []).map((p: any) => ({ id: p.id, name: p.name })));
         setServices((sRes.data || []).map((s: any) => ({ id: s.id, name: s.name })));

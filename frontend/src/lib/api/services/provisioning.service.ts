@@ -23,10 +23,10 @@ import type {
 
 // Endpoints
 const ENDPOINTS = {
-  provisioning: '/api/provisioning',
-  provisioningStatus: (accountId: string) => `/api/provisioning/${accountId}/status`,
-  provisioningEvents: (accountId: string) => `/api/provisioning/${accountId}/events`,
-  deprovision: (accountId: string) => `/api/provisioning/${accountId}`,
+  provisioning: '/provisioning',
+  provisioningStatus: (accountId: string) => `/provisioning/${accountId}/status`,
+  provisioningEvents: (accountId: string) => `/provisioning/${accountId}/events`,
+  deprovision: (accountId: string) => `/provisioning/${accountId}`,
 };
 
 /**

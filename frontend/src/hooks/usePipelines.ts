@@ -84,7 +84,7 @@ export function usePipelines() {
       if (!selectedAccountId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>('/api/pipelines', {
+        const { data, error } = await httpClient.get<any[]>('/pipelines', {
           params: { accountId: selectedAccountId, enterpriseId: selectedEnterpriseId },
         });
         if (error) throw new Error(error.message);
@@ -116,7 +116,7 @@ export function usePipelines() {
   // Fetch a single pipeline by ID
   const fetchPipeline = useCallback(async (id: string): Promise<Pipeline | null> => {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<any>(`/api/pipelines/${id}`);
+      const { data, error } = await httpClient.get<any>(`/pipelines/${id}`);
       if (error) return null;
       return data ? mapExternalPipeline(data) : null;
     }
@@ -143,7 +143,7 @@ export function usePipelines() {
       }
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<Pipeline>('/api/pipelines', {
+        const { data, error } = await httpClient.post<Pipeline>('/pipelines', {
           name: input.name,
           description: input.description || undefined,
           status: input.status || 'draft',
@@ -206,7 +206,7 @@ export function usePipelines() {
           const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
           camelCaseUpdates[camelKey] = value;
         }
-        const { data, error } = await httpClient.put<Pipeline>(`/api/pipelines/${id}`, camelCaseUpdates);
+        const { data, error } = await httpClient.put<Pipeline>(`/pipelines/${id}`, camelCaseUpdates);
         if (error) throw new Error(error.message);
         return mapExternalPipeline(data);
       }
@@ -243,7 +243,7 @@ export function usePipelines() {
   const deletePipelineMutation = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/pipelines/${id}`);
+        const { error } = await httpClient.delete(`/pipelines/${id}`);
         if (error) throw new Error(error.message);
         return;
       }

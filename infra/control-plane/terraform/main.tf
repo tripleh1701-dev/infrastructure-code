@@ -183,8 +183,11 @@ module "lambda" {
   data_plane_region           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
   cognito_user_pool_arn       = module.cognito.user_pool_arn
   enable_cognito              = true
-  enable_sns_publish          = module.monitoring.provisioning_sns_topic_arn != ""
-  sns_topic_arn               = module.monitoring.provisioning_sns_topic_arn
+  enable_sns_publish            = module.monitoring.provisioning_sns_topic_arn != ""
+  sns_topic_arn                 = module.monitoring.provisioning_sns_topic_arn
+  cfn_template_bucket_arn       = module.frontend.bucket_arn
+  enable_cfn_template_bucket    = true
+  enable_cloudformation         = true
 
   environment_variables = {
     COGNITO_USER_POOL_ID             = module.cognito.user_pool_id
@@ -200,6 +203,7 @@ module "lambda" {
     PLATFORM_NAME                    = var.platform_name
     PLATFORM_SUPPORT_EMAIL           = var.platform_support_email
     SNS_PROVISIONING_TOPIC_ARN       = module.monitoring.provisioning_sns_topic_arn
+    CFN_TEMPLATE_BUCKET              = module.frontend.bucket_name
   }
 
   account_registry_dynamodb_arn = module.account_registry_dynamodb.table_arn

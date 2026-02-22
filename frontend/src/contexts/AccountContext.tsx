@@ -35,7 +35,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const fetchAccountsExternal = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await httpClient.get<Account[]>("/api/accounts");
+      const { data, error } = await httpClient.get<Account[]>("/accounts");
 
       if (error) throw new Error(error.message);
 

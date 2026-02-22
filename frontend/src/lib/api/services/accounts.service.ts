@@ -259,19 +259,19 @@ async function deleteAccountSupabase(accountId: string): Promise<ApiResponse<voi
 // ============= External API Implementation =============
 
 async function getAccountsExternal(): Promise<ApiResponse<AccountWithDetails[]>> {
-  return httpClient.get<AccountWithDetails[]>('/api/accounts');
+  return httpClient.get<AccountWithDetails[]>('/accounts');
 }
 
 async function createAccountExternal(input: CreateAccountInput): Promise<ApiResponse<Account>> {
-  return httpClient.post<Account>('/api/accounts', input);
+  return httpClient.post<Account>('/accounts', input);
 }
 
 async function updateAccountExternal(input: UpdateAccountInput): Promise<ApiResponse<Account>> {
-  return httpClient.put<Account>(`/api/accounts/${input.id}`, input);
+  return httpClient.put<Account>(`/accounts/${input.id}`, input);
 }
 
 async function deleteAccountExternal(accountId: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/accounts/${accountId}`);
+  return httpClient.delete<void>(`/accounts/${accountId}`);
 }
 
 // ============= Public API =============

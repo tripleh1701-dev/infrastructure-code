@@ -136,7 +136,7 @@ export function EditEnterpriseForm({ enterprise, open, onOpenChange, onSuccess }
         const [productsRes, servicesRes, enterprisesRes] = await Promise.all([
           productsService.getAll(),
           servicesService.getAll(),
-          httpClient.get<{ id: string; name: string }[]>("/api/enterprises"),
+          httpClient.get<{ id: string; name: string }[]>("/enterprises"),
         ]);
 
         if (isGlobalEnterprise) {

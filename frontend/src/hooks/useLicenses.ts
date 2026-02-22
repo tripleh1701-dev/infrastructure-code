@@ -59,8 +59,8 @@ export function useLicenses(accountId?: string, enterpriseId?: string) {
         const params: Record<string, string> = { accountId };
         if (enterpriseId) params.enterpriseId = enterpriseId;
         const [licensesRes, entitiesRes] = await Promise.all([
-          httpClient.get<any[]>('/api/licenses', { params }),
-          httpClient.get<{ products: { id: string; name: string }[]; services: { id: string; name: string }[] }>('/api/licenses/licensed-entities', { params }),
+          httpClient.get<any[]>('/licenses', { params }),
+          httpClient.get<{ products: { id: string; name: string }[]; services: { id: string; name: string }[] }>('/licenses/licensed-entities', { params }),
         ]);
         if (licensesRes.error) throw new Error(licensesRes.error.message);
         
@@ -127,7 +127,7 @@ export function useLicenses(accountId?: string, enterpriseId?: string) {
   const createLicense = useMutation({
     mutationFn: async (data: LicenseFormData & { account_id: string }) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.post('/api/licenses', {
+        const { error } = await httpClient.post('/licenses', {
           accountId: data.account_id,
           enterpriseId: data.enterprise_id,
           productId: data.product_id,
@@ -207,7 +207,7 @@ export function useLicenses(accountId?: string, enterpriseId?: string) {
   const updateLicense = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<LicenseFormData> }) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.put(`/api/licenses/${id}`, data);
+        const { error } = await httpClient.put(`/licenses/${id}`, data);
         if (error) throw new Error(error.message);
         return;
       }
@@ -227,7 +227,7 @@ export function useLicenses(accountId?: string, enterpriseId?: string) {
   const deleteLicense = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/licenses/${id}`);
+        const { error } = await httpClient.delete(`/licenses/${id}`);
         if (error) throw new Error(error.message);
         return;
       }

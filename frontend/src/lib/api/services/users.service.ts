@@ -292,31 +292,31 @@ async function getUsersExternal(
   accountId?: string | null,
   enterpriseId?: string | null
 ): Promise<ApiResponse<UserWithWorkstreams[]>> {
-  return httpClient.get<UserWithWorkstreams[]>('/api/users', {
+  return httpClient.get<UserWithWorkstreams[]>('/users', {
     params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
   });
 }
 
 async function createUserExternal(input: CreateUserInput): Promise<ApiResponse<TechnicalUser>> {
-  return httpClient.post<TechnicalUser>('/api/users', input);
+  return httpClient.post<TechnicalUser>('/users', input);
 }
 
 async function updateUserExternal(
   id: string,
   input: Partial<CreateUserInput>
 ): Promise<ApiResponse<TechnicalUser>> {
-  return httpClient.put<TechnicalUser>(`/api/users/${id}`, input);
+  return httpClient.put<TechnicalUser>(`/users/${id}`, input);
 }
 
 async function deleteUserExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/users/${id}`);
+  return httpClient.delete<void>(`/users/${id}`);
 }
 
 async function updateUserWorkstreamsExternal(
   userId: string,
   workstreamIds: string[]
 ): Promise<ApiResponse<void>> {
-  return httpClient.put<void>(`/api/users/${userId}/workstreams`, { workstreamIds });
+  return httpClient.put<void>(`/users/${userId}/workstreams`, { workstreamIds });
 }
 
 // ============= Public API =============

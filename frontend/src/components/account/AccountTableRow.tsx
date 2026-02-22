@@ -63,6 +63,8 @@ export function AccountTableRow({
   
   const licenseCount = account.license_count ?? licenses.length;
   const expiringCount = account.expiring_license_count ?? 0;
+  const hasExpiredLicenses = (account.expired_license_count ?? 0) > 0;
+  const displayStatus = hasExpiredLicenses ? "expired" : account.status;
 
   return (
     <Fragment>
@@ -176,12 +178,14 @@ export function AccountTableRow({
         <td className="px-5 py-4">
           <span className={cn(
             "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
-            account.status === "active" 
+            displayStatus === "active" 
               ? "bg-[#dcfce7] text-[#16a34a] border border-[#bbf7d0]" 
+              : displayStatus === "expired"
+              ? "bg-destructive/10 text-destructive border border-destructive/20"
               : "bg-[#f1f5f9] text-[#64748b] border border-[#e2e8f0]"
           )}>
-            {account.status === "active" ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-            {account.status === "active" ? "Active" : "Inactive"}
+            {displayStatus === "active" ? <CheckCircle className="w-3 h-3" /> : displayStatus === "expired" ? <AlertTriangle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+            {displayStatus === "active" ? "Active" : displayStatus === "expired" ? "Expired" : "Inactive"}
           </span>
         </td>
         <td className="px-5 py-4">

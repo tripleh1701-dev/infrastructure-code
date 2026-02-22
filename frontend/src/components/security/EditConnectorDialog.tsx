@@ -32,6 +32,8 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { isExternalApi } from "@/lib/api/config";
+import { httpClient } from "@/lib/api/http-client";
 import {
   Loader2,
   Zap,
@@ -131,27 +133,51 @@ export function EditConnectorDialog({
     setIsTesting(true);
     setTestResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-        body: {
+      let result: { success: boolean; message?: string };
+
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
           connector: connector.connector_tool,
           url,
           credentialId: connector.credential_id,
-        },
-      });
-      if (error) throw error;
-      const newHealth = data?.success ? "healthy" : "error";
-      await (supabase.from("connectors" as any).update({ health: newHealth }).eq("id", connector.id) as any);
+        });
+        if (error) throw new Error(error.message);
+        result = data!;
+      } else {
+        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
+          body: {
+            connector: connector.connector_tool,
+            url,
+            credentialId: connector.credential_id,
+          },
+        });
+        if (error) throw error;
+        result = data;
+      }
+
+      const newHealth = result?.success ? "healthy" : "error";
+
+      if (isExternalApi()) {
+        await httpClient.put(`/connectors/${connector.id}`, { health: newHealth });
+      } else {
+        await (supabase.from("connectors" as any).update({ health: newHealth }).eq("id", connector.id) as any);
+      }
       onHealthUpdated?.();
-      if (data?.success) {
+
+      if (result?.success) {
         setTestResult("success");
-        toast.success(data.message || "Connection successful");
+        toast.success(result.message || "Connection successful");
       } else {
         setTestResult("failed");
-        toast.error(data?.message || "Connection failed");
+        toast.error(result?.message || "Connection failed");
       }
     } catch (err) {
       console.error("Connectivity test failed:", err);
-      await (supabase.from("connectors" as any).update({ health: "error" }).eq("id", connector.id) as any);
+      if (isExternalApi()) {
+        await httpClient.put(`/connectors/${connector.id}`, { health: "error" });
+      } else {
+        await (supabase.from("connectors" as any).update({ health: "error" }).eq("id", connector.id) as any);
+      }
       onHealthUpdated?.();
       setTestResult("failed");
       toast.error("Failed to test connectivity");

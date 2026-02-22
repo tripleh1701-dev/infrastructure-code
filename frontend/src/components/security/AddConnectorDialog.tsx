@@ -467,7 +467,7 @@ export function AddConnectorDialog({
       let result: { success: boolean; message?: string };
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<typeof result>("/api/connectors/test", {
+        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
           connector: selectedConnector,
           url: connectivityUrl,
           credentialId: selectedCredentialId,

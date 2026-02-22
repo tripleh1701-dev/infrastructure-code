@@ -102,7 +102,7 @@ function mapExternalConnector(c: any): Connector {
 export const connectorsService = {
   async getAll(accountId: string, enterpriseId: string): Promise<Connector[]> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<any[]>("/api/connectors", {
+      const { data, error } = await httpClient.get<any[]>("/connectors", {
         params: { accountId, enterpriseId },
       });
       if (error) throw new Error(error.message);
@@ -145,7 +145,7 @@ export const connectorsService = {
         credentialId: input.credential_id,
         workstreamIds: input.workstream_ids,
       };
-      const { data, error } = await httpClient.post<any>("/api/connectors", payload);
+      const { data, error } = await httpClient.post<any>("/connectors", payload);
       if (error) throw new Error(error.message);
       return mapExternalConnector(data);
     }
@@ -190,7 +190,7 @@ export const connectorsService = {
 
   async update(id: string, updates: UpdateConnectorInput): Promise<Connector> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.put<Connector>(`/api/connectors/${id}`, updates);
+      const { data, error } = await httpClient.put<Connector>(`/connectors/${id}`, updates);
       if (error) throw new Error(error.message);
       return data!;
     }
@@ -208,7 +208,7 @@ export const connectorsService = {
 
   async delete(id: string): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.delete(`/api/connectors/${id}`);
+      const { error } = await httpClient.delete(`/connectors/${id}`);
       if (error) throw new Error(error.message);
       return;
     }

@@ -48,7 +48,7 @@ export function ExpiringLicenses() {
     queryKey: ["expiring-licenses", selectedAccount?.id, selectedEnterprise?.id],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<ExpiringLicense[]>("/api/licenses/expiring", {
+        const { data, error } = await httpClient.get<ExpiringLicense[]>("/licenses/expiring", {
           params: {
             accountId: selectedAccount?.id,
             enterpriseId: selectedEnterprise?.id,
@@ -99,7 +99,7 @@ export function ExpiringLicenses() {
       let result: { success: boolean; emailsSent?: number; logged?: number; error?: string };
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<typeof result>("/api/licenses/send-reminders");
+        const { data, error } = await httpClient.post<typeof result>("/licenses/send-reminders");
         if (error) throw new Error(error.message);
         result = data!;
       } else {

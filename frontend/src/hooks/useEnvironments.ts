@@ -72,7 +72,7 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
     queryKey: ["environments", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>("/api/environments", {
+        const { data, error } = await httpClient.get<any[]>("/environments", {
           params: { accountId, enterpriseId },
         });
         if (error) throw new Error(error.message);
@@ -106,7 +106,7 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
           connectorName: input.connector_name,
           connectivityStatus: input.connectivity_status || "unknown",
         };
-        const { data, error } = await httpClient.post<any>("/api/environments", payload);
+        const { data, error } = await httpClient.post<any>("/environments", payload);
         if (error) throw new Error(error.message);
         return mapExternalEnvironment(data);
       }
@@ -151,7 +151,7 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
         if (input.service_id !== undefined) payload.serviceId = input.service_id;
         if (input.connector_name !== undefined) payload.connectorName = input.connector_name;
         if (input.connectivity_status !== undefined) payload.connectivityStatus = input.connectivity_status;
-        const { data, error } = await httpClient.put<any>(`/api/environments/${id}`, payload);
+        const { data, error } = await httpClient.put<any>(`/environments/${id}`, payload);
         if (error) throw new Error(error.message);
         return mapExternalEnvironment(data);
       }
@@ -177,7 +177,7 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
   const deleteEnvironment = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/environments/${id}`);
+        const { error } = await httpClient.delete(`/environments/${id}`);
         if (error) throw new Error(error.message);
         return;
       }

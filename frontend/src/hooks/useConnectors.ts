@@ -72,7 +72,7 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
     queryKey: ["connectors", accountId, enterpriseId],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>("/api/connectors", {
+        const { data, error } = await httpClient.get<any[]>("/connectors", {
           params: { accountId, enterpriseId },
         });
         if (error) throw new Error(error.message);
@@ -122,7 +122,7 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
           credentialId: input.credential_id,
           workstreamIds: input.workstream_ids,
         };
-        const { data, error } = await httpClient.post<ConnectorRecord>("/api/connectors", payload);
+        const { data, error } = await httpClient.post<ConnectorRecord>("/connectors", payload);
         if (error) throw new Error(error.message);
         return data;
       }
@@ -191,7 +191,7 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
   const deleteConnector = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/connectors/${id}`);
+        const { error } = await httpClient.delete(`/connectors/${id}`);
         if (error) throw new Error(error.message);
         return;
       }
@@ -214,7 +214,7 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
   const updateConnector = useMutation({
     mutationFn: async ({ id, ...input }: { id: string; name?: string; description?: string; url?: string; status?: string; credential_id?: string | null }) => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.put<ConnectorRecord>(`/api/connectors/${id}`, input);
+        const { data, error } = await httpClient.put<ConnectorRecord>(`/connectors/${id}`, input);
         if (error) throw new Error(error.message);
         return data;
       }

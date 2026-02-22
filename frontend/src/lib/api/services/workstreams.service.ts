@@ -276,29 +276,29 @@ async function getWorkstreamsExternal(
   accountId?: string,
   enterpriseId?: string
 ): Promise<ApiResponse<Workstream[]>> {
-  return httpClient.get<Workstream[]>('/api/workstreams', { params: { accountId, enterpriseId } });
+  return httpClient.get<Workstream[]>('/workstreams', { params: { accountId, enterpriseId } });
 }
 
 async function createWorkstreamExternal(input: CreateWorkstreamInput): Promise<ApiResponse<Workstream>> {
-  return httpClient.post<Workstream>('/api/workstreams', input);
+  return httpClient.post<Workstream>('/workstreams', input);
 }
 
 async function updateWorkstreamExternal(
   id: string,
   input: Partial<CreateWorkstreamInput>
 ): Promise<ApiResponse<Workstream>> {
-  return httpClient.put<Workstream>(`/api/workstreams/${id}`, input);
+  return httpClient.put<Workstream>(`/workstreams/${id}`, input);
 }
 
 async function deleteWorkstreamExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/workstreams/${id}`);
+  return httpClient.delete<void>(`/workstreams/${id}`);
 }
 
 async function ensureDefaultWorkstreamExternal(
   accountId: string,
   enterpriseId: string
 ): Promise<ApiResponse<string>> {
-  return httpClient.post<string>('/api/workstreams/ensure-default', { accountId, enterpriseId });
+  return httpClient.post<string>('/workstreams/ensure-default', { accountId, enterpriseId });
 }
 
 // ============= Public API =============

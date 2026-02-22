@@ -52,6 +52,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { isExternalApi } from "@/lib/api/config";
+import { httpClient } from "@/lib/api/http-client";
 import { toast } from "sonner";
 import { ViewToggle } from "@/components/ui/view-toggle";
 import { useViewPreference } from "@/hooks/useViewPreference";
@@ -328,25 +330,47 @@ export default function SecurityPage() {
     }
     setTestingConnectorId(connector.id);
     try {
-      const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-        body: {
+      let result: { success: boolean; message?: string };
+
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
           connector: connector.connector_tool,
           url: connector.url,
           credentialId: connector.credential_id,
-        },
-      });
-      if (error) throw error;
-      const newHealth = data?.success ? "healthy" : "error";
-      await (supabase.from("connectors" as any).update({ health: newHealth }).eq("id", connector.id) as any);
-      refetchConnectors();
-      if (data?.success) {
-        toast.success(data.message || "Connection successful");
+        });
+        if (error) throw new Error(error.message);
+        result = data!;
       } else {
-        toast.error(data?.message || "Connection failed");
+        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
+          body: {
+            connector: connector.connector_tool,
+            url: connector.url,
+            credentialId: connector.credential_id,
+          },
+        });
+        if (error) throw error;
+        result = data;
+      }
+
+      const newHealth = result?.success ? "healthy" : "error";
+      if (isExternalApi()) {
+        await httpClient.put(`/connectors/${connector.id}`, { health: newHealth });
+      } else {
+        await (supabase.from("connectors" as any).update({ health: newHealth }).eq("id", connector.id) as any);
+      }
+      refetchConnectors();
+      if (result?.success) {
+        toast.success(result.message || "Connection successful");
+      } else {
+        toast.error(result?.message || "Connection failed");
       }
     } catch (err) {
       console.error("Connectivity test failed:", err);
-      await (supabase.from("connectors" as any).update({ health: "error" }).eq("id", connector.id) as any);
+      if (isExternalApi()) {
+        await httpClient.put(`/connectors/${connector.id}`, { health: "error" });
+      } else {
+        await (supabase.from("connectors" as any).update({ health: "error" }).eq("id", connector.id) as any);
+      }
       refetchConnectors();
       toast.error("Failed to test connectivity");
     } finally {

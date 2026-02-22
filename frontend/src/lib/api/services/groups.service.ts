@@ -114,21 +114,21 @@ async function deleteGroupSupabase(id: string): Promise<ApiResponse<void>> {
 // ============= External API Implementation =============
 
 async function getGroupsExternal(accountId?: string | null): Promise<ApiResponse<Group[]>> {
-  return httpClient.get<Group[]>('/api/groups', {
+  return httpClient.get<Group[]>('/groups', {
     params: { accountId: accountId || undefined },
   });
 }
 
 async function createGroupExternal(input: CreateGroupInput): Promise<ApiResponse<Group>> {
-  return httpClient.post<Group>('/api/groups', input);
+  return httpClient.post<Group>('/groups', input);
 }
 
 async function updateGroupExternal(id: string, input: CreateGroupInput): Promise<ApiResponse<Group>> {
-  return httpClient.put<Group>(`/api/groups/${id}`, input);
+  return httpClient.put<Group>(`/groups/${id}`, input);
 }
 
 async function deleteGroupExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/groups/${id}`);
+  return httpClient.delete<void>(`/groups/${id}`);
 }
 
 // ============= Public API =============

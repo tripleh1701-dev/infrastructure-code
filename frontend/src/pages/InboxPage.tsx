@@ -8,6 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -27,6 +34,8 @@ import {
   Bell,
   History,
   MailCheck,
+  UserCheck,
+  Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -82,6 +91,7 @@ function NotificationCard({
   const isPending = notification.status === "PENDING";
   const isApproved = notification.status === "APPROVED";
   const isRejected = notification.status === "REJECTED";
+  const isStale = notification.status === "STALE";
   const isApprovalRequest = notification.type === "APPROVAL_REQUEST";
   const timeAgo = formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true });
 
@@ -99,6 +109,8 @@ function NotificationCard({
           ? "border-emerald-500/20 opacity-80"
           : isRejected
           ? "border-destructive/20 opacity-80"
+          : isStale
+          ? "border-slate-300/40 opacity-60"
           : "border-border/30 opacity-70"
       )}
     >
@@ -113,11 +125,15 @@ function NotificationCard({
               ? "bg-emerald-500/10 text-emerald-500"
               : isRejected
               ? "bg-destructive/10 text-destructive"
+              : isStale
+              ? "bg-slate-200/60 text-slate-400"
               : "bg-muted text-muted-foreground"
           )}
         >
           {isApprovalRequest ? (
-            isPending ? (
+            isStale ? (
+              <UserCheck className="w-4 h-4" />
+            ) : isPending ? (
               <ShieldCheck className="w-4 h-4" />
             ) : isApproved ? (
               <CheckCircle className="w-4 h-4" />
@@ -145,10 +161,12 @@ function NotificationCard({
                   ? "border-emerald-500/40 text-emerald-500"
                   : isRejected
                   ? "border-destructive/40 text-destructive"
+                  : isStale
+                  ? "border-slate-300/40 text-slate-400"
                   : "border-border text-muted-foreground"
               )}
             >
-              {notification.status}
+              {isStale ? "APPROVED BY ANOTHER" : notification.status}
             </Badge>
           </div>
 
@@ -187,8 +205,11 @@ function NotificationCard({
             <span>From: {notification.senderEmail}</span>
             {notification.actionedBy && (
               <span>
-                {isApproved ? "Approved" : "Rejected"} by: {notification.actionedBy}
+                {isStale ? "Approved by another user" : isApproved ? "Approved" : "Rejected"} by: {notification.actionedBy}
               </span>
+            )}
+            {isStale && !notification.actionedBy && (
+              <span className="italic text-slate-400">Already approved by another approver</span>
             )}
           </div>
         </div>
@@ -243,9 +264,16 @@ export default function InboxPage() {
   } = useInbox();
 
   const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
-  const displayNotifications = activeTab === "pending" ? pendingNotifications : actionedNotifications;
+  const [historyFilter, setHistoryFilter] = useState<"all" | "APPROVED" | "REJECTED" | "STALE">("all");
+
+  const filteredHistory = historyFilter === "all"
+    ? actionedNotifications
+    : actionedNotifications.filter(n => n.status === historyFilter);
+
+  const displayNotifications = activeTab === "pending" ? pendingNotifications : filteredHistory;
   const approvedCount = actionedNotifications.filter(n => n.status === "APPROVED").length;
   const rejectedCount = actionedNotifications.filter(n => n.status === "REJECTED").length;
+  const staleCount = actionedNotifications.filter(n => n.status === "STALE").length;
 
   return (
     <PermissionGate menuKey="inbox">
@@ -272,6 +300,7 @@ export default function InboxPage() {
                     { label: "Pending", value: pendingCount, icon: Clock, color: "#f59e0b", bgColor: "bg-amber-50" },
                     { label: "Approved", value: approvedCount, icon: CheckCircle, color: "#10b981", bgColor: "bg-emerald-50" },
                     { label: "Rejected", value: rejectedCount, icon: XCircle, color: "#ef4444", bgColor: "bg-red-50" },
+                    { label: "Stale", value: staleCount, icon: UserCheck, color: "#94a3b8", bgColor: "bg-slate-50" },
                     { label: "Total", value: pendingCount + actionedNotifications.length, icon: Mail, color: "#8b5cf6", bgColor: "bg-violet-50" },
                   ].map((stat, i) => (
                     <Tooltip key={stat.label}>
@@ -338,6 +367,33 @@ export default function InboxPage() {
                 <RefreshCw className="w-3.5 h-3.5" />
                 Refresh
               </Button>
+
+              {activeTab === "history" && (
+                <Select value={historyFilter} onValueChange={(v) => setHistoryFilter(v as any)}>
+                  <SelectTrigger className="w-[160px] h-8 text-xs bg-white border-slate-200/60 shadow-sm">
+                    <Filter className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                    <SelectValue placeholder="Filter status" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white z-50 border border-slate-200 shadow-lg">
+                    <SelectItem value="all" className="text-xs">All History</SelectItem>
+                    <SelectItem value="APPROVED" className="text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <CheckCircle className="w-3 h-3 text-emerald-500" /> Approved
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="REJECTED" className="text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <XCircle className="w-3 h-3 text-destructive" /> Rejected
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="STALE" className="text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <UserCheck className="w-3 h-3 text-slate-400" /> Stale
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </motion.div>
 
             {/* Content */}

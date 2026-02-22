@@ -162,35 +162,35 @@ async function deleteServiceSupabase(id: string): Promise<ApiResponse<void>> {
 // ============= External API Implementation =============
 
 async function getProductsExternal(): Promise<ApiResponse<Product[]>> {
-  return httpClient.get<Product[]>('/api/products');
+  return httpClient.get<Product[]>('/products');
 }
 
 async function createProductExternal(name: string): Promise<ApiResponse<Product>> {
-  return httpClient.post<Product>('/api/products', { name });
+  return httpClient.post<Product>('/products', { name });
 }
 
 async function updateProductExternal(id: string, name: string): Promise<ApiResponse<Product>> {
-  return httpClient.put<Product>(`/api/products/${id}`, { name });
+  return httpClient.put<Product>(`/products/${id}`, { name });
 }
 
 async function deleteProductExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/products/${id}`);
+  return httpClient.delete<void>(`/products/${id}`);
 }
 
 async function getServicesExternal(): Promise<ApiResponse<Service[]>> {
-  return httpClient.get<Service[]>('/api/services');
+  return httpClient.get<Service[]>('/services');
 }
 
 async function createServiceExternal(name: string): Promise<ApiResponse<Service>> {
-  return httpClient.post<Service>('/api/services', { name });
+  return httpClient.post<Service>('/services', { name });
 }
 
 async function updateServiceExternal(id: string, name: string): Promise<ApiResponse<Service>> {
-  return httpClient.put<Service>(`/api/services/${id}`, { name });
+  return httpClient.put<Service>(`/services/${id}`, { name });
 }
 
 async function deleteServiceExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/services/${id}`);
+  return httpClient.delete<void>(`/services/${id}`);
 }
 
 // ============= Public API =============

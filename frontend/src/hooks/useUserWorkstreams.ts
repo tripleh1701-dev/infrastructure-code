@@ -23,7 +23,7 @@ export function useUserWorkstreams(userId?: string) {
       if (!userId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<UserWorkstream[]>(`/api/users/${userId}/workstreams`);
+        const { data, error } = await httpClient.get<UserWorkstream[]>(`/users/${userId}/workstreams`);
         if (error) throw new Error(error.message);
         return data || [];
       }
@@ -60,7 +60,7 @@ export function useUpdateUserWorkstreams() {
   return useMutation({
     mutationFn: async ({ userId, workstreamIds }: { userId: string; workstreamIds: string[] }) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.put(`/api/users/${userId}/workstreams`, { workstreamIds });
+        const { error } = await httpClient.put(`/users/${userId}/workstreams`, { workstreamIds });
         if (error) throw new Error(error.message);
         return;
       }
@@ -104,7 +104,7 @@ export function useEnsureDefaultWorkstream() {
   return useMutation({
     mutationFn: async ({ accountId, enterpriseId }: { accountId: string; enterpriseId: string }) => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<{ id: string; name: string }>('/api/workstreams/ensure-default', {
+        const { data, error } = await httpClient.post<{ id: string; name: string }>('/workstreams/ensure-default', {
           accountId,
           enterpriseId,
         });
@@ -159,7 +159,7 @@ export function useDefaultWorkstream(accountId?: string, enterpriseId?: string) 
 
       if (isExternalApi()) {
         // Use POST ensure-default endpoint (no GET /default exists on backend)
-        const { data, error } = await httpClient.post<{ id: string; name: string }>('/api/workstreams/ensure-default', {
+        const { data, error } = await httpClient.post<{ id: string; name: string }>('/workstreams/ensure-default', {
           accountId,
           enterpriseId,
         });

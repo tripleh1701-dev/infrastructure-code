@@ -204,7 +204,7 @@ async function deleteEnterpriseSupabase(id: string): Promise<ApiResponse<void>> 
 // ============= External API Implementation =============
 
 async function getEnterprisesExternal(): Promise<ApiResponse<EnterpriseWithDetails[]>> {
-  return httpClient.get<EnterpriseWithDetails[]>('/api/enterprises');
+  return httpClient.get<EnterpriseWithDetails[]>('/enterprises');
 }
 
 async function createEnterpriseExternal(input: CreateEnterpriseInput): Promise<ApiResponse<Enterprise>> {
@@ -212,7 +212,7 @@ async function createEnterpriseExternal(input: CreateEnterpriseInput): Promise<A
   const payload: any = { name: input.name };
   if (input.productId) payload.products = [input.productId];
   if (input.serviceIds) payload.services = input.serviceIds;
-  return httpClient.post<Enterprise>('/api/enterprises', payload);
+  return httpClient.post<Enterprise>('/enterprises', payload);
 }
 
 async function updateEnterpriseExternal(
@@ -224,11 +224,11 @@ async function updateEnterpriseExternal(
   if (input.name) payload.name = input.name;
   if (input.productId !== undefined) payload.products = input.productId ? [input.productId] : [];
   if (input.serviceIds !== undefined) payload.services = input.serviceIds;
-  return httpClient.put<Enterprise>(`/api/enterprises/${id}`, payload);
+  return httpClient.put<Enterprise>(`/enterprises/${id}`, payload);
 }
 
 async function deleteEnterpriseExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/enterprises/${id}`);
+  return httpClient.delete<void>(`/enterprises/${id}`);
 }
 
 // ============= Public API =============

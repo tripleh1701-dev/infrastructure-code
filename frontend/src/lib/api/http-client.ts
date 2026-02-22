@@ -41,23 +41,35 @@ class HttpClient {
 
   // ── URL building ───────────────────────────────────────────────────────────
 
+  /**
+   * Centralised API prefix. Every endpoint automatically gets this prefix
+   * unless it already starts with it, preventing the class of 404 bugs
+   * caused by a missing `/api/` in individual service files.
+   */
+  private static readonly API_PREFIX = '/api';
+
+  private ensureApiPrefix(endpoint: string): string {
+    return ensureApiPrefix(endpoint);
+  }
+
   private buildUrl(
     endpoint: string,
     params?: Record<string, string | number | boolean | undefined>
   ): string {
+    const prefixedEndpoint = this.ensureApiPrefix(endpoint);
+
     if (!this.baseUrl) {
       console.error(
         '[API] API base URL is not configured. Set VITE_EXTERNAL_API_URL environment variable.'
       );
-      return `${window.location.origin}/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+      return `${window.location.origin}${prefixedEndpoint}`;
     }
 
     // Concatenate base URL + endpoint properly to preserve the API Gateway
     // stage prefix (e.g. /dev). Using `new URL(endpoint, base)` with a
     // leading-slash endpoint would discard the base path — a known gotcha.
     const base = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
-    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    const url = new URL(`${base}${path}`);
+    const url = new URL(`${base}${prefixedEndpoint}`);
 
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -253,6 +265,23 @@ class HttpClient {
   async delete<T>(endpoint: string, options?: RequestOptions): Promise<ApiResponse<T>> {
     return this.request<T>('DELETE', endpoint, undefined, options);
   }
+}
+
+// ── Exported utility (also used by HttpClient internally) ─────────────────────
+
+const API_PREFIX = '/api';
+
+/**
+ * Ensures an endpoint string starts with `/api`.
+ * Idempotent: endpoints already prefixed are returned unchanged.
+ * Exported for unit-testing; used internally by HttpClient.
+ */
+export function ensureApiPrefix(endpoint: string): string {
+  const normalized = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  if (normalized.startsWith(API_PREFIX + '/') || normalized === API_PREFIX) {
+    return normalized;
+  }
+  return `${API_PREFIX}${normalized}`;
 }
 
 // Singleton instance

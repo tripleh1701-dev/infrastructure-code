@@ -44,7 +44,7 @@ export function useLicenseCapacity(accountId?: string | null) {
 
       // External API mode: NestJS computes capacity server-side
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<LicenseCapacity>(`/api/licenses/capacity`, {
+        const { data, error } = await httpClient.get<LicenseCapacity>(`/licenses/capacity`, {
           params: { accountId },
         });
         if (error) throw new Error(error.message);

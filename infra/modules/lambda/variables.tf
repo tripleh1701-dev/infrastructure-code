@@ -143,6 +143,24 @@ variable "sns_topic_arn" {
   default     = ""
 }
 
+variable "cfn_template_bucket_arn" {
+  description = "ARN of the S3 bucket used for CloudFormation templates (private cloud provisioning)"
+  type        = string
+  default     = ""
+}
+
+variable "enable_cfn_template_bucket" {
+  description = "Whether to create S3 IAM policy for CFN template bucket access"
+  type        = bool
+  default     = false
+}
+
+variable "enable_cloudformation" {
+  description = "Whether to create CloudFormation IAM policy for stack provisioning"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Resource tags"
   type        = map(string)

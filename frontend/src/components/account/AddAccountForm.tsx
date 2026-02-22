@@ -172,52 +172,50 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
       masterAccountName: "",
       cloudType: undefined,
       addresses: [{ id: crypto.randomUUID(), line1: "", line2: "", city: "", state: "", country: "", postalCode: "" }],
-      technicalUser: {
+      technicalUsers: [{
         firstName: "",
         middleName: "",
         lastName: "",
         email: "",
-        status: "active",
+        status: "active" as const,
         startDate: "",
         endDate: "",
         password: "",
         assignedGroup: "",
         assignedRole: "",
-      },
+      }],
     },
   });
 
   const addresses = watch("addresses");
   const accountName = watch("accountName");
-  const password = watch("technicalUser.password") || "";
+  const technicalUsers = watch("technicalUsers") || [];
+  
+  // For password status, show for the first user (each user card handles its own display)
+  const password = technicalUsers[0]?.password || "";
   const passwordStatus = useMemo(() => getPasswordRequirementStatus(password), [password]);
-  
-  // Track selected group to derive available roles
-  const selectedGroupName = watch("technicalUser.assignedGroup");
-  const selectedGroup = useMemo(() => 
-    groups.find(g => g.name === selectedGroupName), 
-    [groups, selectedGroupName]
-  );
-  
-  // Get available roles from the selected group
-  const availableRoles = useMemo(() => 
-    selectedGroup?.roles || [], 
-    [selectedGroup]
-  );
-  
-  // Clear role when group changes (if current role is not in the new group's roles)
-  const selectedRoleName = watch("technicalUser.assignedRole");
-  useEffect(() => {
-    if (selectedRoleName && availableRoles.length > 0) {
-      const roleExists = availableRoles.some(r => r.roleName === selectedRoleName);
-      if (!roleExists) {
-        setValue("technicalUser.assignedRole", "");
-      }
-    } else if (!selectedGroupName) {
-      // Clear role if no group is selected
-      setValue("technicalUser.assignedRole", "");
+
+  // Add/remove technical users
+  const addTechnicalUser = () => {
+    setValue("technicalUsers", [...technicalUsers, {
+      firstName: "",
+      middleName: "",
+      lastName: "",
+      email: "",
+      status: "active" as const,
+      startDate: "",
+      endDate: "",
+      password: "",
+      assignedGroup: "",
+      assignedRole: "",
+    }]);
+  };
+
+  const removeTechnicalUser = (index: number) => {
+    if (technicalUsers.length > 1) {
+      setValue("technicalUsers", technicalUsers.filter((_, i) => i !== index));
     }
-  }, [selectedGroupName, availableRoles, selectedRoleName, setValue]);
+  };
 
   const validateAccountName = (name: string): string => {
     const trimmed = name.trim();
@@ -254,7 +252,7 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
       case 2:
         return await trigger("addresses");
       case 3:
-        return await trigger("technicalUser");
+        return await trigger("technicalUsers");
       case 4:
         return true; // License step has no required validation
       default:
@@ -264,7 +262,56 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
 
   const handleNext = async () => {
     const isValid = await validateStep(currentStep);
-    if (!isValid) return;
+    if (!isValid) {
+      // Check actual form values to determine what's missing
+      if (currentStep === 1) {
+        const missing: string[] = [];
+        if (!watch("accountName")) missing.push("Account Name");
+        if (!watch("masterAccountName")) missing.push("Master Account Name");
+        if (!watch("cloudType")) missing.push("Cloud Type");
+        if (accountNameError) missing.push(accountNameError);
+        if (missing.length > 0) toast.error(`Please fix: ${missing.join(", ")}`);
+      } else if (currentStep === 2) {
+        const missing: string[] = [];
+        addresses.forEach((addr, i) => {
+          if (!addr.line1) missing.push(`Address ${i + 1}: Address Line 1`);
+          if (!addr.country) missing.push(`Address ${i + 1}: Country`);
+          if (!addr.state) missing.push(`Address ${i + 1}: State/Province`);
+          if (!addr.city) missing.push(`Address ${i + 1}: City`);
+          if (!addr.postalCode) missing.push(`Address ${i + 1}: Postal Code`);
+        });
+        if (missing.length > 0) {
+          toast.error(`Please complete: ${missing.join(", ")}`);
+        } else {
+          // All fields filled but validation still failed (e.g. postal code format)
+          toast.error("Please check address fields for formatting errors (e.g. postal code format).");
+        }
+      } else if (currentStep === 3) {
+        const users = watch("technicalUsers") || [];
+        const missing: string[] = [];
+        users.forEach((tu, i) => {
+          const prefix = users.length > 1 ? `User ${i + 1}: ` : "";
+          if (!tu.firstName) missing.push(`${prefix}First Name`);
+          if (!tu.lastName) missing.push(`${prefix}Last Name`);
+          if (!tu.email) missing.push(`${prefix}Email`);
+          if (!tu.startDate) missing.push(`${prefix}Start Date`);
+          if (!tu.password) missing.push(`${prefix}Password`);
+          if (!tu.assignedGroup) missing.push(`${prefix}Group`);
+          if (!tu.assignedRole) missing.push(`${prefix}Role`);
+        });
+        if (missing.length > 0) {
+          toast.error(`Please complete: ${missing.join(", ")}`);
+        } else {
+          toast.error("Please check technical user fields for validation errors.");
+        }
+      }
+      // Scroll to first error within the form after re-render
+      setTimeout(() => {
+        const errorEl = document.querySelector('.border-destructive');
+        if (errorEl) errorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+      return;
+    }
 
     if (currentStep === 3) {
       const formData = watch();
@@ -312,17 +359,17 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
           country: addr.country,
           postal_code: addr.postalCode,
         })),
-        technical_user: {
-          first_name: formData.technicalUser.firstName,
-          middle_name: formData.technicalUser.middleName || undefined,
-          last_name: formData.technicalUser.lastName,
-          email: formData.technicalUser.email,
-          status: formData.technicalUser.status,
-          start_date: formData.technicalUser.startDate,
-          end_date: formData.technicalUser.endDate || undefined,
-          assigned_group: formData.technicalUser.assignedGroup,
-          assigned_role: formData.technicalUser.assignedRole,
-        },
+        technical_users: (formData.technicalUsers || []).map((tu) => ({
+          first_name: tu.firstName,
+          middle_name: tu.middleName || undefined,
+          last_name: tu.lastName,
+          email: tu.email,
+          status: tu.status,
+          start_date: tu.startDate,
+          end_date: tu.endDate || undefined,
+          assigned_group: tu.assignedGroup,
+          assigned_role: tu.assignedRole,
+        })),
       });
 
       if (!result?.id) {
@@ -493,14 +540,9 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
   const getStepValidationStatus = () => {
     const step1Valid = Boolean(accountName && !accountNameError && watch("masterAccountName") && watch("cloudType"));
     const step2Valid = addresses.every(addr => addr.line1 && addr.city && addr.state && addr.country && addr.postalCode);
-    const step3Valid = Boolean(
-      watch("technicalUser.firstName") && 
-      watch("technicalUser.lastName") && 
-      watch("technicalUser.email") && 
-      watch("technicalUser.startDate") && 
-      watch("technicalUser.assignedGroup") && 
-      watch("technicalUser.assignedRole") &&
-      Object.values(passwordStatus).every(Boolean)
+    const step3Valid = technicalUsers.length > 0 && technicalUsers.every(tu =>
+      tu.firstName && tu.lastName && tu.email && tu.startDate && tu.assignedGroup && tu.assignedRole &&
+      Object.values(getPasswordRequirementStatus(tu.password || "")).every(Boolean)
     );
     // Step 4 is only valid if at least one complete license has been added
     const step4Valid = currentStep === 4 && completeLicenseCount > 0;
@@ -878,7 +920,7 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
                 </motion.div>
               )}
 
-              {/* Step 3: Technical User */}
+              {/* Step 3: Technical Users */}
               {currentStep === 3 && (
                 <motion.div
                   key="step3"
@@ -888,220 +930,277 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
                   transition={{ duration: 0.3 }}
                   className="space-y-6"
                 >
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold text-foreground">Technical User Setup</h3>
-                    <p className="text-sm text-muted-foreground">Configure the primary technical contact for this account</p>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-semibold text-foreground">Technical User Setup</h3>
+                      <p className="text-sm text-muted-foreground">Configure technical contacts for this account</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addTechnicalUser}
+                      className="gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add User
+                    </Button>
                   </div>
 
-                  <div className="grid gap-fluid-md">
-                    {/* Personal Info */}
-                    <div className="p-5 rounded-xl border border-border bg-card">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <User className="w-4 h-4 text-primary" />
-                        </div>
-                        <span className="text-sm font-medium text-foreground">Personal Information</span>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-fluid-sm">
-                        <div className="space-y-2">
-                          <Label className="text-sm">First Name <span className="text-destructive">*</span></Label>
-                          <Input
-                            {...register("technicalUser.firstName")}
-                            placeholder="First name"
-                            className={cn("h-10 input-glow", errors.technicalUser?.firstName && "border-destructive")}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">Middle Name</Label>
-                          <Input
-                            {...register("technicalUser.middleName")}
-                            placeholder="Middle name"
-                            className="h-10 input-glow"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">Last Name <span className="text-destructive">*</span></Label>
-                          <Input
-                            {...register("technicalUser.lastName")}
-                            placeholder="Last name"
-                            className={cn("h-10 input-glow", errors.technicalUser?.lastName && "border-destructive")}
-                          />
-                        </div>
-                        <div className="space-y-2 sm:col-span-2">
-                          <Label className="text-sm">Email Address <span className="text-destructive">*</span></Label>
-                          <Input
-                            type="email"
-                            {...register("technicalUser.email")}
-                            placeholder="email@example.com"
-                            className={cn("h-10 input-glow", errors.technicalUser?.email && "border-destructive")}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">Status</Label>
-                          <Controller
-                            name="technicalUser.status"
-                            control={control}
-                            render={({ field }) => (
-                              <div className="flex items-center justify-between h-10 px-3 rounded-md border border-input bg-background">
-                                <span className="text-sm">
-                                  {field.value === "active" ? "Active" : "Inactive"}
-                                </span>
-                                <Switch
-                                  checked={field.value === "active"}
-                                  onCheckedChange={(checked) => field.onChange(checked ? "active" : "inactive")}
-                                />
-                              </div>
-                            )}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                  <div className="space-y-6">
+                    {technicalUsers.map((tu, index) => {
+                      const tuPassword = tu.password || "";
+                      const tuPasswordStatus = getPasswordRequirementStatus(tuPassword);
+                      const selectedTuGroupName = tu.assignedGroup;
+                      const selectedTuGroup = groups.find(g => g.name === selectedTuGroupName);
+                      const tuAvailableRoles = selectedTuGroup?.roles || [];
 
-                    {/* Dates & Access */}
-                    <div className="form-grid">
-                      <div className="p-5 rounded-xl border border-border bg-card">
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center">
-                            <span className="text-sm">📅</span>
-                          </div>
-                          <span className="text-sm font-medium text-foreground">Validity Period</span>
-                        </div>
-                        <div className="grid gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-sm">Start Date <span className="text-destructive">*</span></Label>
-                            <Input
-                              type="date"
-                              {...register("technicalUser.startDate")}
-                              className={cn("h-10 input-glow", errors.technicalUser?.startDate && "border-destructive")}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">End Date</Label>
-                            <Input
-                              type="date"
-                              {...register("technicalUser.endDate")}
-                              className="h-10 input-glow"
-                            />
-                          </div>
-                        </div>
-                      </div>
+                      return (
+                        <motion.div
+                          key={index}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="relative border border-border rounded-xl bg-card/50 p-1"
+                        >
+                          {technicalUsers.length > 1 && (
+                            <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                              <span className="text-sm font-medium text-foreground">Technical User {index + 1}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeTechnicalUser(index)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
 
-                      <div className="p-5 rounded-xl border border-border bg-card">
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                            <span className="text-sm">🔐</span>
-                          </div>
-                          <span className="text-sm font-medium text-foreground">Access Control</span>
-                        </div>
-                        <div className="grid gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-sm">Assigned Group <span className="text-destructive">*</span></Label>
-                            <Controller
-                              name="technicalUser.assignedGroup"
-                              control={control}
-                              render={({ field }) => (
-                                <Select value={field.value} onValueChange={field.onChange}>
-                                  <SelectTrigger className={cn("h-10 input-glow", errors.technicalUser?.assignedGroup && "border-destructive")}>
-                                    <SelectValue placeholder="Select group" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {groups.map((group) => (
-                                      <SelectItem key={group.id} value={group.name}>{group.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">Assigned Role <span className="text-destructive">*</span></Label>
-                            <Controller
-                              name="technicalUser.assignedRole"
-                              control={control}
-                              render={({ field }) => (
-                                <Select 
-                                  value={field.value} 
-                                  onValueChange={field.onChange}
-                                  disabled={!selectedGroupName || availableRoles.length === 0}
-                                >
-                                  <SelectTrigger className={cn("h-10 input-glow", errors.technicalUser?.assignedRole && "border-destructive")}>
-                                    <SelectValue placeholder={!selectedGroupName ? "Select a group first" : availableRoles.length === 0 ? "No roles available" : "Select role"} />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {availableRoles.map((role) => (
-                                      <SelectItem key={role.roleId} value={role.roleName}>{role.roleName}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Password */}
-                    <div className="p-5 rounded-xl border border-border bg-card">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center">
-                          <span className="text-sm">🔑</span>
-                        </div>
-                        <span className="text-sm font-medium text-foreground">Security Credentials</span>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm">Password <span className="text-destructive">*</span></Label>
-                          <div className="relative">
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              {...register("technicalUser.password")}
-                              placeholder="Enter a strong password"
-                              className={cn("h-10 input-glow pr-10", errors.technicalUser?.password && "border-destructive")}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                              onClick={() => setShowPassword(!showPassword)}
-                            >
-                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                          <p className="text-xs font-medium text-muted-foreground mb-3">Password Requirements</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {passwordRequirements.map((req) => {
-                              const isValid = passwordStatus[req.key as keyof typeof passwordStatus];
-                              return (
-                                <div key={req.key} className="flex items-center gap-2">
-                                  <div className={cn(
-                                    "w-4 h-4 rounded-full flex items-center justify-center transition-colors",
-                                    isValid ? "bg-success" : "bg-muted"
-                                  )}>
-                                    {isValid ? (
-                                      <Check className="w-2.5 h-2.5 text-success-foreground" />
-                                    ) : (
-                                      <X className="w-2.5 h-2.5 text-muted-foreground" />
-                                    )}
-                                  </div>
-                                  <span className={cn(
-                                    "text-xs transition-colors",
-                                    isValid ? "text-success" : "text-muted-foreground"
-                                  )}>
-                                    {req.label}
-                                  </span>
+                          <div className="grid gap-fluid-md p-3">
+                            {/* Personal Info */}
+                            <div className="p-5 rounded-xl border border-border bg-card">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                  <User className="w-4 h-4 text-primary" />
                                 </div>
-                              );
-                            })}
+                                <span className="text-sm font-medium text-foreground">Personal Information</span>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-fluid-sm">
+                                <div className="space-y-2">
+                                  <Label className="text-sm">First Name <span className="text-destructive">*</span></Label>
+                                  <Input
+                                    {...register(`technicalUsers.${index}.firstName`)}
+                                    placeholder="First name"
+                                    className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.firstName && "border-destructive")}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Middle Name</Label>
+                                  <Input
+                                    {...register(`technicalUsers.${index}.middleName`)}
+                                    placeholder="Middle name"
+                                    className="h-10 input-glow"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Last Name <span className="text-destructive">*</span></Label>
+                                  <Input
+                                    {...register(`technicalUsers.${index}.lastName`)}
+                                    placeholder="Last name"
+                                    className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.lastName && "border-destructive")}
+                                  />
+                                </div>
+                                <div className="space-y-2 sm:col-span-2">
+                                  <Label className="text-sm">Email Address <span className="text-destructive">*</span></Label>
+                                  <Input
+                                    type="email"
+                                    {...register(`technicalUsers.${index}.email`)}
+                                    placeholder="email@example.com"
+                                    className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.email && "border-destructive")}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Status</Label>
+                                  <Controller
+                                    name={`technicalUsers.${index}.status`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <div className="flex items-center justify-between h-10 px-3 rounded-md border border-input bg-background">
+                                        <span className="text-sm">
+                                          {field.value === "active" ? "Active" : "Inactive"}
+                                        </span>
+                                        <Switch
+                                          checked={field.value === "active"}
+                                          onCheckedChange={(checked) => field.onChange(checked ? "active" : "inactive")}
+                                        />
+                                      </div>
+                                    )}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Dates & Access */}
+                            <div className="form-grid">
+                              <div className="p-5 rounded-xl border border-border bg-card">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center">
+                                    <span className="text-sm">📅</span>
+                                  </div>
+                                  <span className="text-sm font-medium text-foreground">Validity Period</span>
+                                </div>
+                                <div className="grid gap-4">
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">Start Date <span className="text-destructive">*</span></Label>
+                                    <Input
+                                      type="date"
+                                      {...register(`technicalUsers.${index}.startDate`)}
+                                      className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.startDate && "border-destructive")}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">End Date</Label>
+                                    <Input
+                                      type="date"
+                                      {...register(`technicalUsers.${index}.endDate`)}
+                                      className="h-10 input-glow"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="p-5 rounded-xl border border-border bg-card">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                                    <span className="text-sm">🔐</span>
+                                  </div>
+                                  <span className="text-sm font-medium text-foreground">Access Control</span>
+                                </div>
+                                <div className="grid gap-4">
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">Assigned Group <span className="text-destructive">*</span></Label>
+                                    <Controller
+                                      name={`technicalUsers.${index}.assignedGroup`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select value={field.value} onValueChange={(val) => {
+                                          field.onChange(val);
+                                          // Clear role if group changes
+                                          const newGroup = groups.find(g => g.name === val);
+                                          const currentRole = watch(`technicalUsers.${index}.assignedRole`);
+                                          if (currentRole && newGroup) {
+                                            const roleExists = newGroup.roles?.some(r => r.roleName === currentRole);
+                                            if (!roleExists) setValue(`technicalUsers.${index}.assignedRole`, "");
+                                          } else if (!val) {
+                                            setValue(`technicalUsers.${index}.assignedRole`, "");
+                                          }
+                                        }}>
+                                          <SelectTrigger className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.assignedGroup && "border-destructive")}>
+                                            <SelectValue placeholder="Select group" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {groups.map((group) => (
+                                              <SelectItem key={group.id} value={group.name}>{group.name}</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      )}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">Assigned Role <span className="text-destructive">*</span></Label>
+                                    <Controller
+                                      name={`technicalUsers.${index}.assignedRole`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select 
+                                          value={field.value} 
+                                          onValueChange={field.onChange}
+                                          disabled={!selectedTuGroupName || tuAvailableRoles.length === 0}
+                                        >
+                                          <SelectTrigger className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.assignedRole && "border-destructive")}>
+                                            <SelectValue placeholder={!selectedTuGroupName ? "Select a group first" : tuAvailableRoles.length === 0 ? "No roles available" : "Select role"} />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {tuAvailableRoles.map((role) => (
+                                              <SelectItem key={role.roleId} value={role.roleName}>{role.roleName}</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      )}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Password */}
+                            <div className="p-5 rounded-xl border border-border bg-card">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                                  <span className="text-sm">🔑</span>
+                                </div>
+                                <span className="text-sm font-medium text-foreground">Security Credentials</span>
+                              </div>
+                              
+                              <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Password <span className="text-destructive">*</span></Label>
+                                  <div className="relative">
+                                    <Input
+                                      type={showPassword ? "text" : "password"}
+                                      {...register(`technicalUsers.${index}.password`)}
+                                      placeholder="Enter a strong password"
+                                      className={cn("h-10 input-glow pr-10", errors.technicalUsers?.[index]?.password && "border-destructive")}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                                      onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                                
+                                <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                                  <p className="text-xs font-medium text-muted-foreground mb-3">Password Requirements</p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {passwordRequirements.map((req) => {
+                                      const isValid = tuPasswordStatus[req.key as keyof typeof tuPasswordStatus];
+                                      return (
+                                        <div key={req.key} className="flex items-center gap-2">
+                                          <div className={cn(
+                                            "w-4 h-4 rounded-full flex items-center justify-center transition-colors",
+                                            isValid ? "bg-success" : "bg-muted"
+                                          )}>
+                                            {isValid ? (
+                                              <Check className="w-2.5 h-2.5 text-success-foreground" />
+                                            ) : (
+                                              <X className="w-2.5 h-2.5 text-muted-foreground" />
+                                            )}
+                                          </div>
+                                          <span className={cn(
+                                            "text-xs transition-colors",
+                                            isValid ? "text-success" : "text-muted-foreground"
+                                          )}>
+                                            {req.label}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </div>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 </motion.div>
               )}
@@ -1541,7 +1640,7 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
                   <Button 
                     type="button" 
                     onClick={handleNext}
-                    disabled={!isCurrentStepValid || isSubmitting}
+                    disabled={isSubmitting}
                     className="gap-2 min-w-[120px]"
                   >
                     {isSubmitting && currentStep === 3 ? (

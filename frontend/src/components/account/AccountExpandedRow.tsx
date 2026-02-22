@@ -23,6 +23,20 @@ import { cn } from "@/lib/utils";
 import { AccountWithDetails } from "@/hooks/useAccounts";
 import { LicenseWithDetails } from "@/hooks/useLicenses";
 import { format, differenceInDays } from "date-fns";
+import { AddTechnicalUserDialog } from "./AddTechnicalUserDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface AccountExpandedRowProps {
   account: AccountWithDetails;
@@ -44,8 +58,11 @@ export function AccountExpandedRow({
   onDeleteLicense,
 }: AccountExpandedRowProps) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [showAddUserDialog, setShowAddUserDialog] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const technicalUser = account.technical_users?.[0];
+  const technicalUsers = account.technical_users || [];
 
   const isExpiringSoon = (endDate: string) => {
     const daysRemaining = differenceInDays(new Date(endDate), new Date());
@@ -58,6 +75,24 @@ export function AccountExpandedRow({
 
   const getDaysRemaining = (endDate: string) => {
     return differenceInDays(new Date(endDate), new Date());
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      // Delete user_groups first
+      await supabase.from("user_groups").delete().eq("user_id", userId);
+      // Delete user_workstreams
+      await supabase.from("user_workstreams").delete().eq("user_id", userId);
+      // Delete the technical user
+      const { error } = await supabase.from("account_technical_users").delete().eq("id", userId);
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      toast.success("Technical user removed successfully");
+    } catch (error) {
+      toast.error("Failed to remove technical user");
+    }
+    setDeletingUserId(null);
   };
 
   return (
@@ -83,6 +118,12 @@ export function AccountExpandedRow({
                 className="text-xs h-7 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm transition-all"
               >
                 Addresses ({account.addresses?.length ?? 0})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="technical-users" 
+                className="text-xs h-7 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm transition-all"
+              >
+                Technical Users ({technicalUsers.length})
               </TabsTrigger>
               <TabsTrigger 
                 value="licenses" 
@@ -122,12 +163,14 @@ export function AccountExpandedRow({
                       variant="outline"
                       className={cn(
                         "text-[10px] h-5",
-                        account.status === "active"
+                        (account.expired_license_count ?? 0) > 0
+                          ? "text-destructive border-destructive"
+                          : account.status === "active"
                           ? "text-success border-success"
                           : "text-muted-foreground"
                       )}
                     >
-                      {account.status}
+                      {(account.expired_license_count ?? 0) > 0 ? "Expired" : account.status}
                     </Badge>
                   </div>
                 </div>
@@ -154,32 +197,48 @@ export function AccountExpandedRow({
                 </div>
               )}
 
-              {/* Technical User */}
-              {technicalUser && (
-                <div className="p-4 rounded-lg bg-background border border-border">
-                  <div className="flex items-center gap-2 mb-3">
-                    <User className="w-4 h-4 text-violet-500" />
-                    <span className="text-sm font-medium">Technical User</span>
+              {/* Technical Users Summary */}
+              <div className="p-4 rounded-lg bg-background border border-border">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-violet-500" />
+                    <span className="text-sm font-medium">Technical Users</span>
                   </div>
-                  <div className="space-y-2 text-sm">
-                    <p className="font-medium">
-                      {technicalUser.first_name} {technicalUser.last_name}
-                    </p>
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Mail className="w-3 h-3" />
-                      <span className="truncate">{technicalUser.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        {technicalUser.assigned_role}
-                      </Badge>
-                      <Badge variant="secondary" className="text-[10px] h-5">
-                        {technicalUser.assigned_group}
-                      </Badge>
-                    </div>
-                  </div>
+                  <Badge variant="secondary" className="text-[10px] h-5">
+                    {technicalUsers.length}
+                  </Badge>
                 </div>
-              )}
+                {technicalUsers.length > 0 ? (
+                  <div className="space-y-2 text-sm">
+                    {technicalUsers.slice(0, 2).map((user) => (
+                      <div key={user.id} className="flex items-center justify-between">
+                        <span className="font-medium truncate">
+                          {user.first_name} {user.last_name}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] h-5",
+                            user.status === "active" ? "text-success border-success" : "text-muted-foreground"
+                          )}
+                        >
+                          {user.status}
+                        </Badge>
+                      </div>
+                    ))}
+                    {technicalUsers.length > 2 && (
+                      <button
+                        onClick={() => setActiveTab("technical-users")}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        +{technicalUsers.length - 2} more
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No technical users</p>
+                )}
+              </div>
             </div>
           </TabsContent>
 
@@ -212,6 +271,101 @@ export function AccountExpandedRow({
                       </p>
                       <p className="text-muted-foreground">{address.country}</p>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Technical Users Tab */}
+          <TabsContent value="technical-users" className="mt-0">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {technicalUsers.length} Technical User{technicalUsers.length !== 1 ? "s" : ""}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => setShowAddUserDialog(true)}
+              >
+                <Plus className="w-3 h-3" />
+                Add Technical User
+              </Button>
+            </div>
+
+            {technicalUsers.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground text-sm">
+                No technical users configured for this account
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {technicalUsers.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between p-3 rounded-lg bg-background border border-border"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={cn(
+                          "w-2.5 h-2.5 rounded-full ring-2 ring-offset-1 flex-shrink-0",
+                          user.status === "active"
+                            ? "bg-success ring-success/30 shadow-[0_0_6px_hsl(var(--success)/0.5)]"
+                            : "bg-muted-foreground/40 ring-muted/50"
+                        )}
+                        title={user.status === "active" ? "Active" : "Inactive"}
+                      />
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-primary" />
+                        <span className="text-sm font-medium">
+                          {user.first_name} {user.middle_name ? `${user.middle_name} ` : ""}{user.last_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Mail className="w-3 h-3" />
+                        <span className="truncate max-w-[200px]">{user.email}</span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] h-5">
+                        {user.assigned_role}
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px] h-5">
+                        {user.assigned_group}
+                      </Badge>
+                      {user.start_date && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="w-3 h-3" />
+                          <span>{format(new Date(user.start_date), "MMM d, yyyy")}</span>
+                          {user.end_date && (
+                            <>
+                              <span>→</span>
+                              <span
+                                className={cn(
+                                  new Date(user.end_date) < new Date()
+                                    ? "text-destructive font-medium"
+                                    : ""
+                                )}
+                              >
+                                {format(new Date(user.end_date), "MMM d, yyyy")}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {account.technical_users.length > 1 && (
+                      <div className="flex items-center gap-0.5 border-l pl-3">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeletingUserId(user.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -260,7 +414,6 @@ export function AccountExpandedRow({
                         )}
                       >
                         <div className="flex items-center gap-4">
-                          {/* Status Indicator */}
                           <div 
                             className={cn(
                               "w-2.5 h-2.5 rounded-full ring-2 ring-offset-1 transition-all flex-shrink-0",
@@ -360,6 +513,40 @@ export function AccountExpandedRow({
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Add Technical User Dialog */}
+      <AddTechnicalUserDialog
+        open={showAddUserDialog}
+        onOpenChange={setShowAddUserDialog}
+        accountId={account.id}
+        accountName={account.name}
+        enterpriseId={technicalUsers[0]?.enterprise_id ?? null}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingUserId} onOpenChange={(open) => !open && setDeletingUserId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Technical User</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove <span className="font-semibold text-foreground">{(() => {
+                const user = account.technical_users.find(u => u.id === deletingUserId);
+                return user ? `${user.first_name} ${user.last_name}` : 'this technical user';
+              })()}</span>? This action cannot be undone.
+              The user's group and workstream assignments will also be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingUserId && handleDeleteUser(deletingUserId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 }

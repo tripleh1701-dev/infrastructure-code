@@ -197,22 +197,22 @@ async function deleteLicenseSupabase(id: string): Promise<ApiResponse<void>> {
 // ============= External API Implementation =============
 
 async function getLicensesExternal(accountId: string): Promise<ApiResponse<LicenseWithDetails[]>> {
-  return httpClient.get<LicenseWithDetails[]>('/api/licenses', { params: { accountId } });
+  return httpClient.get<LicenseWithDetails[]>('/licenses', { params: { accountId } });
 }
 
 async function createLicenseExternal(input: CreateLicenseInput): Promise<ApiResponse<License>> {
-  return httpClient.post<License>('/api/licenses', input);
+  return httpClient.post<License>('/licenses', input);
 }
 
 async function updateLicenseExternal(
   id: string,
   input: Partial<CreateLicenseInput>
 ): Promise<ApiResponse<License>> {
-  return httpClient.put<License>(`/api/licenses/${id}`, input);
+  return httpClient.put<License>(`/licenses/${id}`, input);
 }
 
 async function deleteLicenseExternal(id: string): Promise<ApiResponse<void>> {
-  return httpClient.delete<void>(`/api/licenses/${id}`);
+  return httpClient.delete<void>(`/licenses/${id}`);
 }
 
 // ============= Public API =============

@@ -47,6 +47,8 @@ export function AccountCard({
   const licenseCount = account.license_count ?? 0;
   const expiringCount = account.expiring_license_count ?? 0;
   const technicalUsersCount = account.technical_users?.length ?? 0;
+  const hasExpiredLicenses = (account.expired_license_count ?? 0) > 0;
+  const displayStatus = hasExpiredLicenses ? "expired" : account.status;
 
   return (
     <motion.div
@@ -94,20 +96,22 @@ export function AccountCard({
             animate={{ scale: 1, opacity: 1 }}
             className={cn(
               "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all duration-200 flex-shrink-0",
-              account.status === "active" 
+              displayStatus === "active" 
                 ? "bg-success/10 text-success" 
+                : displayStatus === "expired"
+                ? "bg-destructive/10 text-destructive"
                 : "bg-muted text-muted-foreground"
             )}
           >
             <motion.span 
-              animate={{ scale: account.status === "active" ? [1, 1.2, 1] : 1 }}
-              transition={{ repeat: account.status === "active" ? Infinity : 0, duration: 2 }}
+              animate={{ scale: displayStatus === "active" ? [1, 1.2, 1] : 1 }}
+              transition={{ repeat: displayStatus === "active" ? Infinity : 0, duration: 2 }}
               className={cn(
                 "w-1.5 h-1.5 rounded-full",
-                account.status === "active" ? "bg-success" : "bg-muted-foreground"
+                displayStatus === "active" ? "bg-success" : displayStatus === "expired" ? "bg-destructive" : "bg-muted-foreground"
               )} 
             />
-            {account.status === "active" ? "Active" : "Inactive"}
+            {displayStatus === "active" ? "Active" : displayStatus === "expired" ? "Expired" : "Inactive"}
           </motion.span>
 
           {/* Actions Menu */}

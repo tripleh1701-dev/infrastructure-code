@@ -18,7 +18,7 @@ export function useEnterpriseLicenseLinks() {
     try {
       if (isExternalApi()) {
         // For external API, fetch licenses and aggregate
-        const { data, error } = await httpClient.get<any[]>('/api/licenses');
+        const { data, error } = await httpClient.get<any[]>('/licenses');
         if (error) throw new Error(error.message);
         const licenseList = Array.isArray(data) ? data : [];
         const linkMap = new Map<string, { count: number; accounts: Set<string> }>();

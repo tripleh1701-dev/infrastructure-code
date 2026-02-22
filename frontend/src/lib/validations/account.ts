@@ -68,7 +68,7 @@ export const accountFormSchema = z.object({
     required_error: "Cloud type is required",
   }),
   addresses: z.array(addressSchema).min(1, "At least one address is required"),
-  technicalUser: technicalUserSchema,
+  technicalUsers: z.array(technicalUserSchema).min(1, "At least one technical user is required"),
 });
 
 export type AccountFormData = z.infer<typeof accountFormSchema>;

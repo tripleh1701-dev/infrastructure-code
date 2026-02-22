@@ -29,6 +29,7 @@ export interface AccountAddress {
 export interface AccountTechnicalUser {
   id: string;
   account_id: string;
+  enterprise_id?: string | null;
   first_name: string;
   middle_name: string | null;
   last_name: string;
@@ -47,6 +48,7 @@ export interface AccountWithDetails extends Account {
   technical_users: AccountTechnicalUser[];
   license_count?: number;
   expiring_license_count?: number;
+  expired_license_count?: number;
 }
 
 export interface CreateAccountInput {
@@ -61,7 +63,7 @@ export interface CreateAccountInput {
     country: string;
     postal_code: string;
   }[];
-  technical_user: {
+  technical_users: {
     first_name: string;
     middle_name?: string;
     last_name: string;
@@ -71,7 +73,7 @@ export interface CreateAccountInput {
     end_date?: string;
     assigned_group: string;
     assigned_role: string;
-  };
+  }[];
 }
 
 export interface UpdateAccountInput extends CreateAccountInput {
@@ -86,7 +88,7 @@ export function useAccounts() {
     queryFn: async () => {
       // External API mode: NestJS handles all relational joins server-side
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>('/api/accounts');
+        const { data, error } = await httpClient.get<any[]>('/accounts');
         if (error) throw new Error(error.message);
         // Map camelCase API response to snake_case expected by UI
         return (data || []).map((a: any) => ({
@@ -126,6 +128,7 @@ export function useAccounts() {
             }] : []),
           license_count: a.licenseCount || a.license_count || 0,
           expiring_license_count: a.expiringLicenseCount || a.expiring_license_count || 0,
+          expired_license_count: a.expiredLicenseCount || a.expired_license_count || 0,
         })) as AccountWithDetails[];
       }
 
@@ -163,12 +166,18 @@ export function useAccounts() {
             return endDate > now && endDate <= thirtyDaysFromNow;
           }).length;
 
+          const expiredCount = licenses.filter((l) => {
+            const endDate = new Date(l.end_date);
+            return endDate < now;
+          }).length;
+
           return {
             ...account,
             addresses: addressesResult.data || [],
             technical_users: technicalUsersResult.data || [],
             license_count: licenses.length,
             expiring_license_count: expiringCount,
+            expired_license_count: expiredCount,
           } as AccountWithDetails;
         })
       );
@@ -193,18 +202,19 @@ export function useAccounts() {
             postalCode: addr.postal_code,
             country: addr.country,
           })),
-          technicalUser: {
-            firstName: input.technical_user.first_name,
-            middleName: input.technical_user.middle_name,
-            lastName: input.technical_user.last_name,
-            email: input.technical_user.email,
-            assignedRole: input.technical_user.assigned_role,
-            assignedGroup: input.technical_user.assigned_group,
-            startDate: input.technical_user.start_date,
-            endDate: input.technical_user.end_date || undefined,
-          },
+          // Send first technical user for backward compatibility with backend
+          technicalUser: input.technical_users[0] ? {
+            firstName: input.technical_users[0].first_name,
+            middleName: input.technical_users[0].middle_name,
+            lastName: input.technical_users[0].last_name,
+            email: input.technical_users[0].email,
+            assignedRole: input.technical_users[0].assigned_role,
+            assignedGroup: input.technical_users[0].assigned_group,
+            startDate: input.technical_users[0].start_date,
+            endDate: input.technical_users[0].end_date || undefined,
+          } : undefined,
         };
-        const { data, error } = await httpClient.post<Account>('/api/accounts', apiPayload);
+        const { data, error } = await httpClient.post<Account>('/accounts', apiPayload);
         if (error) throw new Error(error.message);
         return data!;
       }
@@ -239,43 +249,44 @@ export function useAccounts() {
 
       if (addressError) throw addressError;
 
-      // Create technical user (automatically marked as technical user since created from Accounts)
-      const { data: technicalUser, error: userError } = await supabase
-        .from("account_technical_users")
-        .insert({
-          account_id: account.id,
-          first_name: input.technical_user.first_name,
-          middle_name: input.technical_user.middle_name || null,
-          last_name: input.technical_user.last_name,
-          email: input.technical_user.email,
-          status: input.technical_user.status,
-          start_date: input.technical_user.start_date,
-          end_date: input.technical_user.end_date || null,
-          assigned_group: input.technical_user.assigned_group,
-          assigned_role: input.technical_user.assigned_role,
-          is_technical_user: true,
-        })
-        .select()
-        .single();
+      // Create technical users (automatically marked as technical user since created from Accounts)
+      for (const tu of input.technical_users) {
+        const { data: technicalUser, error: userError } = await supabase
+          .from("account_technical_users")
+          .insert({
+            account_id: account.id,
+            first_name: tu.first_name,
+            middle_name: tu.middle_name || null,
+            last_name: tu.last_name,
+            email: tu.email,
+            status: tu.status,
+            start_date: tu.start_date,
+            end_date: tu.end_date || null,
+            assigned_group: tu.assigned_group,
+            assigned_role: tu.assigned_role,
+            is_technical_user: true,
+          })
+          .select()
+          .single();
 
-      if (userError) throw userError;
+        if (userError) throw userError;
 
-      // Look up the group by name to get its ID and create user_groups assignment
-      if (input.technical_user.assigned_group && technicalUser) {
-        const { data: groupData } = await supabase
-          .from("groups")
-          .select("id")
-          .eq("name", input.technical_user.assigned_group)
-          .maybeSingle();
+        // Look up the group by name to get its ID and create user_groups assignment
+        if (tu.assigned_group && technicalUser) {
+          const { data: groupData } = await supabase
+            .from("groups")
+            .select("id")
+            .eq("name", tu.assigned_group)
+            .maybeSingle();
 
-        if (groupData) {
-          // Insert into user_groups junction table for proper role inheritance
-          await supabase
-            .from("user_groups")
-            .insert({
-              user_id: technicalUser.id,
-              group_id: groupData.id,
-            });
+          if (groupData) {
+            await supabase
+              .from("user_groups")
+              .insert({
+                user_id: technicalUser.id,
+                group_id: groupData.id,
+              });
+          }
         }
       }
 
@@ -293,7 +304,7 @@ export function useAccounts() {
   const updateAccount = useMutation({
     mutationFn: async (input: UpdateAccountInput) => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.put<Account>(`/api/accounts/${input.id}`, input);
+        const { data, error } = await httpClient.put<Account>(`/accounts/${input.id}`, input);
         if (error) throw new Error(error.message);
         return input.id;
       }
@@ -344,41 +355,43 @@ export function useAccounts() {
       // Delete existing technical users and recreate (preserve is_technical_user flag)
       await supabase.from("account_technical_users").delete().eq("account_id", input.id);
 
-      const { data: newUser, error: userError } = await supabase
-        .from("account_technical_users")
-        .insert({
-          account_id: input.id,
-          first_name: input.technical_user.first_name,
-          middle_name: input.technical_user.middle_name || null,
-          last_name: input.technical_user.last_name,
-          email: input.technical_user.email,
-          status: input.technical_user.status,
-          start_date: input.technical_user.start_date,
-          end_date: input.technical_user.end_date || null,
-          assigned_group: input.technical_user.assigned_group,
-          assigned_role: input.technical_user.assigned_role,
-          is_technical_user: true,
-        })
-        .select()
-        .single();
+      // Recreate technical users
+      for (const tu of input.technical_users) {
+        const { data: newUser, error: userError } = await supabase
+          .from("account_technical_users")
+          .insert({
+            account_id: input.id,
+            first_name: tu.first_name,
+            middle_name: tu.middle_name || null,
+            last_name: tu.last_name,
+            email: tu.email,
+            status: tu.status,
+            start_date: tu.start_date,
+            end_date: tu.end_date || null,
+            assigned_group: tu.assigned_group,
+            assigned_role: tu.assigned_role,
+            is_technical_user: true,
+          })
+          .select()
+          .single();
 
-      if (userError) throw userError;
+        if (userError) throw userError;
 
-      // Look up the group by name and create user_groups assignment
-      if (input.technical_user.assigned_group && newUser) {
-        const { data: groupData } = await supabase
-          .from("groups")
-          .select("id")
-          .eq("name", input.technical_user.assigned_group)
-          .maybeSingle();
+        if (tu.assigned_group && newUser) {
+          const { data: groupData } = await supabase
+            .from("groups")
+            .select("id")
+            .eq("name", tu.assigned_group)
+            .maybeSingle();
 
-        if (groupData) {
-          await supabase
-            .from("user_groups")
-            .insert({
-              user_id: newUser.id,
-              group_id: groupData.id,
-            });
+          if (groupData) {
+            await supabase
+              .from("user_groups")
+              .insert({
+                user_id: newUser.id,
+                group_id: groupData.id,
+              });
+          }
         }
       }
 
@@ -396,7 +409,7 @@ export function useAccounts() {
   const deleteAccount = useMutation({
     mutationFn: async (accountId: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/api/accounts/${accountId}`);
+        const { error } = await httpClient.delete(`/accounts/${accountId}`);
         if (error) throw new Error(error.message);
         return accountId;
       }

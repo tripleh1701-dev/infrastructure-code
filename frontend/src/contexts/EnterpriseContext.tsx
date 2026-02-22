@@ -70,7 +70,7 @@ export function EnterpriseProvider({ children }: { children: ReactNode }) {
         params.accountId = selectedAccount.id;
       }
 
-      const { data, error } = await httpClient.get<Enterprise[]>("/api/enterprises", {
+      const { data, error } = await httpClient.get<Enterprise[]>("/enterprises", {
         params,
       });
 

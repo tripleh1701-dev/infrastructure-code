@@ -110,7 +110,7 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
     if (open) {
       setCurrentStep(1);
       if (isExternalApi()) {
-        httpClient.get<{ id: string; name: string }[]>('/api/accounts', { params: {} })
+        httpClient.get<{ id: string; name: string }[]>('/accounts', { params: {} })
           .then(({ data }) => {
             setExistingAccounts(data || []);
           });
@@ -138,18 +138,31 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
       country: addr.country,
       postalCode: addr.postal_code,
     })),
-    technicalUser: {
-      firstName: technicalUser?.first_name || "",
-      middleName: technicalUser?.middle_name || "",
-      lastName: technicalUser?.last_name || "",
-      email: technicalUser?.email || "",
-      status: (technicalUser?.status as "active" | "inactive") || "active",
-      startDate: technicalUser?.start_date || "",
-      endDate: technicalUser?.end_date || "",
-      password: "DummyPassword1!",
-      assignedGroup: technicalUser?.assigned_group || "",
-      assignedRole: technicalUser?.assigned_role || "",
-    },
+    technicalUsers: account.technical_users.length > 0 
+      ? account.technical_users.map(tu => ({
+          firstName: tu.first_name || "",
+          middleName: tu.middle_name || "",
+          lastName: tu.last_name || "",
+          email: tu.email || "",
+          status: (tu.status as "active" | "inactive") || "active",
+          startDate: tu.start_date || "",
+          endDate: tu.end_date || "",
+          password: "DummyPassword1!",
+          assignedGroup: tu.assigned_group || "",
+          assignedRole: tu.assigned_role || "",
+        }))
+      : [{
+          firstName: "",
+          middleName: "",
+          lastName: "",
+          email: "",
+          status: "active" as const,
+          startDate: "",
+          endDate: "",
+          password: "DummyPassword1!",
+          assignedGroup: "",
+          assignedRole: "",
+        }],
   };
 
   const {
@@ -172,35 +185,31 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
 
   const addresses = watch("addresses");
   const accountName = watch("accountName");
-  const password = watch("technicalUser.password") || "";
+  const technicalUsersWatch = watch("technicalUsers") || [];
+  const password = technicalUsersWatch[0]?.password || "";
   const passwordStatus = useMemo(() => getPasswordRequirementStatus(password), [password]);
-  
-  // Track selected group to derive available roles
-  const selectedGroupName = watch("technicalUser.assignedGroup");
-  const selectedGroup = useMemo(() => 
-    groups.find(g => g.name === selectedGroupName), 
-    [groups, selectedGroupName]
-  );
-  
-  // Get available roles from the selected group
-  const availableRoles = useMemo(() => 
-    selectedGroup?.roles || [], 
-    [selectedGroup]
-  );
-  
-  // Clear role when group changes (if current role is not in the new group's roles)
-  const selectedRoleName = watch("technicalUser.assignedRole");
-  useEffect(() => {
-    if (selectedRoleName && availableRoles.length > 0) {
-      const roleExists = availableRoles.some(r => r.roleName === selectedRoleName);
-      if (!roleExists) {
-        setValue("technicalUser.assignedRole", "");
-      }
-    } else if (!selectedGroupName) {
-      // Clear role if no group is selected
-      setValue("technicalUser.assignedRole", "");
+
+  // Add/remove technical users
+  const addTechnicalUser = () => {
+    setValue("technicalUsers", [...technicalUsersWatch, {
+      firstName: "",
+      middleName: "",
+      lastName: "",
+      email: "",
+      status: "active" as const,
+      startDate: "",
+      endDate: "",
+      password: "DummyPassword1!",
+      assignedGroup: "",
+      assignedRole: "",
+    }]);
+  };
+
+  const removeTechnicalUser = (index: number) => {
+    if (technicalUsersWatch.length > 1) {
+      setValue("technicalUsers", technicalUsersWatch.filter((_, i) => i !== index));
     }
-  }, [selectedGroupName, availableRoles, selectedRoleName, setValue]);
+  };
 
   const validateAccountName = (name: string): string => {
     const trimmed = name.trim();
@@ -240,7 +249,7 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
       case 2:
         return await trigger("addresses");
       case 3:
-        return await trigger("technicalUser");
+        return await trigger("technicalUsers");
       case 4:
         return true; // License step has no validation
       default:
@@ -282,17 +291,17 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
           country: addr.country,
           postal_code: addr.postalCode,
         })),
-        technical_user: {
-          first_name: data.technicalUser.firstName,
-          middle_name: data.technicalUser.middleName || undefined,
-          last_name: data.technicalUser.lastName,
-          email: data.technicalUser.email,
-          status: data.technicalUser.status,
-          start_date: data.technicalUser.startDate,
-          end_date: data.technicalUser.endDate || undefined,
-          assigned_group: data.technicalUser.assignedGroup,
-          assigned_role: data.technicalUser.assignedRole,
-        },
+        technical_users: (data.technicalUsers || []).map((tu) => ({
+          first_name: tu.firstName,
+          middle_name: tu.middleName || undefined,
+          last_name: tu.lastName,
+          email: tu.email,
+          status: tu.status,
+          start_date: tu.startDate,
+          end_date: tu.endDate || undefined,
+          assigned_group: tu.assignedGroup,
+          assigned_role: tu.assignedRole,
+        })),
       });
       onOpenChange(false);
       onSuccess?.();
@@ -312,13 +321,8 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
   const getStepValidationStatus = () => {
     const step1Valid = Boolean(accountName && !accountNameError && watch("masterAccountName") && watch("cloudType"));
     const step2Valid = addresses.every(addr => addr.line1 && addr.city && addr.state && addr.country && addr.postalCode);
-    const step3Valid = Boolean(
-      watch("technicalUser.firstName") && 
-      watch("technicalUser.lastName") && 
-      watch("technicalUser.email") && 
-      watch("technicalUser.startDate") && 
-      watch("technicalUser.assignedGroup") && 
-      watch("technicalUser.assignedRole")
+    const step3Valid = technicalUsersWatch.length > 0 && technicalUsersWatch.every(tu =>
+      tu.firstName && tu.lastName && tu.email && tu.startDate && tu.assignedGroup && tu.assignedRole
     );
     const step4Valid = true; // License step is always valid for edit
     
@@ -684,7 +688,7 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
                 </motion.div>
               )}
 
-              {/* Step 3: Technical User */}
+              {/* Step 3: Technical Users */}
               {currentStep === 3 && (
                 <motion.div
                   key="step3"
@@ -694,220 +698,276 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
                   transition={{ duration: 0.3 }}
                   className="space-y-6"
                 >
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold text-foreground">Technical User Setup</h3>
-                    <p className="text-sm text-muted-foreground">Configure the primary technical contact for this account</p>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-semibold text-foreground">Technical User Setup</h3>
+                      <p className="text-sm text-muted-foreground">Configure technical contacts for this account</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addTechnicalUser}
+                      className="gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add User
+                    </Button>
                   </div>
 
-                  <div className="grid gap-6">
-                    {/* Personal Info */}
-                    <div className="p-5 rounded-xl border border-border bg-card">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <User className="w-4 h-4 text-primary" />
-                        </div>
-                        <span className="text-sm font-medium text-foreground">Personal Information</span>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-fluid-sm">
-                        <div className="space-y-2">
-                          <Label className="text-sm">First Name <span className="text-destructive">*</span></Label>
-                          <Input
-                            {...register("technicalUser.firstName")}
-                            placeholder="First name"
-                            className={cn("h-10 input-glow", errors.technicalUser?.firstName && "border-destructive")}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">Middle Name</Label>
-                          <Input
-                            {...register("technicalUser.middleName")}
-                            placeholder="Middle name"
-                            className="h-10 input-glow"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">Last Name <span className="text-destructive">*</span></Label>
-                          <Input
-                            {...register("technicalUser.lastName")}
-                            placeholder="Last name"
-                            className={cn("h-10 input-glow", errors.technicalUser?.lastName && "border-destructive")}
-                          />
-                        </div>
-                        <div className="space-y-2 sm:col-span-2">
-                          <Label className="text-sm">Email Address <span className="text-destructive">*</span></Label>
-                          <Input
-                            type="email"
-                            {...register("technicalUser.email")}
-                            placeholder="email@example.com"
-                            className={cn("h-10 input-glow", errors.technicalUser?.email && "border-destructive")}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">Status</Label>
-                          <Controller
-                            name="technicalUser.status"
-                            control={control}
-                            render={({ field }) => (
-                              <div className="flex items-center justify-between h-10 px-3 rounded-md border border-input bg-background">
-                                <span className="text-sm">
-                                  {field.value === "active" ? "Active" : "Inactive"}
-                                </span>
-                                <Switch
-                                  checked={field.value === "active"}
-                                  onCheckedChange={(checked) => field.onChange(checked ? "active" : "inactive")}
-                                />
-                              </div>
-                            )}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                  <div className="space-y-6">
+                    {technicalUsersWatch.map((tu, index) => {
+                      const tuPassword = tu.password || "";
+                      const tuPasswordStatus = getPasswordRequirementStatus(tuPassword);
+                      const selectedTuGroupName = tu.assignedGroup;
+                      const selectedTuGroup = groups.find(g => g.name === selectedTuGroupName);
+                      const tuAvailableRoles = selectedTuGroup?.roles || [];
 
-                    {/* Dates & Access */}
-                    <div className="form-grid">
-                      <div className="p-5 rounded-xl border border-border bg-card">
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center">
-                            <span className="text-sm">📅</span>
-                          </div>
-                          <span className="text-sm font-medium text-foreground">Validity Period</span>
-                        </div>
-                        <div className="grid gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-sm">Start Date <span className="text-destructive">*</span></Label>
-                            <Input
-                              type="date"
-                              {...register("technicalUser.startDate")}
-                              className={cn("h-10 input-glow", errors.technicalUser?.startDate && "border-destructive")}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">End Date</Label>
-                            <Input
-                              type="date"
-                              {...register("technicalUser.endDate")}
-                              className="h-10 input-glow"
-                            />
-                          </div>
-                        </div>
-                      </div>
+                      return (
+                        <motion.div
+                          key={index}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="relative border border-border rounded-xl bg-card/50 p-1"
+                        >
+                          {technicalUsersWatch.length > 1 && (
+                            <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                              <span className="text-sm font-medium text-foreground">Technical User {index + 1}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeTechnicalUser(index)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
 
-                      <div className="p-5 rounded-xl border border-border bg-card">
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                            <span className="text-sm">🔐</span>
-                          </div>
-                          <span className="text-sm font-medium text-foreground">Access Control</span>
-                        </div>
-                        <div className="grid gap-4">
-                          <div className="space-y-2">
-                            <Label className="text-sm">Assigned Group <span className="text-destructive">*</span></Label>
-                            <Controller
-                              name="technicalUser.assignedGroup"
-                              control={control}
-                              render={({ field }) => (
-                                <Select value={field.value} onValueChange={field.onChange}>
-                                  <SelectTrigger className={cn("h-10 input-glow", errors.technicalUser?.assignedGroup && "border-destructive")}>
-                                    <SelectValue placeholder="Select group" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {groups.map((group) => (
-                                      <SelectItem key={group.id} value={group.name}>{group.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-sm">Assigned Role <span className="text-destructive">*</span></Label>
-                            <Controller
-                              name="technicalUser.assignedRole"
-                              control={control}
-                              render={({ field }) => (
-                                <Select 
-                                  value={field.value} 
-                                  onValueChange={field.onChange}
-                                  disabled={!selectedGroupName || availableRoles.length === 0}
-                                >
-                                  <SelectTrigger className={cn("h-10 input-glow", errors.technicalUser?.assignedRole && "border-destructive")}>
-                                    <SelectValue placeholder={!selectedGroupName ? "Select a group first" : availableRoles.length === 0 ? "No roles available" : "Select role"} />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {availableRoles.map((role) => (
-                                      <SelectItem key={role.roleId} value={role.roleName}>{role.roleName}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Password */}
-                    <div className="p-5 rounded-xl border border-border bg-card">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center">
-                          <span className="text-sm">🔑</span>
-                        </div>
-                        <span className="text-sm font-medium text-foreground">Security Credentials</span>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm">Password <span className="text-destructive">*</span></Label>
-                          <div className="relative">
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              {...register("technicalUser.password")}
-                              placeholder="Enter a strong password"
-                              className={cn("h-10 input-glow pr-10", errors.technicalUser?.password && "border-destructive")}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                              onClick={() => setShowPassword(!showPassword)}
-                            >
-                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                          <p className="text-xs font-medium text-muted-foreground mb-3">Password Requirements</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {passwordRequirements.map((req) => {
-                              const isValid = passwordStatus[req.key as keyof typeof passwordStatus];
-                              return (
-                                <div key={req.key} className="flex items-center gap-2">
-                                  <div className={cn(
-                                    "w-4 h-4 rounded-full flex items-center justify-center transition-colors",
-                                    isValid ? "bg-success" : "bg-muted"
-                                  )}>
-                                    {isValid ? (
-                                      <Check className="w-2.5 h-2.5 text-success-foreground" />
-                                    ) : (
-                                      <X className="w-2.5 h-2.5 text-muted-foreground" />
-                                    )}
-                                  </div>
-                                  <span className={cn(
-                                    "text-xs transition-colors",
-                                    isValid ? "text-success" : "text-muted-foreground"
-                                  )}>
-                                    {req.label}
-                                  </span>
+                          <div className="grid gap-6 p-3">
+                            {/* Personal Info */}
+                            <div className="p-5 rounded-xl border border-border bg-card">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                  <User className="w-4 h-4 text-primary" />
                                 </div>
-                              );
-                            })}
+                                <span className="text-sm font-medium text-foreground">Personal Information</span>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-fluid-sm">
+                                <div className="space-y-2">
+                                  <Label className="text-sm">First Name <span className="text-destructive">*</span></Label>
+                                  <Input
+                                    {...register(`technicalUsers.${index}.firstName`)}
+                                    placeholder="First name"
+                                    className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.firstName && "border-destructive")}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Middle Name</Label>
+                                  <Input
+                                    {...register(`technicalUsers.${index}.middleName`)}
+                                    placeholder="Middle name"
+                                    className="h-10 input-glow"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Last Name <span className="text-destructive">*</span></Label>
+                                  <Input
+                                    {...register(`technicalUsers.${index}.lastName`)}
+                                    placeholder="Last name"
+                                    className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.lastName && "border-destructive")}
+                                  />
+                                </div>
+                                <div className="space-y-2 sm:col-span-2">
+                                  <Label className="text-sm">Email Address <span className="text-destructive">*</span></Label>
+                                  <Input
+                                    type="email"
+                                    {...register(`technicalUsers.${index}.email`)}
+                                    placeholder="email@example.com"
+                                    className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.email && "border-destructive")}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Status</Label>
+                                  <Controller
+                                    name={`technicalUsers.${index}.status`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <div className="flex items-center justify-between h-10 px-3 rounded-md border border-input bg-background">
+                                        <span className="text-sm">
+                                          {field.value === "active" ? "Active" : "Inactive"}
+                                        </span>
+                                        <Switch
+                                          checked={field.value === "active"}
+                                          onCheckedChange={(checked) => field.onChange(checked ? "active" : "inactive")}
+                                        />
+                                      </div>
+                                    )}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Dates & Access */}
+                            <div className="form-grid">
+                              <div className="p-5 rounded-xl border border-border bg-card">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center">
+                                    <span className="text-sm">📅</span>
+                                  </div>
+                                  <span className="text-sm font-medium text-foreground">Validity Period</span>
+                                </div>
+                                <div className="grid gap-4">
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">Start Date <span className="text-destructive">*</span></Label>
+                                    <Input
+                                      type="date"
+                                      {...register(`technicalUsers.${index}.startDate`)}
+                                      className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.startDate && "border-destructive")}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">End Date</Label>
+                                    <Input
+                                      type="date"
+                                      {...register(`technicalUsers.${index}.endDate`)}
+                                      className="h-10 input-glow"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="p-5 rounded-xl border border-border bg-card">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+                                    <span className="text-sm">🔐</span>
+                                  </div>
+                                  <span className="text-sm font-medium text-foreground">Access Control</span>
+                                </div>
+                                <div className="grid gap-4">
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">Assigned Group <span className="text-destructive">*</span></Label>
+                                    <Controller
+                                      name={`technicalUsers.${index}.assignedGroup`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select value={field.value} onValueChange={(val) => {
+                                          field.onChange(val);
+                                          const newGroup = groups.find(g => g.name === val);
+                                          const currentRole = watch(`technicalUsers.${index}.assignedRole`);
+                                          if (currentRole && newGroup) {
+                                            const roleExists = newGroup.roles?.some(r => r.roleName === currentRole);
+                                            if (!roleExists) setValue(`technicalUsers.${index}.assignedRole`, "");
+                                          } else if (!val) {
+                                            setValue(`technicalUsers.${index}.assignedRole`, "");
+                                          }
+                                        }}>
+                                          <SelectTrigger className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.assignedGroup && "border-destructive")}>
+                                            <SelectValue placeholder="Select group" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {groups.map((group) => (
+                                              <SelectItem key={group.id} value={group.name}>{group.name}</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      )}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">Assigned Role <span className="text-destructive">*</span></Label>
+                                    <Controller
+                                      name={`technicalUsers.${index}.assignedRole`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select 
+                                          value={field.value} 
+                                          onValueChange={field.onChange}
+                                          disabled={!selectedTuGroupName || tuAvailableRoles.length === 0}
+                                        >
+                                          <SelectTrigger className={cn("h-10 input-glow", errors.technicalUsers?.[index]?.assignedRole && "border-destructive")}>
+                                            <SelectValue placeholder={!selectedTuGroupName ? "Select a group first" : tuAvailableRoles.length === 0 ? "No roles available" : "Select role"} />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {tuAvailableRoles.map((role) => (
+                                              <SelectItem key={role.roleId} value={role.roleName}>{role.roleName}</SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      )}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Password */}
+                            <div className="p-5 rounded-xl border border-border bg-card">
+                              <div className="flex items-center gap-2 mb-4">
+                                <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                                  <span className="text-sm">🔑</span>
+                                </div>
+                                <span className="text-sm font-medium text-foreground">Security Credentials</span>
+                              </div>
+                              
+                              <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <Label className="text-sm">Password <span className="text-destructive">*</span></Label>
+                                  <div className="relative">
+                                    <Input
+                                      type={showPassword ? "text" : "password"}
+                                      {...register(`technicalUsers.${index}.password`)}
+                                      placeholder="Enter a strong password"
+                                      className={cn("h-10 input-glow pr-10", errors.technicalUsers?.[index]?.password && "border-destructive")}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                                      onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                                
+                                <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                                  <p className="text-xs font-medium text-muted-foreground mb-3">Password Requirements</p>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {passwordRequirements.map((req) => {
+                                      const isValid = tuPasswordStatus[req.key as keyof typeof tuPasswordStatus];
+                                      return (
+                                        <div key={req.key} className="flex items-center gap-2">
+                                          <div className={cn(
+                                            "w-4 h-4 rounded-full flex items-center justify-center transition-colors",
+                                            isValid ? "bg-success" : "bg-muted"
+                                          )}>
+                                            {isValid ? (
+                                              <Check className="w-2.5 h-2.5 text-success-foreground" />
+                                            ) : (
+                                              <X className="w-2.5 h-2.5 text-muted-foreground" />
+                                            )}
+                                          </div>
+                                          <span className={cn(
+                                            "text-xs transition-colors",
+                                            isValid ? "text-success" : "text-muted-foreground"
+                                          )}>
+                                            {req.label}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </div>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 </motion.div>
               )}

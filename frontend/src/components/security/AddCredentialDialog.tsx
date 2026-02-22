@@ -654,7 +654,7 @@ export function AddCredentialDialog({
               // Check if the credential status was actually updated to active
               let credentialStatus: string | null = null;
               if (isExternalApi()) {
-                const { data } = await httpClient.get<{ status: string }>(`/api/credentials/${credential.id}/status`);
+                const { data } = await httpClient.get<{ status: string }>(`/credentials/${credential.id}/status`);
                 credentialStatus = data?.status || null;
               } else {
                 const { data: updatedCredential } = await supabase
@@ -672,7 +672,7 @@ export function AddCredentialDialog({
                 toast.error(`OAuth flow was not completed. Please try again.`);
                 // Delete the pending credential via the hook's service
                 if (isExternalApi()) {
-                  await httpClient.delete(`/api/credentials/${credential.id}`);
+                  await httpClient.delete(`/credentials/${credential.id}`);
                 } else {
                   await supabase.from("credentials").delete().eq("id", credential.id);
                 }

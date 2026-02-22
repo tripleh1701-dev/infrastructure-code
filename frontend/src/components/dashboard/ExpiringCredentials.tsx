@@ -49,7 +49,7 @@ export function ExpiringCredentials() {
     queryKey: ["expiring-credentials", selectedAccount?.id, selectedEnterprise?.id],
     queryFn: async () => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<ExpiringCredential[]>("/api/credentials/expiring", {
+        const { data, error } = await httpClient.get<ExpiringCredential[]>("/credentials/expiring", {
           params: {
             accountId: selectedAccount?.id,
             enterpriseId: selectedEnterprise?.id,
@@ -105,7 +105,7 @@ export function ExpiringCredentials() {
       let result: { success: boolean; emailsSent?: number; logged?: number; error?: string };
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.post<typeof result>("/api/credentials/check-expiration");
+        const { data, error } = await httpClient.post<typeof result>("/credentials/check-expiration");
         if (error) throw new Error(error.message);
         result = data!;
       } else {

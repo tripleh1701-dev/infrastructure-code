@@ -102,8 +102,8 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
     const fetchMeta = async () => {
       if (isExternalApi()) {
         const [pRes, sRes] = await Promise.all([
-          httpClient.get<any[]>("/api/products"),
-          httpClient.get<any[]>("/api/services"),
+          httpClient.get<any[]>("/products"),
+          httpClient.get<any[]>("/services"),
         ]);
         setProducts((pRes.data || []).map((p: any) => ({ id: p.id, name: p.name })));
         setServices((sRes.data || []).map((s: any) => ({ id: s.id, name: s.name })));
@@ -303,10 +303,25 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-        body: { connector: toolKey.toLowerCase().replace(/\s+/g, "_"), url: connectorUrl, credentialId },
-      });
-      if (error) throw error;
+      let result: { success: boolean; message?: string };
+
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
+          connector: toolKey.toLowerCase().replace(/\s+/g, "_"),
+          url: connectorUrl,
+          credentialId,
+        });
+        if (error) throw new Error(error.message);
+        result = data!;
+      } else {
+        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
+          body: { connector: toolKey.toLowerCase().replace(/\s+/g, "_"), url: connectorUrl, credentialId },
+        });
+        if (error) throw error;
+        result = data;
+      }
+
+      const data = result;
       const newStatus = data?.success ? "healthy" : "failed";
       await updateEnvironment.mutateAsync({ id: env.id, connectivity_status: newStatus });
       if (data?.success) {
