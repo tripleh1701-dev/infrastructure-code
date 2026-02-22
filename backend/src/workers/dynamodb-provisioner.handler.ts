@@ -27,6 +27,8 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
+import { PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE } from '../common/cloudformation/private-account-template';
+import { retryWithBackoff, isTransientAwsError } from '../common/utils/retry';
 
 const logger = new Logger('DynamoDBProvisioner');
 
@@ -124,6 +126,24 @@ async function provisionPrivateAccount(
   const templateKey = `${config.environment}/private-account-dynamodb.yaml`;
   const templateUrl = `https://${config.templateBucket}.s3.${config.region}.amazonaws.com/${templateKey}`;
 
+  // Ensure the CloudFormation template exists in S3
+  const s3Client = new S3Client({ region: config.region });
+  try {
+    await s3Client.send(new GetObjectCommand({
+      Bucket: config.templateBucket,
+      Key: templateKey,
+    }));
+  } catch {
+    // Template not in S3 yet — upload inline template
+    logger.log(`Uploading CloudFormation template to s3://${config.templateBucket}/${templateKey}`);
+    await s3Client.send(new PutObjectCommand({
+      Bucket: config.templateBucket,
+      Key: templateKey,
+      Body: PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE,
+      ContentType: 'text/yaml',
+    }));
+  }
+
   // Update status to creating
   await ssmClient.send(
     new PutParameterCommand({
@@ -134,28 +154,31 @@ async function provisionPrivateAccount(
     }),
   );
 
-  // Create CloudFormation stack
-  const createResult = await cfnClient.send(
-    new CreateStackCommand({
-      StackName: stackName,
-      TemplateURL: templateUrl,
-      Parameters: [
-        { ParameterKey: 'AccountId', ParameterValue: event.accountId },
-        { ParameterKey: 'AccountName', ParameterValue: event.accountName },
-        { ParameterKey: 'Environment', ParameterValue: config.environment },
-        { ParameterKey: 'ProjectName', ParameterValue: config.projectName },
-        { ParameterKey: 'BillingMode', ParameterValue: event.billingMode || 'PAY_PER_REQUEST' },
-      ],
-      Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
-      Tags: [
-        { Key: 'AccountId', Value: event.accountId },
-        { Key: 'AccountName', Value: event.accountName },
-        { Key: 'Environment', Value: config.environment },
-        { Key: 'CloudType', Value: 'private' },
-        { Key: 'ManagedBy', Value: 'StepFunctions-Worker' },
-      ],
-      OnFailure: 'ROLLBACK',
-    }),
+  // Create CloudFormation stack (with retry for transient errors)
+  const createResult = await retryWithBackoff(
+    () => cfnClient.send(
+      new CreateStackCommand({
+        StackName: stackName,
+        TemplateURL: templateUrl,
+        Parameters: [
+          { ParameterKey: 'AccountId', ParameterValue: event.accountId },
+          { ParameterKey: 'AccountName', ParameterValue: event.accountName },
+          { ParameterKey: 'Environment', ParameterValue: config.environment },
+          { ParameterKey: 'ProjectName', ParameterValue: config.projectName },
+          { ParameterKey: 'BillingMode', ParameterValue: event.billingMode || 'PAY_PER_REQUEST' },
+        ],
+        Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+        Tags: [
+          { Key: 'AccountId', Value: event.accountId },
+          { Key: 'AccountName', Value: event.accountName },
+          { Key: 'Environment', Value: config.environment },
+          { Key: 'CloudType', Value: 'private' },
+          { Key: 'ManagedBy', Value: 'StepFunctions-Worker' },
+        ],
+        OnFailure: 'ROLLBACK',
+      }),
+    ),
+    { maxAttempts: 3, label: 'CreateStack-Worker', retryIf: isTransientAwsError },
   );
 
   const stackId = createResult.StackId;
@@ -167,9 +190,10 @@ async function provisionPrivateAccount(
     { StackName: stackName },
   );
 
-  // Get outputs
-  const describeResult = await cfnClient.send(
-    new DescribeStacksCommand({ StackName: stackName }),
+  // Get outputs (with retry)
+  const describeResult = await retryWithBackoff(
+    () => cfnClient.send(new DescribeStacksCommand({ StackName: stackName })),
+    { maxAttempts: 3, label: 'DescribeStack-Worker', retryIf: isTransientAwsError },
   );
 
   const outputs = describeResult.Stacks?.[0]?.Outputs || [];

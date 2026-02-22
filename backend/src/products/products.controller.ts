@@ -8,9 +8,12 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('products')
 export class ProductsController {
@@ -28,11 +31,15 @@ export class ProductsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
   async create(@Body() createProductDto: CreateProductDto) {
     return this.productsService.create(createProductDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
   async update(
     @Param('id') id: string,
     @Body() updateProductDto: Partial<CreateProductDto>,
@@ -42,6 +49,8 @@ export class ProductsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
   async remove(@Param('id') id: string) {
     await this.productsService.remove(id);
   }

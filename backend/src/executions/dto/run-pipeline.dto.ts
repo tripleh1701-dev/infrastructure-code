@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsEmail } from 'class-validator';
 
 export class RunPipelineDto {
   @IsString()
@@ -11,6 +11,10 @@ export class RunPipelineDto {
   @IsString()
   @IsOptional()
   buildJobId?: string;
+
+  @IsArray()
+  @IsOptional()
+  approverEmails?: string[];
 }
 
 export class ApproveStageDtoParams {

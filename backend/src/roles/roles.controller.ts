@@ -6,20 +6,29 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { AccountGuard } from '../auth/guards/account.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('roles')
+@UseGuards(AccountGuard)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
-  async findAll() {
-    return this.rolesService.findAll();
+  async findAll(
+    @Query('accountId') accountId?: string,
+    @Query('enterpriseId') enterpriseId?: string,
+  ) {
+    return this.rolesService.findAll(accountId, enterpriseId);
   }
 
   @Get(':id')
@@ -29,17 +38,23 @@ export class RolesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async create(@Body() createRoleDto: CreateRoleDto) {
     return this.rolesService.create(createRoleDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
     return this.rolesService.update(id, updateRoleDto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async remove(@Param('id') id: string) {
     await this.rolesService.remove(id);
   }
@@ -51,6 +66,8 @@ export class RolesController {
   }
 
   @Put(':id/permissions')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async updatePermissions(
     @Param('id') id: string,
     @Body() permissions: any[],

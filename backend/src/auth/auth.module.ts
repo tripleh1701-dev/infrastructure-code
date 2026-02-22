@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { CognitoService } from './cognito.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { AccountGuard } from './guards/account.guard';
 
 @Global()
 @Module({
@@ -18,7 +19,8 @@ import { RolesGuard } from './guards/roles.guard';
       useClass: JwtAuthGuard,
     },
     RolesGuard,
+    AccountGuard,
   ],
-  exports: [AuthService, CognitoService],
+  exports: [AuthService, CognitoService, RolesGuard, AccountGuard],
 })
 export class AuthModule {}

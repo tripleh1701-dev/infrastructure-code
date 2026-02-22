@@ -8,10 +8,13 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { EnterprisesService } from './enterprises.service';
 import { CreateEnterpriseDto } from './dto/create-enterprise.dto';
 import { UpdateEnterpriseDto } from './dto/update-enterprise.dto';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('enterprises')
 export class EnterprisesController {
@@ -29,11 +32,15 @@ export class EnterprisesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
   async create(@Body() createEnterpriseDto: CreateEnterpriseDto) {
     return this.enterprisesService.create(createEnterpriseDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async update(
     @Param('id') id: string,
     @Body() updateEnterpriseDto: UpdateEnterpriseDto,
@@ -43,6 +50,8 @@ export class EnterprisesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
   async remove(@Param('id') id: string) {
     await this.enterprisesService.remove(id);
   }

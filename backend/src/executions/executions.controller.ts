@@ -54,8 +54,10 @@ export class ExecutionsController {
       user.accountId!,
       dto.pipelineId,
       user.sub,
+      user.email,
       dto.buildJobId,
       dto.branch,
+      dto.approverEmails,
     );
   }
 

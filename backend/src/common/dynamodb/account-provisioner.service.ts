@@ -22,8 +22,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { ProvisioningEventsService } from '../events/provisioning-events.service';
 import { resolveAwsCredentials } from '../utils/aws-credentials';
-import * as fs from 'fs';
-import * as path from 'path';
+import { retryWithBackoff, isTransientAwsError } from '../utils/retry';
+import { PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE } from '../cloudformation/private-account-template';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ProvisioningConfig {
@@ -224,34 +224,40 @@ export class AccountProvisionerService {
       await this.updateProvisioningStatus(config.accountId, 'creating');
 
       // Upload CloudFormation template to S3 if needed
-      const templateUrl = await this.ensureTemplateUploaded();
+      const templateUrl = await retryWithBackoff(
+        () => this.ensureTemplateUploaded(),
+        { maxAttempts: 3, label: 'EnsureTemplateUploaded' },
+      );
 
-      // Create CloudFormation stack
-      const createStackResult = await this.cfnClient.send(new CreateStackCommand({
-        StackName: stackName,
-        TemplateURL: templateUrl,
-        Parameters: [
-          { ParameterKey: 'AccountId', ParameterValue: config.accountId },
-          { ParameterKey: 'AccountName', ParameterValue: config.accountName },
-          { ParameterKey: 'Environment', ParameterValue: this.environment },
-          { ParameterKey: 'ProjectName', ParameterValue: this.projectName },
-          { ParameterKey: 'BillingMode', ParameterValue: config.billingMode || 'PAY_PER_REQUEST' },
-          { ParameterKey: 'ReadCapacity', ParameterValue: String(config.readCapacity || 5) },
-          { ParameterKey: 'WriteCapacity', ParameterValue: String(config.writeCapacity || 5) },
-          { ParameterKey: 'EnablePointInTimeRecovery', ParameterValue: config.enablePointInTimeRecovery !== false ? 'true' : 'false' },
-          { ParameterKey: 'EnableDeletionProtection', ParameterValue: config.enableDeletionProtection !== false ? 'true' : 'false' },
-          { ParameterKey: 'EnableAutoScaling', ParameterValue: config.enableAutoScaling ? 'true' : 'false' },
-        ],
-        Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
-        Tags: [
-          { Key: 'AccountId', Value: config.accountId },
-          { Key: 'AccountName', Value: config.accountName },
-          { Key: 'Environment', Value: this.environment },
-          { Key: 'CloudType', Value: 'private' },
-          { Key: 'ManagedBy', Value: 'AccountProvisioner' },
-        ],
-        OnFailure: 'ROLLBACK',
-      }));
+      // Create CloudFormation stack (retry on transient errors)
+      const createStackResult = await retryWithBackoff(
+        () => this.cfnClient.send(new CreateStackCommand({
+          StackName: stackName,
+          TemplateURL: templateUrl,
+          Parameters: [
+            { ParameterKey: 'AccountId', ParameterValue: config.accountId },
+            { ParameterKey: 'AccountName', ParameterValue: config.accountName },
+            { ParameterKey: 'Environment', ParameterValue: this.environment },
+            { ParameterKey: 'ProjectName', ParameterValue: this.projectName },
+            { ParameterKey: 'BillingMode', ParameterValue: config.billingMode || 'PAY_PER_REQUEST' },
+            { ParameterKey: 'ReadCapacity', ParameterValue: String(config.readCapacity || 5) },
+            { ParameterKey: 'WriteCapacity', ParameterValue: String(config.writeCapacity || 5) },
+            { ParameterKey: 'EnablePointInTimeRecovery', ParameterValue: config.enablePointInTimeRecovery !== false ? 'true' : 'false' },
+            { ParameterKey: 'EnableDeletionProtection', ParameterValue: config.enableDeletionProtection !== false ? 'true' : 'false' },
+            { ParameterKey: 'EnableAutoScaling', ParameterValue: config.enableAutoScaling ? 'true' : 'false' },
+          ],
+          Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+          Tags: [
+            { Key: 'AccountId', Value: config.accountId },
+            { Key: 'AccountName', Value: config.accountName },
+            { Key: 'Environment', Value: this.environment },
+            { Key: 'CloudType', Value: 'private' },
+            { Key: 'ManagedBy', Value: 'AccountProvisioner' },
+          ],
+          OnFailure: 'ROLLBACK',
+        })),
+        { maxAttempts: 3, label: 'CreateStack', retryIf: isTransientAwsError },
+      );
 
       const stackId = createStackResult.StackId;
       this.logger.log(`CloudFormation stack created: ${stackId}`);
@@ -484,9 +490,8 @@ export class AccountProvisionerService {
       }));
       return templateUrl;
     } catch {
-      // Template doesn't exist, upload it
-      const templatePath = path.join(__dirname, '../../../../cloudformation/private-account-dynamodb.yaml');
-      const templateBody = fs.readFileSync(templatePath, 'utf-8');
+      // Template doesn't exist in S3, upload the inline template
+      const templateBody = PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE;
 
       await this.s3Client.send(new PutObjectCommand({
         Bucket: this.templateBucket,

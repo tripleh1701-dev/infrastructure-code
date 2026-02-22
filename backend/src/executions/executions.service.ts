@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
@@ -11,6 +13,7 @@ import { PipelinesService } from '../pipelines/pipelines.service';
 import { YamlParserService, ParsedPipeline } from './yaml-parser.service';
 import { DependencyResolverService } from './dependency-resolver.service';
 import { StageHandlersService } from './stage-handlers.service';
+import { InboxService } from '../inbox/inbox.service';
 
 export type ExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'WAITING_APPROVAL';
 
@@ -40,6 +43,8 @@ export class ExecutionsService {
     private readonly yamlParser: YamlParserService,
     private readonly dependencyResolver: DependencyResolverService,
     private readonly stageHandlers: StageHandlersService,
+    @Inject(forwardRef(() => InboxService))
+    private readonly inboxService: InboxService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -50,8 +55,10 @@ export class ExecutionsService {
     accountId: string,
     pipelineId: string,
     userId: string,
+    userEmail: string,
     buildJobId?: string,
     branch?: string,
+    approverEmails?: string[],
   ): Promise<{ executionId: string }> {
     // 1. Fetch pipeline
     const pipeline = await this.pipelinesService.findOne(accountId, pipelineId);
@@ -100,6 +107,8 @@ export class ExecutionsService {
       currentStage: null,
       stageStates: {},
       branch: branch || 'main',
+      approverEmails: approverEmails || [],
+      userEmail: userEmail || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -113,7 +122,11 @@ export class ExecutionsService {
     this.logger.log(`[EXECUTION:${executionId}] Pipeline execution started for ${pipelineId}`);
 
     // 4. Execute asynchronously (don't await — return immediately)
-    this.executePipeline(executionId, accountId, parsedPipeline, isPrivate).catch(
+    this.executePipeline(
+      executionId, accountId, parsedPipeline, isPrivate,
+      userId, userEmail, approverEmails || [], pipelineId, buildJobId, branch,
+      pipeline?.name,
+    ).catch(
       (err) => {
         this.logger.error(`[EXECUTION:${executionId}] Unhandled error: ${err.message}`);
       },
@@ -323,6 +336,13 @@ export class ExecutionsService {
     accountId: string,
     pipeline: ParsedPipeline,
     isPrivate: boolean,
+    userId?: string,
+    userEmail?: string,
+    approverEmails?: string[],
+    pipelineId?: string,
+    buildJobId?: string,
+    branch?: string,
+    pipelineName?: string,
   ): Promise<void> {
     console.log(`[EXECUTION:${executionId}] Starting pipeline: ${pipeline.name}`);
     console.log(`[EXECUTION:${executionId}] Nodes: ${pipeline.nodes.map((n) => n.id).join(', ')}`);
@@ -387,8 +407,42 @@ export class ExecutionsService {
             // Handle approval pause
             if (result.status === 'WAITING_APPROVAL') {
               await this.updateExecutionStatus(executionId, accountId, isPrivate, 'WAITING_APPROVAL');
+
+              // Create inbox notifications for all designated approvers
+              if (approverEmails && approverEmails.length > 0) {
+                for (const approverEmail of approverEmails) {
+                  try {
+                    await this.inboxService.createNotification(accountId, {
+                      accountId,
+                      recipientEmail: approverEmail,
+                      senderEmail: userEmail || 'system',
+                      senderUserId: userId,
+                      type: 'APPROVAL_REQUEST',
+                      status: 'PENDING',
+                      title: `Approval Required: ${stage.name}`,
+                      message: `Pipeline "${pipelineName || pipeline.name}" requires your approval at stage "${stage.name}" (Node: ${node.name}).`,
+                      context: {
+                        executionId,
+                        pipelineId,
+                        buildJobId,
+                        stageId: stage.id,
+                        stageName: stage.name,
+                        pipelineName: pipelineName || pipeline.name,
+                        branch: branch || 'main',
+                      },
+                    });
+                  } catch (notifErr: any) {
+                    this.logger.error(
+                      `[EXECUTION:${executionId}] Failed to create notification for ${approverEmail}: ${notifErr.message}`,
+                    );
+                  }
+                }
+                this.logger.log(
+                  `[EXECUTION:${executionId}] Approval notifications sent to: ${approverEmails.join(', ')}`,
+                );
+              }
+
               // Execution pauses here — will resume via approveStage API
-              // TODO: Implement resume-after-approval with SQS or polling
               return;
             }
           }

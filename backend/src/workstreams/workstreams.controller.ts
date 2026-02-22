@@ -9,12 +9,17 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { WorkstreamsService } from './workstreams.service';
 import { CreateWorkstreamDto } from './dto/create-workstream.dto';
 import { UpdateWorkstreamDto } from './dto/update-workstream.dto';
+import { AccountGuard } from '../auth/guards/account.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('workstreams')
+@UseGuards(AccountGuard)
 export class WorkstreamsController {
   constructor(private readonly workstreamsService: WorkstreamsService) {}
 
@@ -46,11 +51,15 @@ export class WorkstreamsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async create(@Body() createWorkstreamDto: CreateWorkstreamDto) {
     return this.workstreamsService.create(createWorkstreamDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async update(
     @Param('id') id: string,
     @Body() updateWorkstreamDto: UpdateWorkstreamDto,
@@ -60,6 +69,8 @@ export class WorkstreamsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager')
   async remove(@Param('id') id: string) {
     await this.workstreamsService.remove(id);
   }

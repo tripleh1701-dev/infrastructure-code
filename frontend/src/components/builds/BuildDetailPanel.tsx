@@ -54,6 +54,8 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
   const [loadingExecs, setLoadingExecs] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [selectedExecution, setSelectedExecution] = useState<BuildExecution | null>(null);
+  const [showApproverPrompt, setShowApproverPrompt] = useState(false);
+  const [approverEmails, setApproverEmails] = useState<string[]>([""]);
 
   // Active bottom tab — null means collapsed (pipeline gets full space)
   const [activeTab, setActiveTab] = useState<DetailTabKey | null>(null);
@@ -101,7 +103,31 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
     }
   }, [buildExecution.status]);
 
-  const handleRun = async () => {
+  // Check if pipeline has approval stages
+  const hasApprovalStages = (() => {
+    const stagesState = buildJob?.pipeline_stages_state;
+    if (!stagesState || typeof stagesState !== "object") return false;
+    return Object.values(stagesState).some((nodeState: any) => {
+      if (!nodeState?.stages) return false;
+      return nodeState.stages.some((s: any) => s.type?.toLowerCase() === "approval");
+    });
+  })();
+
+  const handleRunClick = () => {
+    if (!buildJob) return;
+    if (hasApprovalStages && isExternalApi()) {
+      setShowApproverPrompt(true);
+    } else {
+      handleRun();
+    }
+  };
+
+  const handleRunWithApprovers = () => {
+    setShowApproverPrompt(false);
+    handleRun(approverEmails.filter((e) => e.trim() !== ""));
+  };
+
+  const handleRun = async (approvers?: string[]) => {
     if (!buildJob) return;
     setIsRunning(true);
 
@@ -112,13 +138,14 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
           build_job_id: buildJob.id,
           build_number: buildNumber,
           branch: "main",
+          approvers: approvers,
         });
         setExecutions((prev) => [newExec, ...prev]);
         setSelectedExecution(newExec);
         setActiveTab("logs");
         setRunStatus("running");
         setActiveStageIndex(0);
-        await buildExecution.runExecution(buildJob.pipeline!, buildJob.id, "main");
+        await buildExecution.runExecution(buildJob.pipeline!, buildJob.id, "main", approvers);
         toast.success(`Build ${buildNumber} started`);
       } catch {
         toast.error("Failed to start build");
@@ -357,6 +384,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
   };
 
   return (
+    <>
     <div className={cn(
       "flex flex-col h-full overflow-hidden",
       isTheaterMode ? "bg-background" : "bg-card/95 backdrop-blur-sm"
@@ -399,7 +427,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
                 <Button
                   size="sm"
                   className="gap-1.5 bg-gradient-to-r from-[hsl(var(--brand-blue))] to-[hsl(213,97%,37%)] text-white shadow-lg shadow-primary/20 hover:shadow-xl transition-all"
-                  onClick={handleRun}
+                  onClick={handleRunClick}
                   disabled={isRunning}
                 >
                   {isRunning ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
@@ -687,5 +715,81 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
         </div>
       </div>
     </div>
+
+      {/* Approver Email Prompt */}
+      <AnimatePresence>
+        {showApproverPrompt && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+            onClick={() => setShowApproverPrompt(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-card border border-border rounded-xl p-5 w-[420px] max-w-[90vw] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-sm font-bold text-foreground mb-1">Approval Required</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                This pipeline has approval stages. Add approver email addresses who will be notified.
+              </p>
+              <div className="space-y-2 mb-4">
+                {approverEmails.map((email, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        const updated = [...approverEmails];
+                        updated[idx] = e.target.value;
+                        setApproverEmails(updated);
+                      }}
+                      placeholder="approver@company.com"
+                      className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    {approverEmails.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => setApproverEmails(approverEmails.filter((_, i) => i !== idx))}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-primary mb-4"
+                onClick={() => setApproverEmails([...approverEmails, ""])}
+              >
+                + Add another approver
+              </Button>
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowApproverPrompt(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-gradient-to-r from-[hsl(var(--brand-blue))] to-[hsl(213,97%,37%)] text-white"
+                  onClick={handleRunWithApprovers}
+                  disabled={approverEmails.every((e) => e.trim() === "")}
+                >
+                  <Play className="w-3 h-3 mr-1" />
+                  Run with Approvers
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

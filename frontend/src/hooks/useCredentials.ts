@@ -87,7 +87,11 @@ function mapExternalCredential(c: any): Credential {
     workstream: c.workstream ?? undefined,
     product: c.product ?? undefined,
     service: c.service ?? undefined,
-    workstreams: c.workstreams ?? [],
+    workstreams: Array.isArray(c.workstreams)
+      ? c.workstreams.map((ws: any) =>
+          typeof ws === 'string' ? { id: ws, name: ws } : ws
+        )
+      : [],
   };
 }
 

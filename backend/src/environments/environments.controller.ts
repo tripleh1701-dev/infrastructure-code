@@ -9,12 +9,17 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { EnvironmentsService } from './environments.service';
 import { CreateEnvironmentDto } from './dto/create-environment.dto';
 import { UpdateEnvironmentDto } from './dto/update-environment.dto';
+import { AccountGuard } from '../auth/guards/account.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('environments')
+@UseGuards(AccountGuard)
 export class EnvironmentsController {
   constructor(private readonly environmentsService: EnvironmentsService) {}
 
@@ -33,17 +38,23 @@ export class EnvironmentsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async create(@Body() dto: CreateEnvironmentDto) {
     return this.environmentsService.create(dto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async update(@Param('id') id: string, @Body() dto: UpdateEnvironmentDto) {
     return this.environmentsService.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager')
   async remove(@Param('id') id: string) {
     await this.environmentsService.remove(id);
   }

@@ -10,12 +10,17 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { CredentialsService } from './credentials.service';
 import { CreateCredentialDto } from './dto/create-credential.dto';
 import { UpdateCredentialDto } from './dto/update-credential.dto';
+import { AccountGuard } from '../auth/guards/account.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('credentials')
+@UseGuards(AccountGuard)
 export class CredentialsController {
   constructor(private readonly credentialsService: CredentialsService) {}
 
@@ -63,21 +68,29 @@ export class CredentialsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async create(@Body() dto: CreateCredentialDto) {
     return this.credentialsService.create(dto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async update(@Param('id') id: string, @Body() dto: UpdateCredentialDto) {
     return this.credentialsService.update(id, dto);
   }
 
   @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async patch(@Param('id') id: string, @Body() dto: UpdateCredentialDto) {
     return this.credentialsService.update(id, dto);
   }
 
   @Post(':id/rotate')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager')
   async rotate(
     @Param('id') id: string,
     @Body() body: { credentials: Record<string, any> },
@@ -87,6 +100,8 @@ export class CredentialsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager')
   async remove(@Param('id') id: string) {
     await this.credentialsService.remove(id);
   }

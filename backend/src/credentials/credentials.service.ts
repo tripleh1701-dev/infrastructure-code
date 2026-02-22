@@ -35,7 +35,9 @@ export interface Credential {
 export class CredentialsService {
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
-  async findAll(accountId?: string, enterpriseId?: string): Promise<Credential[]> {
+  async findAll(accountId?: string, enterpriseId?: string): Promise<(Credential & { workstreams: string[] })[]> {
+    let items: Credential[];
+
     if (accountId) {
       const result = await this.dynamoDb.query({
         KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
@@ -45,24 +47,41 @@ export class CredentialsService {
         },
       });
 
-      let items = (result.Items || []).map(this.mapToCredential);
+      items = (result.Items || []).map(this.mapToCredential);
       if (enterpriseId) {
         items = items.filter((c) => c.enterpriseId === enterpriseId);
       }
-      return items;
+    } else {
+      const result = await this.dynamoDb.queryByIndex(
+        'GSI1',
+        'GSI1PK = :pk',
+        { ':pk': 'ENTITY#CREDENTIAL' },
+      );
+
+      items = (result.Items || []).map(this.mapToCredential);
+      if (enterpriseId) {
+        items = items.filter((c) => c.enterpriseId === enterpriseId);
+      }
     }
 
-    const result = await this.dynamoDb.queryByIndex(
-      'GSI1',
-      'GSI1PK = :pk',
-      { ':pk': 'ENTITY#CREDENTIAL' },
+    // Enrich each credential with its workstream associations
+    const enriched = await Promise.all(
+      items.map(async (cred) => {
+        const wsResult = await this.dynamoDb.query({
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `CREDENTIAL#${cred.id}`,
+            ':sk': 'WORKSTREAM#',
+          },
+        });
+        return {
+          ...cred,
+          workstreams: (wsResult.Items || []).map((item) => item.workstreamId),
+        };
+      }),
     );
 
-    let items = (result.Items || []).map(this.mapToCredential);
-    if (enterpriseId) {
-      items = items.filter((c) => c.enterpriseId === enterpriseId);
-    }
-    return items;
+    return enriched;
   }
 
   /**

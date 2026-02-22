@@ -22,7 +22,7 @@ export const executionsService = {
   /**
    * Start a pipeline execution
    */
-  async run(pipelineId: string, buildJobId?: string, branch?: string) {
+  async run(pipelineId: string, buildJobId?: string, branch?: string, approverEmails?: string[]) {
     if (!isExternalApi()) {
       return { data: { executionId: crypto.randomUUID() }, error: null };
     }
@@ -30,7 +30,7 @@ export const executionsService = {
     try {
       const response = await httpClient.post<{ executionId: string }>(
         '/executions/run',
-        { pipelineId, buildJobId, branch },
+        { pipelineId, buildJobId, branch, approverEmails },
       );
       return { data: response.data, error: null };
     } catch (error: any) {

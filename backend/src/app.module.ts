@@ -24,6 +24,7 @@ import { BuildsModule } from './builds/builds.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { ScheduledModule } from './scheduled/scheduled.module';
 import { EnvironmentsModule } from './environments/environments.module';
+import { InboxModule } from './inbox/inbox.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { EnvironmentsModule } from './environments/environments.module';
     CredentialsModule,
     BuildsModule,
     EnvironmentsModule,
+    InboxModule,
     ProvisioningModule,
   ],
 })

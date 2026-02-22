@@ -9,6 +9,10 @@ import {
   CredentialEmailParams,
   renderCredentialProvisionedEmail,
 } from './templates/credential-provisioned.template';
+import {
+  ApprovalRequestEmailParams,
+  renderApprovalRequestEmail,
+} from './templates/approval-request.template';
 import { NotificationAuditService } from './notification-audit.service';
 
 /**
@@ -235,6 +239,103 @@ export class NotificationService {
         reason: error.message,
         auditId: auditEntry?.id,
       };
+
+  /**
+   * Send approval request email to a designated approver via SES.
+   *
+   * This method does NOT check the CREDENTIAL_NOTIFICATION_ENABLED flag —
+   * approval emails are always sent when SES is configured (i.e. running in Lambda).
+   * In local dev without SES, the send is silently skipped.
+   */
+  async sendApprovalRequestEmail(
+    params: Omit<ApprovalRequestEmailParams, 'loginUrl' | 'platformName' | 'supportEmail'> & {
+      loginUrl?: string;
+      platformName?: string;
+      supportEmail?: string;
+    },
+    context?: NotificationContext,
+  ): Promise<NotificationResult> {
+    const fullParams: ApprovalRequestEmailParams = {
+      ...params,
+      loginUrl: params.loginUrl || this.loginUrl,
+      platformName: params.platformName || this.platformName,
+      supportEmail: params.supportEmail || this.supportEmail,
+    };
+
+    const { subject, htmlBody, textBody } = renderApprovalRequestEmail(fullParams);
+
+    // If SES client is not initialised (local dev), skip gracefully
+    if (!this.client) {
+      this.logger.debug(
+        `Approval email skipped for ${params.approverEmail} (SES not configured)`,
+      );
+      return { sent: false, skipped: true, reason: 'SES not configured' };
     }
+
+    const sesParams: SendEmailCommandInput = {
+      Source: this.senderEmail,
+      Destination: { ToAddresses: [params.approverEmail] },
+      Message: {
+        Subject: { Data: subject, Charset: 'UTF-8' },
+        Body: {
+          Html: { Data: htmlBody, Charset: 'UTF-8' },
+          Text: { Data: textBody, Charset: 'UTF-8' },
+        },
+      },
+      Tags: [
+        { Name: 'notification-type', Value: 'approval-request' },
+        { Name: 'platform', Value: this.platformName.replace(/\s/g, '-') },
+      ],
+    };
+
+    try {
+      const result = await this.client.send(new SendEmailCommand(sesParams));
+      this.logger.log(
+        `Approval email sent to ${params.approverEmail} (messageId: ${result.MessageId})`,
+      );
+
+      await this.auditService.record({
+        notificationType: 'approval_request',
+        recipientEmail: params.approverEmail,
+        recipientFirstName: '',
+        recipientLastName: '',
+        accountId: context?.accountId,
+        accountName: context?.accountName,
+        userId: context?.userId,
+        deliveryStatus: 'sent',
+        sesMessageId: result.MessageId,
+        senderEmail: this.senderEmail,
+        subject,
+        metadata: {
+          pipelineName: params.pipelineName,
+          stageName: params.stageName,
+          branch: params.branch,
+          requesterEmail: params.requesterEmail,
+        },
+      });
+
+      return { sent: true, skipped: false, messageId: result.MessageId };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send approval email to ${params.approverEmail}: ${error.message}`,
+        error.stack,
+      );
+
+      await this.auditService.record({
+        notificationType: 'approval_request',
+        recipientEmail: params.approverEmail,
+        recipientFirstName: '',
+        recipientLastName: '',
+        accountId: context?.accountId,
+        deliveryStatus: 'failed',
+        errorMessage: error.message,
+        senderEmail: this.senderEmail,
+        subject,
+      });
+
+      return { sent: false, skipped: false, reason: error.message };
+    }
+  }
+}
   }
 }

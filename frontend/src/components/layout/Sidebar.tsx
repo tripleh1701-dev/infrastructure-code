@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -19,6 +19,8 @@ import trumpetLogo from "@/assets/trumpet-logo.png";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/contexts/PermissionContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { inboxService } from "@/lib/api/services/inbox.service";
 
 interface NavItem {
   icon: React.ElementType;
@@ -31,7 +33,7 @@ interface NavItem {
 // All possible nav items with their menu keys
 const allNavItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Overview", path: "/", menuKey: "overview" },
-  { icon: Mail, label: "My Inbox", path: "/inbox", menuKey: "inbox", badge: "3" },
+  { icon: Mail, label: "My Inbox", path: "/inbox", menuKey: "inbox" },
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", menuKey: "dashboard" },
   { icon: GitBranch, label: "Pipelines", path: "/pipelines", menuKey: "pipelines" },
   { icon: Box, label: "Builds", path: "/builds", menuKey: "builds" },
@@ -56,8 +58,24 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const { hasMenuAccess, isLoading, currentUserRoleName } = usePermissions();
   const { user, signOut } = useAuth();
 
-  // Filter nav items based on permissions
-  const navItems = allNavItems.filter((item) => hasMenuAccess(item.menuKey));
+  // Fetch inbox pending count for badge
+  const { data: inboxCount = 0 } = useQuery({
+    queryKey: ["inbox-count"],
+    queryFn: () => inboxService.getPendingCount(),
+    refetchInterval: 30000,
+  });
+
+  // Filter nav items based on permissions and inject dynamic badge
+  const navItems = useMemo(() => {
+    return allNavItems
+      .filter((item) => hasMenuAccess(item.menuKey))
+      .map((item) => {
+        if (item.menuKey === "inbox" && inboxCount > 0) {
+          return { ...item, badge: String(inboxCount) };
+        }
+        return item;
+      });
+  }, [hasMenuAccess, inboxCount]);
 
   const getUserInitials = () => {
     if (!user?.email) return "U";

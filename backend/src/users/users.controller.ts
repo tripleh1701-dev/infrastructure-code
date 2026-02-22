@@ -10,14 +10,18 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest } from '../auth/interfaces/cognito-user.interface';
+import { AccountGuard } from '../auth/guards/account.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @Controller('users')
+@UseGuards(AccountGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -73,6 +77,7 @@ export class UsersController {
    * Must be declared before :id to avoid route conflicts.
    */
   @Post('reconcile/cognito')
+  @UseGuards(RolesGuard)
   @Roles('super_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async reconcileCognitoUsers(
@@ -107,17 +112,23 @@ export class UsersController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async remove(@Param('id') id: string) {
     await this.usersService.remove(id);
   }
@@ -129,6 +140,8 @@ export class UsersController {
   }
 
   @Put(':id/workstreams')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async updateWorkstreams(
     @Param('id') id: string,
     @Body() workstreamIds: string[],
@@ -143,6 +156,8 @@ export class UsersController {
   }
 
   @Put(':id/groups')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async updateUserGroups(
     @Param('id') id: string,
     @Body() body: { groupIds: string[] },

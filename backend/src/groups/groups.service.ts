@@ -8,6 +8,8 @@ export interface Group {
   id: string;
   name: string;
   description?: string;
+  accountId?: string;
+  enterpriseId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,14 +18,28 @@ export interface Group {
 export class GroupsService {
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
-  async findAll(): Promise<Group[]> {
+  async findAll(accountId?: string): Promise<Group[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
       'GSI1PK = :pk',
       { ':pk': 'ENTITY#GROUP' },
     );
 
-    return (result.Items || []).map(this.mapToGroup);
+    let groups = (result.Items || []).map(this.mapToGroup);
+
+    if (accountId) {
+      groups = groups.filter((g) => (g as any).accountId === accountId);
+    }
+
+    // Deduplicate by name – keep the first occurrence per unique name
+    const seen = new Set<string>();
+    groups = groups.filter((g) => {
+      if (seen.has(g.name)) return false;
+      seen.add(g.name);
+      return true;
+    });
+
+    return groups;
   }
 
   async findOne(id: string): Promise<Group> {
@@ -113,6 +129,8 @@ export class GroupsService {
       id: item.id,
       name: item.name,
       description: item.description,
+      accountId: item.accountId,
+      enterpriseId: item.enterpriseId,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

@@ -107,6 +107,7 @@ export function useBuildExecution() {
     pipelineId: string,
     buildJobId?: string,
     branch?: string,
+    approverEmails?: string[],
   ): Promise<string | null> => {
     // Reset state
     setLogs([]);
@@ -121,7 +122,7 @@ export function useBuildExecution() {
       try {
         const response = await httpClient.post<{ executionId: string }>(
           `/executions/run`,
-          { pipelineId, buildJobId, branch },
+          { pipelineId, buildJobId, branch, approverEmails },
         );
 
         if (response.data?.executionId) {

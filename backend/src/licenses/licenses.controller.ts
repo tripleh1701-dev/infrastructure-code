@@ -9,12 +9,17 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { LicensesService } from './licenses.service';
 import { CreateLicenseDto } from './dto/create-license.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
+import { AccountGuard } from '../auth/guards/account.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('licenses')
+@UseGuards(AccountGuard)
 export class LicensesController {
   constructor(private readonly licensesService: LicensesService) {}
 
@@ -64,11 +69,15 @@ export class LicensesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async create(@Body() createLicenseDto: CreateLicenseDto) {
     return this.licensesService.create(createLicenseDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async update(
     @Param('id') id: string,
     @Body() updateLicenseDto: UpdateLicenseDto,
@@ -78,6 +87,8 @@ export class LicensesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async remove(@Param('id') id: string) {
     await this.licensesService.remove(id);
   }

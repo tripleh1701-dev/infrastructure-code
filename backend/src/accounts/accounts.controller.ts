@@ -8,12 +8,17 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { AccountsService } from './accounts.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
+import { AccountGuard } from '../auth/guards/account.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('accounts')
+@UseGuards(AccountGuard)
 export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
 
@@ -38,11 +43,15 @@ export class AccountsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async create(@Body() createAccountDto: CreateAccountDto) {
     return this.accountsService.create(createAccountDto);
   }
 
   @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async update(
     @Param('id') id: string,
     @Body() updateAccountDto: UpdateAccountDto,
@@ -52,6 +61,8 @@ export class AccountsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
   async remove(@Param('id') id: string) {
     await this.accountsService.remove(id);
   }
