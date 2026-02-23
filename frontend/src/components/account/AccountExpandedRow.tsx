@@ -25,6 +25,8 @@ import { LicenseWithDetails } from "@/hooks/useLicenses";
 import { format, differenceInDays } from "date-fns";
 import { AddTechnicalUserDialog } from "./AddTechnicalUserDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { isExternalApi } from "@/lib/api/config";
+import { httpClient } from "@/lib/api/http-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -79,13 +81,18 @@ export function AccountExpandedRow({
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      // Delete user_groups first
-      await supabase.from("user_groups").delete().eq("user_id", userId);
-      // Delete user_workstreams
-      await supabase.from("user_workstreams").delete().eq("user_id", userId);
-      // Delete the technical user
-      const { error } = await supabase.from("account_technical_users").delete().eq("id", userId);
-      if (error) throw error;
+      if (isExternalApi()) {
+        const { error } = await httpClient.delete(`/technical-users/${userId}`);
+        if (error) throw new Error(error.message);
+      } else {
+        // Delete user_groups first
+        await supabase.from("user_groups").delete().eq("user_id", userId);
+        // Delete user_workstreams
+        await supabase.from("user_workstreams").delete().eq("user_id", userId);
+        // Delete the technical user
+        const { error } = await supabase.from("account_technical_users").delete().eq("id", userId);
+        if (error) throw error;
+      }
 
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       toast.success("Technical user removed successfully");

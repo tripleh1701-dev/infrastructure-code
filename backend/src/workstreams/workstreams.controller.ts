@@ -30,10 +30,27 @@ export class WorkstreamsController {
    */
   @Post('ensure-default')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager', 'user')
   async ensureDefault(
     @Body() body: { accountId: string; enterpriseId: string },
   ) {
     return this.workstreamsService.ensureDefault(body.accountId, body.enterpriseId);
+  }
+
+  /**
+   * POST /api/workstreams/auto-assign
+   * Auto-assign a workstream to all technical users that don't have one.
+   * Must be declared before :id routes.
+   */
+  @Post('auto-assign')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'manager')
+  async autoAssign(
+    @Body() body: { accountId: string; workstreamId: string },
+  ) {
+    return this.workstreamsService.autoAssignToUsers(body.accountId, body.workstreamId);
   }
 
   @Get()

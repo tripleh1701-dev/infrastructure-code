@@ -25,6 +25,8 @@ import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { ScheduledModule } from './scheduled/scheduled.module';
 import { EnvironmentsModule } from './environments/environments.module';
 import { InboxModule } from './inbox/inbox.module';
+import { NotificationsHistoryModule } from './notifications/notifications-history.module';
+import { HealthModule } from './common/health/health.module';
 
 @Module({
   imports: [
@@ -75,7 +77,9 @@ import { InboxModule } from './inbox/inbox.module';
     BuildsModule,
     EnvironmentsModule,
     InboxModule,
+    NotificationsHistoryModule,
     ProvisioningModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

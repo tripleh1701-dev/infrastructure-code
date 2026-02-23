@@ -394,6 +394,26 @@ export function useGroupRoles(accountId?: string | null, enterpriseId?: string |
         return [];
       }
 
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.get<any[]>('/roles', {
+          params: { workstreamId, accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
+        });
+        if (error) throw new Error(error.message);
+        return (data || []).map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          description: r.description || null,
+          permissions: (r.permissions || []).map((p: any) => ({
+            menuKey: p.menuKey ?? p.menu_key,
+            menuLabel: p.menuLabel ?? p.menu_label,
+            canView: p.canView ?? p.can_view ?? false,
+            canCreate: p.canCreate ?? p.can_create ?? false,
+            canEdit: p.canEdit ?? p.can_edit ?? false,
+            canDelete: p.canDelete ?? p.can_delete ?? false,
+          })),
+        })) as RoleWithPermissions[];
+      }
+
       // Fetch all roles for the selected workstream
       const { data: rolesData, error } = await supabase
         .from("roles")
@@ -482,33 +502,45 @@ export function useCheckGroupNameExists(
 
     setIsChecking(true);
     try {
-      let query = supabase
-        .from("groups")
-        .select("id, name, account_id, enterprise_id")
-        .ilike("name", trimmedName);
+      let data: { id: string; name: string }[] | null = null;
 
-      // Filter by account - if accountId provided, check within that account
-      // If no accountId (global group), check among global groups only
-      if (accountId) {
-        query = query.eq("account_id", accountId);
+      if (isExternalApi()) {
+        const { data: result, error } = await httpClient.get<{ id: string; name: string }[]>(
+          '/groups/check-name',
+          { params: { name: trimmedName, accountId: accountId || undefined, enterpriseId: enterpriseId || undefined } }
+        );
+        if (error) {
+          console.error("Error checking group name:", error);
+          setIsDuplicate(false);
+          return;
+        }
+        data = result;
       } else {
-        query = query.is("account_id", null);
-      }
+        let query = supabase
+          .from("groups")
+          .select("id, name, account_id, enterprise_id")
+          .ilike("name", trimmedName);
 
-      // Filter by enterprise - if enterpriseId provided, check within that enterprise
-      // If no enterpriseId, check among groups with null enterprise
-      if (enterpriseId) {
-        query = query.eq("enterprise_id", enterpriseId);
-      } else {
-        query = query.is("enterprise_id", null);
-      }
+        if (accountId) {
+          query = query.eq("account_id", accountId);
+        } else {
+          query = query.is("account_id", null);
+        }
 
-      const { data, error } = await query;
+        if (enterpriseId) {
+          query = query.eq("enterprise_id", enterpriseId);
+        } else {
+          query = query.is("enterprise_id", null);
+        }
 
-      if (error) {
-        console.error("Error checking group name:", error);
-        setIsDuplicate(false);
-        return;
+        const { data: result, error } = await query;
+
+        if (error) {
+          console.error("Error checking group name:", error);
+          setIsDuplicate(false);
+          return;
+        }
+        data = result;
       }
 
       // Check for exact case-insensitive match, excluding current group if editing

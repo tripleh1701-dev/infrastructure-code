@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Terminal, Copy, Maximize2, Minimize2 } from "lucide-react";
+import { Terminal, Copy, Maximize2, Minimize2, Search, X, Filter, Download, ChevronsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -10,9 +10,7 @@ interface BuildLogStreamProps {
   status: string;
   buildNumber: string;
   pipelineNodes?: string[];
-  /** When provided by parent, controls which stage's logs are visible */
   activeStageIndex?: number;
-  /** Current stage name from backend execution (shown in header) */
   currentStage?: string;
 }
 
@@ -24,274 +22,394 @@ interface LogEntry {
   timestamp?: string;
 }
 
-function getTimestamp(): string {
-  const now = new Date();
-  return now.toTimeString().slice(0, 8);
-}
+type LogLevel = "all" | "info" | "warn" | "error" | "success" | "system";
 
-function generateNodeLogs(nodeName: string, stageIndex: number): LogEntry[] {
-  const ts = getTimestamp;
-  const name = nodeName.toLowerCase();
-  const base: LogEntry[] = [
-    { text: `▸ Stage: ${nodeName}`, level: "system", stage: nodeName, stageIndex, timestamp: ts() },
-    { text: `  Initializing ${name} step...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-  ];
+/* ------------------------------------------------------------------ */
+/*  Parse real backend log lines                                       */
+/*  Formats handled:                                                   */
+/*    [NODE:xyz][STAGE:abc] STATUS — message (time)                    */
+/*    [EXECUTION:id][NODE:n] ...                                       */
+/*    → JIRA: Issue KEY | ...                                          */
+/*    → GitHub: Repository ...                                         */
+/*    → SAP CPI: Downloading ...                                       */
+/*    ✓ / ✅ / ❌ markers                                               */
+/* ------------------------------------------------------------------ */
+function parseRealLogLine(line: string): LogEntry {
+  // Extract timestamp if present (e.g. [2025-01-01T...] or [HH:MM:SS])
+  const tsMatch = line.match(/^\[(\d{4}-\d{2}-\d{2}T[^\]]+|\d{2}:\d{2}:\d{2})\]\s*/);
+  const timestamp = tsMatch ? tsMatch[1] : undefined;
+  const text = tsMatch ? line.slice(tsMatch[0].length) : line;
 
-  if (name.includes("source") || name.includes("git") || name.includes("repo")) {
-    base.push(
-      { text: `  Cloning repository from origin/main...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Fetched 142 objects, 3.2 MB`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  HEAD is now at a4c7e2f`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  ✓ Source checkout complete`, level: "success", stage: nodeName, stageIndex, timestamp: ts() },
-    );
-  } else if (name.includes("build") || name.includes("compile")) {
-    base.push(
-      { text: `  Resolving dependencies...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Compiling modules (1/4)...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Compiling modules (2/4)...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Compiling modules (3/4)...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Compiling modules (4/4)...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  ✓ Build successful — 0 errors, 2 warnings`, level: "success", stage: nodeName, stageIndex, timestamp: ts() },
-    );
-  } else if (name.includes("test")) {
-    base.push(
-      { text: `  Running test suite...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Suite: unit-tests — 38 passed`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Suite: integration-tests — 12 passed`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  ✓ All 50 tests passed`, level: "success", stage: nodeName, stageIndex, timestamp: ts() },
-    );
-  } else if (name.includes("deploy") || name.includes("release")) {
-    base.push(
-      { text: `  Preparing deployment manifest...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Deploying to staging cluster...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Rolling update: 3/3 replicas ready`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Health check: HTTP 200 OK`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  ✓ Deployment successful`, level: "success", stage: nodeName, stageIndex, timestamp: ts() },
-    );
-  } else if (name.includes("package") || name.includes("docker") || name.includes("container")) {
-    base.push(
-      { text: `  Building container image...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Layer 1/5: base image cached`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Layer 5/5: application layer`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  Pushing image to registry...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  ✓ Image pushed: v1.2.${Math.floor(Math.random() * 100)}`, level: "success", stage: nodeName, stageIndex, timestamp: ts() },
-    );
-  } else {
-    base.push(
-      { text: `  Processing ${name}...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-      { text: `  ✓ ${nodeName} completed`, level: "success", stage: nodeName, stageIndex, timestamp: ts() },
-    );
+  // Extract stage name from backend format
+  const stageMatch = text.match(/\[STAGE:([^\]]+)\]/);
+  const stage = stageMatch ? stageMatch[1] : undefined;
+
+  // Determine log level
+  let level: LogEntry["level"] = "info";
+
+  if (/FAILED|ERROR|\[ERROR\]|❌|error|Fatal|fatal/i.test(text)) {
+    level = "error";
+  } else if (/WARN|\[WARN\]|⚠️|Warning/i.test(text)) {
+    level = "warn";
+  } else if (/SUCCESS|✓|✅|passed|complete|deployed|healthy|verified|approved|downloaded/i.test(text)) {
+    level = "success";
+  } else if (
+    /^▸|^▶|^═{3,}|STARTED|Starting|Pipeline execution|Node completed/i.test(text) ||
+    /\[EXECUTION:/.test(text) ||
+    /\[NODE:[^\]]+\]\s*(Starting|Node completed)/i.test(text)
+  ) {
+    level = "system";
+  } else if (/^  →|^    →/.test(text)) {
+    // Tool output lines (JIRA, GitHub, SAP CPI) — keep as info but could be success
+    if (/✓|✅|success|valid|acquired|verified|connected/i.test(text)) {
+      level = "success";
+    }
   }
 
-  return base;
+  return { text: line, level, timestamp, stage };
 }
 
-function generateFailedLogs(nodeName: string, stageIndex: number): LogEntry[] {
-  const ts = getTimestamp;
-  return [
-    { text: `▸ Stage: ${nodeName}`, level: "system", stage: nodeName, stageIndex, timestamp: ts() },
-    { text: `  Initializing ${nodeName.toLowerCase()} step...`, level: "info", stage: nodeName, stageIndex, timestamp: ts() },
-    { text: `  [ERROR] Process exited with code 1`, level: "error", stage: nodeName, stageIndex, timestamp: ts() },
-    { text: `  [ERROR] ${nodeName} stage failed — aborting pipeline`, level: "error", stage: nodeName, stageIndex, timestamp: ts() },
-  ];
+/* ------------------------------------------------------------------ */
+/*  Waiting / idle placeholder (no simulation)                         */
+/* ------------------------------------------------------------------ */
+function getWaitingEntries(status: string): LogEntry[] {
+  const s = status.toLowerCase();
+  if (s === "running") {
+    return [{ text: "Waiting for execution logs...", level: "system" }];
+  }
+  if (s === "success") {
+    return [{ text: "═══ Pipeline completed successfully ═══", level: "success" }];
+  }
+  if (s === "failed") {
+    return [{ text: "═══ Pipeline failed ═══", level: "error" }];
+  }
+  if (s === "waiting_approval") {
+    return [{ text: "⏸  Pipeline paused — awaiting manual approval", level: "warn" }];
+  }
+  return [{ text: "Waiting for build to start...", level: "info" }];
 }
 
-const defaultNodeNames = ["Source", "Build", "Test", "Package", "Deploy"];
+const LEVEL_CONFIG: Record<LogLevel, { label: string; color: string; activeColor: string }> = {
+  all: { label: "All", color: "text-slate-400", activeColor: "bg-slate-700 text-white" },
+  info: { label: "Info", color: "text-blue-400", activeColor: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
+  warn: { label: "Warn", color: "text-amber-400", activeColor: "bg-amber-500/20 text-amber-300 border-amber-500/40" },
+  error: { label: "Error", color: "text-red-400", activeColor: "bg-red-500/20 text-red-300 border-red-500/40" },
+  success: { label: "Pass", color: "text-emerald-400", activeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" },
+  system: { label: "Sys", color: "text-cyan-400", activeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40" },
+};
 
+const LEVEL_LINE_STYLES: Record<string, string> = {
+  error: "text-red-400 bg-red-500/5 border-l-2 border-red-500/60 pl-2",
+  warn: "text-amber-400 bg-amber-500/5 border-l-2 border-amber-500/40 pl-2",
+  success: "text-emerald-400",
+  system: "text-cyan-300 font-semibold",
+  info: "text-slate-300",
+};
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
 export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activeStageIndex, currentStage }: BuildLogStreamProps) {
   const [streamedEntries, setStreamedEntries] = useState<LogEntry[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<LogLevel>("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
-  const prevStageRef = useRef<number>(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const prevLogCountRef = useRef<number>(0);
 
-  const nodeNames = pipelineNodes && pipelineNodes.length > 0 ? pipelineNodes : defaultNodeNames;
+  const hasRealLogs = Boolean(logs && logs.trim().length > 0);
 
-  // Pre-generate all log entries grouped by stage
-  const allLogsByStage = useMemo(() => {
-    if (logs) {
-      return [logs.split("\n").map((line) => ({
-        text: line,
-        stageIndex: 0,
-        level: (line.includes("[ERROR]") ? "error" : line.includes("[WARN]") ? "warn" : line.includes("✓") || line.includes("passed") ? "success" : "info") as LogEntry["level"],
-      }))];
-    }
+  /* ---------- Parse real log lines ---------- */
+  const realLogEntries = useMemo<LogEntry[]>(() => {
+    if (!hasRealLogs || !logs) return [];
+    return logs.split("\n").filter((line) => line.length > 0).map(parseRealLogLine);
+  }, [logs, hasRealLogs]);
 
-    return nodeNames.map((name, idx) => {
-      if (status === "failed" && idx === nodeNames.length - 1) {
-        return generateFailedLogs(name, idx);
-      }
-      return generateNodeLogs(name, idx);
-    });
-  }, [logs, status, nodeNames]);
-
-  // When activeStageIndex changes, stream that stage's logs
+  /* ---------- Stream new real log lines with animation ---------- */
   useEffect(() => {
-    if (activeStageIndex === undefined || activeStageIndex < 0) {
-      // No parent-driven progression — show all logs at once for completed builds
-      if (status === "success" || status === "failed") {
-        const allEntries = allLogsByStage.flat();
-        if (status === "success") {
-          allEntries.push({ text: "", level: "info" });
-          allEntries.push({ text: "═══ Pipeline completed successfully ═══", level: "success" });
-        }
-        setStreamedEntries(allEntries);
-      } else if (status !== "running") {
-        setStreamedEntries([{ text: "Waiting for build to start...", level: "info" }]);
-      }
-      prevStageRef.current = -1;
+    if (!hasRealLogs) {
+      // No real logs — show status placeholder
+      setStreamedEntries(getWaitingEntries(status));
+      prevLogCountRef.current = 0;
       return;
     }
 
-    // Parent is driving stage progression
-    const stageIdx = Math.min(activeStageIndex, allLogsByStage.length);
+    const newCount = realLogEntries.length;
 
-    if (stageIdx <= prevStageRef.current && stageIdx < allLogsByStage.length) return;
-
-    // Stream logs for the new stage(s)
-    if (stageIdx >= allLogsByStage.length) {
-      // All stages done — add completion message
-      const allEntries = allLogsByStage.flat();
-      if (status === "success") {
-        allEntries.push({ text: "", level: "info" });
-        allEntries.push({ text: "═══ Pipeline completed successfully ═══", level: "success" });
-      } else if (status === "failed") {
-        allEntries.push({ text: "", level: "info" });
-        allEntries.push({ text: "═══ Pipeline failed ═══", level: "error" });
-      }
-      setStreamedEntries(allEntries);
-      prevStageRef.current = stageIdx;
+    // If count hasn't changed, just update in place (status may have changed)
+    if (newCount <= prevLogCountRef.current) {
+      setStreamedEntries(realLogEntries);
       return;
     }
 
-    // Collect all logs up to and including the current stage
-    const entriesToShow: LogEntry[] = [];
-    for (let i = 0; i <= stageIdx; i++) {
-      if (allLogsByStage[i]) {
-        entriesToShow.push(...allLogsByStage[i]);
-      }
-    }
+    // Stream new lines with a short delay for visual effect
+    const newLines = realLogEntries.slice(prevLogCountRef.current);
+    const existingEntries = realLogEntries.slice(0, prevLogCountRef.current);
+    setStreamedEntries([...existingEntries]);
 
-    // Stream the new stage's logs line by line
-    const prevEntries: LogEntry[] = [];
-    for (let i = 0; i <= prevStageRef.current && i < allLogsByStage.length; i++) {
-      if (allLogsByStage[i]) prevEntries.push(...allLogsByStage[i]);
-    }
-
-    const newLogs = allLogsByStage[stageIdx] || [];
     let lineIdx = 0;
-
-    // Show previous stages immediately, then stream current stage
-    setStreamedEntries([...prevEntries]);
-
     const streamInterval = setInterval(() => {
-      if (lineIdx < newLogs.length) {
-        const entry = newLogs[lineIdx];
-        if (entry) {
-          setStreamedEntries((prev) => [...prev, entry]);
-        }
+      if (lineIdx < newLines.length) {
+        setStreamedEntries((prev) => [...prev, newLines[lineIdx]]);
         lineIdx++;
       } else {
         clearInterval(streamInterval);
       }
-    }, 150);
+    }, 60);
 
-    prevStageRef.current = stageIdx;
-
+    prevLogCountRef.current = newCount;
     return () => clearInterval(streamInterval);
-  }, [activeStageIndex, status, allLogsByStage]);
+  }, [realLogEntries, hasRealLogs, status]);
+
+  /* ---------- Append status markers when execution completes ---------- */
+  useEffect(() => {
+    if (!hasRealLogs) return;
+    const s = status.toLowerCase();
+    if (s === "success") {
+      setStreamedEntries((prev) => {
+        if (prev.some((e) => e.text.includes("Pipeline completed"))) return prev;
+        return [...prev, { text: "", level: "info" }, { text: "═══ Pipeline completed successfully ═══", level: "success" }];
+      });
+    } else if (s === "failed") {
+      setStreamedEntries((prev) => {
+        if (prev.some((e) => e.text.includes("Pipeline failed"))) return prev;
+        return [...prev, { text: "", level: "info" }, { text: "═══ Pipeline failed ═══", level: "error" }];
+      });
+    } else if (s === "waiting_approval") {
+      setStreamedEntries((prev) => {
+        if (prev.some((e) => e.text.includes("awaiting manual approval"))) return prev;
+        return [...prev, { text: "", level: "info" }, { text: "⏸  Pipeline paused — awaiting manual approval", level: "warn" }];
+      });
+    }
+  }, [status, hasRealLogs]);
 
   // Auto-scroll
   useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
+    if (autoScroll && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [streamedEntries, autoScroll]);
+
+  // Detect manual scroll-up to auto-disable, scroll-to-bottom to re-enable
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+      setAutoScroll(atBottom);
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Focus search input when toggled
+  useEffect(() => {
+    if (showSearch && searchInputRef.current) searchInputRef.current.focus();
+  }, [showSearch]);
+
+  /* ---------- Filtered + searched entries ---------- */
+  const filteredEntries = useMemo(() => {
+    let entries = streamedEntries;
+    if (activeFilter !== "all") {
+      entries = entries.filter((e) => e.level === activeFilter);
     }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      entries = entries.filter((e) => e.text.toLowerCase().includes(q));
+    }
+    return entries;
+  }, [streamedEntries, activeFilter, searchQuery]);
+
+  /* ---------- Level counts ---------- */
+  const levelCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0, info: 0, warn: 0, error: 0, success: 0, system: 0 };
+    for (const e of streamedEntries) {
+      counts[e.level] = (counts[e.level] || 0) + 1;
+      counts.all++;
+    }
+    return counts;
   }, [streamedEntries]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(streamedEntries.map((e) => e.text).join("\n"));
-    toast.success("Logs copied to clipboard");
-  };
+  const logsText = useMemo(() => filteredEntries.map((e) => e.text).join("\n"), [filteredEntries]);
 
-  const levelColors: Record<string, string> = {
-    error: "text-red-400",
-    warn: "text-amber-400",
-    success: "text-emerald-400",
-    system: "text-cyan-400 font-semibold",
-    info: "text-slate-300",
-  };
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(logsText);
+    toast.success("Logs copied to clipboard");
+  }, [logsText]);
+
+  const handleDownload = useCallback(() => {
+    const blob = new Blob([logsText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${buildNumber}-logs.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Logs downloaded");
+  }, [logsText, buildNumber]);
+
+  const toggleSearch = useCallback(() => {
+    setShowSearch((prev) => {
+      if (prev) setSearchQuery("");
+      return !prev;
+    });
+  }, []);
+
+  const isRunning = status === "running" || status === "RUNNING";
+
+  const highlightMatch = useCallback((text: string) => {
+    if (!searchQuery.trim()) return text;
+    const q = searchQuery.trim();
+    const idx = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark className="bg-yellow-500/40 text-yellow-100 rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>
+        {text.slice(idx + q.length)}
+      </>
+    );
+  }, [searchQuery]);
 
   return (
-    <div className={cn("flex flex-col rounded-lg overflow-hidden", isExpanded ? "h-96" : "h-56")}>
+    <div className={cn(
+      "flex flex-col rounded-lg overflow-hidden border border-slate-800",
+      isExpanded ? "h-[480px]" : "h-64"
+    )}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-slate-900">
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <Terminal className="w-3.5 h-3.5 text-emerald-400" />
           <span className="text-xs font-mono text-slate-300">{buildNumber} — logs</span>
-          {(status === "running" || (activeStageIndex !== undefined && activeStageIndex >= 0 && activeStageIndex < nodeNames.length)) && (
+          {hasRealLogs ? (
+            <span className="text-[10px] text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded font-mono flex items-center gap-1 border border-emerald-500/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              LIVE
+            </span>
+          ) : isRunning ? (
+            <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-mono border border-amber-400/30">POLLING</span>
+          ) : null}
+          {isRunning && (
             <motion.div
               className="w-2 h-2 rounded-full bg-emerald-400"
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ duration: 1, repeat: Infinity }}
             />
           )}
-          <span className="text-[10px] text-slate-500 ml-2">
-            {streamedEntries.length} lines
-          </span>
-          {currentStage ? (
-            <span className="text-[10px] text-cyan-400 ml-1">
-              ● {currentStage}
-            </span>
-          ) : activeStageIndex !== undefined && activeStageIndex >= 0 && activeStageIndex < nodeNames.length ? (
-            <span className="text-[10px] text-cyan-400 ml-1">
-              ● {nodeNames[activeStageIndex]}
-            </span>
-          ) : null}
+          {currentStage && (
+            <span className="text-[10px] text-cyan-400 ml-1">● {currentStage}</span>
+          )}
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-            onClick={handleCopy}
-          >
+          <span className="text-[10px] text-slate-500 mr-1 tabular-nums">
+            {filteredEntries.length}/{streamedEntries.length}
+          </span>
+          <Button variant="ghost" size="icon" className={cn("h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700", showFilters && "bg-slate-700 text-white")} onClick={() => setShowFilters(!showFilters)}>
+            <Filter className="w-3 h-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className={cn("h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700", showSearch && "bg-slate-700 text-white")} onClick={toggleSearch}>
+            <Search className="w-3 h-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" onClick={handleCopy} title="Copy logs">
             <Copy className="w-3 h-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" onClick={handleDownload} title="Download logs">
+            <Download className="w-3 h-3" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-            onClick={() => setIsExpanded(!isExpanded)}
+            className={cn("h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700", autoScroll && "bg-slate-700 text-emerald-400")}
+            onClick={() => {
+              setAutoScroll(!autoScroll);
+              if (!autoScroll && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+            }}
+            title={autoScroll ? "Auto-scroll ON" : "Auto-scroll OFF"}
           >
+            <ChevronsDown className="w-3 h-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" onClick={() => setIsExpanded(!isExpanded)}>
             {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
           </Button>
         </div>
       </div>
 
+      {/* Search bar */}
+      {showSearch && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/80 border-b border-slate-800">
+          <Search className="w-3 h-3 text-slate-500 shrink-0" />
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search logs..."
+            className="flex-1 bg-transparent text-xs font-mono text-slate-300 placeholder:text-slate-600 outline-none"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="text-slate-500 hover:text-slate-300">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Filter pills */}
+      {showFilters && (
+        <div className="flex items-center gap-1 px-3 py-1.5 bg-slate-900/60 border-b border-slate-800 flex-wrap">
+          {(Object.keys(LEVEL_CONFIG) as LogLevel[]).map((level) => {
+            const cfg = LEVEL_CONFIG[level];
+            const isActive = activeFilter === level;
+            const count = levelCounts[level] || 0;
+            return (
+              <button
+                key={level}
+                onClick={() => setActiveFilter(level)}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-mono transition-all border",
+                  isActive
+                    ? cfg.activeColor
+                    : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800"
+                )}
+              >
+                {cfg.label}
+                <span className="ml-1 opacity-60">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Log content */}
-      <div
-        ref={logRef}
-        className="flex-1 bg-slate-950 overflow-y-auto font-mono text-xs p-3 space-y-0.5"
-      >
-        {streamedEntries.map((entry, i) => {
-          if (!entry) return null;
-          return (
-            <motion.div
-              key={`${entry.stageIndex ?? 0}-${i}`}
-              initial={{ opacity: 0, x: -5 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.1 }}
-              className={cn("leading-5", levelColors[entry.level] || "text-slate-300")}
-            >
-              {entry.timestamp && (
-                <span className="text-slate-600 mr-2">[{entry.timestamp}]</span>
-              )}
-              {entry.text}
-            </motion.div>
-          );
-        })}
-        {(status === "running" || (activeStageIndex !== undefined && activeStageIndex >= 0 && activeStageIndex < nodeNames.length)) && (
+      <div ref={logRef} className="flex-1 bg-slate-950 overflow-y-auto font-mono text-[13px] leading-6 p-3 space-y-px">
+        {filteredEntries.length === 0 && (searchQuery || activeFilter !== "all") ? (
+          <div className="flex items-center justify-center h-full text-slate-600 text-xs">
+            No logs match current filters
+          </div>
+        ) : (
+          filteredEntries.map((entry, i) => {
+            if (!entry) return null;
+            return (
+              <motion.div
+                key={`${entry.stage ?? "r"}-${i}`}
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.08 }}
+                className={cn(
+                  "py-0.5 rounded-sm",
+                  LEVEL_LINE_STYLES[entry.level] || "text-slate-300"
+                )}
+              >
+                <span className="text-slate-600 select-none mr-3 inline-block w-7 text-right text-[11px]">{i + 1}</span>
+                {highlightMatch(entry.text)}
+              </motion.div>
+            );
+          })
+        )}
+        {isRunning && (
           <motion.span
-            className="text-emerald-400 inline-block"
+            className="text-emerald-400 inline-block ml-10"
             animate={{ opacity: [1, 0] }}
             transition={{ duration: 0.5, repeat: Infinity }}
           >

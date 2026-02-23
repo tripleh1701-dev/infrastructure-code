@@ -124,6 +124,26 @@ export class GroupsService {
     });
   }
 
+  /**
+   * Check if a group name already exists within the given scope.
+   * Returns matching groups as { id, name }[].
+   */
+  async checkNameExists(
+    name: string,
+    accountId?: string,
+    enterpriseId?: string,
+  ): Promise<{ id: string; name: string }[]> {
+    const groups = await this.findAll(accountId);
+    const lowerName = name.toLowerCase();
+
+    let filtered = groups.filter((g) => g.name.toLowerCase() === lowerName);
+    if (enterpriseId) {
+      filtered = filtered.filter((g) => g.enterpriseId === enterpriseId);
+    }
+
+    return filtered.map((g) => ({ id: g.id, name: g.name }));
+  }
+
   private mapToGroup(item: Record<string, any>): Group {
     return {
       id: item.id,

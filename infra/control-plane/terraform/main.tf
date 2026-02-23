@@ -228,6 +228,7 @@ module "create_infra_worker" {
 
   function_name             = "${local.name_prefix}-create-infra-worker"
   description               = "Creates account infrastructure (DynamoDB item or CloudFormation stack)"
+  handler                   = "dist/workers/dynamodb-provisioner.handler.handler"
   timeout                   = 300
   memory_size               = 256
   package_path              = var.lambda_package_path
@@ -260,6 +261,7 @@ module "delete_infra_worker" {
 
   function_name             = "${local.name_prefix}-delete-infra-worker"
   description               = "Deletes account infrastructure"
+  handler                   = "dist/workers/delete-infra.handler.handler"
   timeout                   = 300
   memory_size               = 256
   package_path              = var.lambda_package_path
@@ -290,6 +292,7 @@ module "poll_infra_worker" {
 
   function_name                  = "${local.name_prefix}-poll-infra-worker"
   description                    = "Polls account infrastructure provisioning status"
+  handler                        = "dist/workers/poll-infra.handler.handler"
   timeout                        = 60
   memory_size                    = 128
   package_path                   = var.lambda_package_path
@@ -320,6 +323,7 @@ module "setup_rbac_worker" {
 
   function_name          = "${local.name_prefix}-setup-rbac-worker"
   description            = "Sets up RBAC groups, roles, and permissions for new accounts"
+  handler                = "dist/workers/setup-rbac.handler.handler"
   timeout                = 120
   memory_size            = 256
   package_path           = var.lambda_package_path
@@ -346,6 +350,7 @@ module "create_admin_worker" {
 
   function_name          = "${local.name_prefix}-create-admin-worker"
   description            = "Creates admin user in Cognito + DynamoDB for new accounts"
+  handler                = "dist/workers/create-admin.handler.handler"
   timeout                = 120
   memory_size            = 256
   package_path           = var.lambda_package_path
@@ -401,6 +406,37 @@ module "pipeline_executor" {
 }
 
 # =============================================================================
+# 5c. Verify Provisioning Worker Lambda
+# =============================================================================
+module "verify_provisioning_worker" {
+  source = "../../modules/worker-lambda"
+
+  function_name          = "${local.name_prefix}-verify-provisioning-worker"
+  description            = "Validates all provisioned resources are accessible and correctly configured"
+  handler                = "dist/workers/provisioning-verifier.handler.handler"
+  timeout                = 120
+  memory_size            = 256
+  package_path           = var.lambda_package_path
+  dynamodb_table_arn     = module.control_plane_dynamodb.table_arn
+  enable_dynamodb        = true
+  enable_cognito         = true
+  cognito_user_pool_arn  = module.cognito.user_pool_arn
+  enable_cloudwatch_metrics = true
+  ssm_prefix             = "${var.project_name}/${var.environment}"
+  vpc_subnet_ids         = module.vpc.private_subnet_ids
+  vpc_security_group_ids = [module.vpc.lambda_security_group_id]
+
+  environment_variables = {
+    NODE_ENV                 = var.environment
+    CONTROL_PLANE_TABLE_NAME = module.control_plane_dynamodb.table_name
+    COGNITO_USER_POOL_ID     = module.cognito.user_pool_id
+    SSM_PREFIX               = local.ssm_prefix
+  }
+
+  tags = local.common_tags
+}
+
+# =============================================================================
 # 6. Step Functions (Orchestration)
 # =============================================================================
 module "step_functions" {
@@ -414,13 +450,15 @@ module "step_functions" {
     module.poll_infra_worker.function_arn,
     module.setup_rbac_worker.function_arn,
     module.create_admin_worker.function_arn,
+    module.verify_provisioning_worker.function_arn,
   ]
 
-  create_infra_worker_arn = module.create_infra_worker.function_arn
-  delete_infra_worker_arn = module.delete_infra_worker.function_arn
-  poll_infra_worker_arn   = module.poll_infra_worker.function_arn
-  setup_rbac_worker_arn   = module.setup_rbac_worker.function_arn
-  create_admin_worker_arn = module.create_admin_worker.function_arn
+  create_infra_worker_arn        = module.create_infra_worker.function_arn
+  delete_infra_worker_arn        = module.delete_infra_worker.function_arn
+  poll_infra_worker_arn          = module.poll_infra_worker.function_arn
+  setup_rbac_worker_arn          = module.setup_rbac_worker.function_arn
+  create_admin_worker_arn        = module.create_admin_worker.function_arn
+  verify_provisioning_worker_arn = module.verify_provisioning_worker.function_arn
 
   tags = local.common_tags
 }

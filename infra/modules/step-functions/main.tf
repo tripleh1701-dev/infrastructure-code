@@ -118,7 +118,7 @@ resource "aws_sfn_state_machine" "create_account" {
       CreateAdminUser = {
         Type     = "Task"
         Resource = var.create_admin_worker_arn
-        Next     = "ProvisioningComplete"
+        Next     = "VerifyProvisioning"
         Retry = [{
           ErrorEquals     = ["States.TaskFailed"]
           IntervalSeconds = 5
@@ -130,6 +130,33 @@ resource "aws_sfn_state_machine" "create_account" {
           Next        = "ProvisioningFailed"
           ResultPath  = "$.error"
         }]
+      }
+      VerifyProvisioning = {
+        Type     = "Task"
+        Resource = var.verify_provisioning_worker_arn
+        Next     = "CheckVerification"
+        Retry = [{
+          ErrorEquals     = ["States.TaskFailed"]
+          IntervalSeconds = 5
+          MaxAttempts     = 2
+          BackoffRate     = 2.0
+        }]
+        Catch = [{
+          ErrorEquals = ["States.ALL"]
+          Next        = "ProvisioningFailed"
+          ResultPath  = "$.error"
+        }]
+      }
+      CheckVerification = {
+        Type = "Choice"
+        Choices = [
+          {
+            Variable      = "$.verified"
+            BooleanEquals = true
+            Next          = "ProvisioningComplete"
+          }
+        ]
+        Default = "ProvisioningFailed"
       }
       ProvisioningComplete = {
         Type = "Succeed"

@@ -241,6 +241,61 @@ export class RolesService {
     };
   }
 
+  /**
+   * Backfill missing menu permissions (e.g. inbox, monitoring) for all existing roles.
+   * Idempotent: skips roles that already have the permission for a given menuKey.
+   */
+  async backfillPermissions(menuItems: { key: string; label: string }[]): Promise<{ rolesProcessed: number; permissionsAdded: number }> {
+    // 1. Fetch all roles via GSI1
+    const rolesResult = await this.dynamoDb.queryByIndex(
+      'GSI1',
+      'GSI1PK = :pk',
+      { ':pk': 'ENTITY#ROLE' },
+    );
+    const roles = (rolesResult.Items || []).map(this.mapToRole);
+
+    let permissionsAdded = 0;
+
+    for (const role of roles) {
+      // 2. Get existing permissions for this role
+      const existingPerms = await this.getPermissions(role.id);
+      const existingKeys = new Set(existingPerms.map((p) => p.menuKey));
+
+      // Determine permission levels based on role name
+      const isAdmin = role.name === 'Platform Admin' || role.name === 'Admin';
+      const isManager = role.name === 'Manager';
+      const isUser = role.name === 'User';
+
+      for (const menu of menuItems) {
+        if (existingKeys.has(menu.key)) continue; // Already has this permission
+
+        const permId = uuidv4();
+        const now = new Date().toISOString();
+
+        await this.dynamoDb.put({
+          Item: {
+            PK: `ROLE#${role.id}`,
+            SK: `PERMISSION#${menu.key}`,
+            id: permId,
+            roleId: role.id,
+            menuKey: menu.key,
+            menuLabel: menu.label,
+            isVisible: true,
+            canView: true,
+            canCreate: isAdmin || isManager || isUser,
+            canEdit: isAdmin || isManager,
+            canDelete: isAdmin,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+        permissionsAdded++;
+      }
+    }
+
+    return { rolesProcessed: roles.length, permissionsAdded };
+  }
+
   private mapToPermission(item: Record<string, any>): RolePermission {
     return {
       id: item.id,

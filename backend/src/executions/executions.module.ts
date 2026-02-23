@@ -6,9 +6,10 @@ import { DependencyResolverService } from './dependency-resolver.service';
 import { StageHandlersService } from './stage-handlers.service';
 import { PipelinesModule } from '../pipelines/pipelines.module';
 import { InboxModule } from '../inbox/inbox.module';
+import { CredentialsModule } from '../credentials/credentials.module';
 
 @Module({
-  imports: [PipelinesModule, forwardRef(() => InboxModule)],
+  imports: [PipelinesModule, forwardRef(() => InboxModule), CredentialsModule],
   controllers: [ExecutionsController],
   providers: [
     ExecutionsService,

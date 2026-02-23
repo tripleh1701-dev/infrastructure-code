@@ -31,6 +31,24 @@ export class RolesController {
     return this.rolesService.findAll(accountId, enterpriseId);
   }
 
+  /**
+   * POST /roles/backfill-permissions
+   * Adds missing inbox & monitoring permission entries to every existing role.
+   * Idempotent – safe to call multiple times.
+   * Must be declared BEFORE :id routes to avoid path collision.
+   */
+  @Post('backfill-permissions')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
+  async backfillPermissions() {
+    const menuItems = [
+      { key: 'inbox', label: 'Inbox' },
+      { key: 'monitoring', label: 'Monitoring' },
+    ];
+    return this.rolesService.backfillPermissions(menuItems);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.rolesService.findOne(id);

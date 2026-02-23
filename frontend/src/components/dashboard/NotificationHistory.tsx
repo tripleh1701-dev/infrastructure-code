@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { isExternalApi } from "@/lib/api/config";
+import { httpClient } from "@/lib/api/http-client";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,29 @@ export function NotificationHistory() {
   const { data: notifications = [], isLoading } = useQuery({
     queryKey: ["notification-history", selectedAccount?.id],
     queryFn: async () => {
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.get<any[]>("/notification-history", {
+          params: {
+            accountId: selectedAccount?.id,
+            limit: 10,
+          },
+        });
+        if (error) throw new Error(error.message);
+        return (data || []).map((n: any) => ({
+          id: n.id,
+          license_id: n.licenseId ?? n.license_id,
+          recipient_email: n.recipientEmail ?? n.recipient_email,
+          recipient_name: n.recipientName ?? n.recipient_name,
+          notification_type: n.notificationType ?? n.notification_type,
+          subject: n.subject,
+          days_until_expiry: n.daysUntilExpiry ?? n.days_until_expiry,
+          status: n.status,
+          error_message: n.errorMessage ?? n.error_message ?? null,
+          sent_at: n.sentAt ?? n.sent_at,
+          accounts: n.accounts ?? n.account ?? null,
+        })) as NotificationHistoryEntry[];
+      }
+
       let query = supabase
         .from("notification_history")
         .select(`

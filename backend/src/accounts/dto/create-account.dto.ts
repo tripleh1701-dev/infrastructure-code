@@ -138,8 +138,8 @@ export class CreateAccountDto {
   @IsNotEmpty()
   masterAccountName: string;
 
-  @IsEnum(['public', 'private'])
-  cloudType: 'public' | 'private';
+  @IsEnum(['public', 'private', 'hybrid'])
+  cloudType: 'public' | 'private' | 'hybrid';
 
   @IsArray()
   @ValidateNested({ each: true })

@@ -28,6 +28,20 @@ export class GroupsController {
     return this.groupsService.findAll(accountId);
   }
 
+  /**
+   * GET /api/groups/check-name?name=...&accountId=...&enterpriseId=...
+   * Check if a group name already exists. Returns matching groups.
+   * Must be declared before :id to avoid NestJS treating "check-name" as an ID.
+   */
+  @Get('check-name')
+  async checkName(
+    @Query('name') name: string,
+    @Query('accountId') accountId?: string,
+    @Query('enterpriseId') enterpriseId?: string,
+  ) {
+    return this.groupsService.checkNameExists(name, accountId, enterpriseId);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.groupsService.findOne(id);

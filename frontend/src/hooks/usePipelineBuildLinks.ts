@@ -17,20 +17,38 @@ export function usePipelineBuildLinks() {
     queryFn: async () => {
       if (!accountId) return new Map<string, string[]>();
 
-      const { data: buildJobs, error } = await (supabase
-        .from("build_jobs" as any)
-        .select("id, connector_name, pipeline")
-        .eq("account_id", accountId)
-        .not("pipeline", "is", null) as any);
+      let buildJobs: any[] = [];
 
-      if (error) {
-        console.error("Error fetching build job pipeline links:", error);
-        return new Map<string, string[]>();
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.get<any[]>("/build-jobs", {
+          params: { accountId },
+        });
+        if (error) {
+          console.error("Error fetching build job pipeline links:", error);
+          return new Map<string, string[]>();
+        }
+        buildJobs = (data || []).filter((j: any) => j.pipeline != null).map((j: any) => ({
+          id: j.id,
+          connector_name: j.connectorName ?? j.connector_name,
+          pipeline: j.pipeline,
+        }));
+      } else {
+        const { data, error } = await (supabase
+          .from("build_jobs" as any)
+          .select("id, connector_name, pipeline")
+          .eq("account_id", accountId)
+          .not("pipeline", "is", null) as any);
+
+        if (error) {
+          console.error("Error fetching build job pipeline links:", error);
+          return new Map<string, string[]>();
+        }
+        buildJobs = data || [];
       }
 
       // Build a map: pipeline name (lowercased) → array of build job names
       const linkMap = new Map<string, string[]>();
-      (buildJobs || []).forEach((job) => {
+      buildJobs.forEach((job) => {
         if (job.pipeline) {
           const key = job.pipeline.toLowerCase();
           if (!linkMap.has(key)) linkMap.set(key, []);

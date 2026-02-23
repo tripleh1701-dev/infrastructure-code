@@ -171,27 +171,35 @@ export function useLicenses(accountId?: string, enterpriseId?: string) {
 
       // Assign Default workstream to all technical users in this account that don't have any workstream yet
       if (defaultWorkstreamId) {
-        const { data: technicalUsers } = await supabase
-          .from("account_technical_users")
-          .select("id")
-          .eq("account_id", data.account_id)
-          .eq("is_technical_user", true);
+        if (isExternalApi()) {
+          // Backend handles workstream auto-assignment
+          await httpClient.post('/workstreams/auto-assign', {
+            accountId: data.account_id,
+            workstreamId: defaultWorkstreamId,
+          }).catch(err => console.error("Failed to auto-assign workstreams:", err));
+        } else {
+          const { data: technicalUsers } = await supabase
+            .from("account_technical_users")
+            .select("id")
+            .eq("account_id", data.account_id)
+            .eq("is_technical_user", true);
 
-        if (technicalUsers && technicalUsers.length > 0) {
-          for (const user of technicalUsers) {
-            // Check if user already has workstreams assigned
-            const { data: existingAssignments } = await supabase
-              .from("user_workstreams")
-              .select("id")
-              .eq("user_id", user.id)
-              .limit(1);
+          if (technicalUsers && technicalUsers.length > 0) {
+            for (const user of technicalUsers) {
+              // Check if user already has workstreams assigned
+              const { data: existingAssignments } = await supabase
+                .from("user_workstreams")
+                .select("id")
+                .eq("user_id", user.id)
+                .limit(1);
 
-            if (!existingAssignments || existingAssignments.length === 0) {
-              // Assign the Default workstream
-              await supabase.from("user_workstreams").insert({
-                user_id: user.id,
-                workstream_id: defaultWorkstreamId,
-              });
+              if (!existingAssignments || existingAssignments.length === 0) {
+                // Assign the Default workstream
+                await supabase.from("user_workstreams").insert({
+                  user_id: user.id,
+                  workstream_id: defaultWorkstreamId,
+                });
+              }
             }
           }
         }

@@ -96,7 +96,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
         width: collapsed ? "var(--sidebar-width-collapsed)" : "var(--sidebar-width-expanded)" 
       }}
       transition={{ duration: 0.2, ease: "easeInOut" }}
-      className="fixed left-0 top-0 h-screen h-dvh z-40 flex flex-col overflow-hidden"
+      className="fixed left-0 top-0 h-screen h-dvh z-40 flex flex-col overflow-visible"
       style={{ background: "linear-gradient(180deg, #0a1628 0%, #0d1e36 100%)" }}
     >
       {/* Logo */}
@@ -126,7 +126,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 overflow-y-auto">
+      <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
         {isLoading ? (
           // Loading skeleton for nav items
           <ul className="space-y-1 px-2">
@@ -310,16 +310,31 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
         </div>
       </div>
 
-      {/* Collapse Toggle */}
+      {/* Collapse Toggle — modern floating tab */}
       <motion.button
         onClick={onToggle}
-        className="absolute top-20 -right-3 w-6 h-6 rounded-full bg-white border border-[#e2e8f0] shadow-md flex items-center justify-center text-[#64748b] hover:text-[#0f172a] transition-colors z-50"
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
+        className={cn(
+          "absolute top-20 -right-3.5 z-50",
+          "w-7 h-7 rounded-full",
+          "bg-gradient-to-br from-[#0a1628] to-[#162544]",
+          "border-2 border-white/20",
+          "flex items-center justify-center",
+          "text-white/80 hover:text-white",
+          "shadow-[0_2px_12px_-2px_rgba(1,113,236,0.4)]",
+          "hover:shadow-[0_4px_20px_-2px_rgba(1,113,236,0.6)]",
+          "hover:border-[#0171EC]/60",
+          "transition-all duration-200",
+        )}
+        whileHover={{ scale: 1.15 }}
+        whileTap={{ scale: 0.85 }}
       >
+        {/* Ping ring hint when collapsed */}
+        {collapsed && (
+          <span className="absolute inset-0 rounded-full border-2 border-[#0171EC]/50 animate-ping" style={{ animationDuration: '2.5s' }} />
+        )}
         <motion.div
           animate={{ rotate: collapsed ? 180 : 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.25, ease: "easeInOut" }}
         >
           <ChevronLeft className="w-3.5 h-3.5" />
         </motion.div>

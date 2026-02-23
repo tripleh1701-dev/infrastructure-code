@@ -175,14 +175,23 @@ export class ConnectorsController {
   private async testJira(url: string | undefined, creds: Record<string, any>) {
     if (!url) return { success: false, message: 'Missing URL' };
     const baseUrl = this.normalizeUrl(url);
-    const username = creds.username || creds.Username || creds.email;
-    const apiToken = creds.apiToken || creds.api_token || creds.password || creds.Password;
-    if (!username || !apiToken) return { success: false, message: 'Missing username or apiToken' };
+    const username = creds.username || creds.Username || creds.email || creds['Username/Email'];
+    const apiToken = creds.apiToken || creds.api_token || creds['API Key'] || creds.password || creds.Password;
+    const pat = creds.pat || creds['Personal Access Token'];
 
-    const base64 = Buffer.from(`${username}:${apiToken}`).toString('base64');
-    const res = await this.fetchWithTimeout(`${baseUrl}/rest/api/3/myself`, {
-      headers: { Authorization: `Basic ${base64}`, Accept: 'application/json' },
-    });
+    let headers: Record<string, string>;
+    if (pat) {
+      // Jira Data Center PAT uses Bearer auth (no username needed)
+      headers = { Authorization: `Bearer ${pat}`, Accept: 'application/json' };
+    } else if (username && apiToken) {
+      // Jira Cloud uses Basic auth with username:apiToken
+      const base64 = Buffer.from(`${username}:${apiToken}`).toString('base64');
+      headers = { Authorization: `Basic ${base64}`, Accept: 'application/json' };
+    } else {
+      return { success: false, message: 'Missing credentials: provide username + API key, or a Personal Access Token' };
+    }
+
+    const res = await this.fetchWithTimeout(`${baseUrl}/rest/api/3/myself`, { headers });
     if (!res.ok) return this.httpError(res);
     const data = await res.json();
     return {
@@ -193,7 +202,7 @@ export class ConnectorsController {
   }
 
   private async testGitHub(url: string | undefined, creds: Record<string, any>) {
-    const token = creds.token || creds.apiToken || creds.api_token || creds.password;
+    const token = creds.token || creds.apiToken || creds.api_token || creds['Personal Access Token'] || creds.password;
     if (!token) return { success: false, message: 'Missing token' };
     const apiUrl = url ? `${this.normalizeUrl(url)}/api/v3/user` : 'https://api.github.com/user';
     const res = await this.fetchWithTimeout(apiUrl, {
@@ -205,7 +214,7 @@ export class ConnectorsController {
   }
 
   private async testGitLab(url: string | undefined, creds: Record<string, any>) {
-    const token = creds.token || creds.apiToken || creds.api_token || creds.password;
+    const token = creds.token || creds.apiToken || creds.api_token || creds['Personal Access Token'] || creds.password;
     if (!token) return { success: false, message: 'Missing token' };
     const baseUrl = url ? this.normalizeUrl(url) : 'https://gitlab.com';
     const res = await this.fetchWithTimeout(`${baseUrl}/api/v4/user`, {
@@ -218,7 +227,7 @@ export class ConnectorsController {
 
   private async testBitbucket(url: string | undefined, creds: Record<string, any>) {
     const username = creds.username || creds.Username;
-    const password = creds.password || creds.Password || creds.appPassword || creds.apiToken;
+    const password = creds.password || creds.Password || creds.appPassword || creds['App Password'] || creds.apiToken;
     if (!username || !password) return { success: false, message: 'Missing username or app password' };
     const base64 = Buffer.from(`${username}:${password}`).toString('base64');
     const apiUrl = url ? `${this.normalizeUrl(url)}/2.0/user` : 'https://api.bitbucket.org/2.0/user';
@@ -233,7 +242,7 @@ export class ConnectorsController {
   private async testJenkins(url: string | undefined, creds: Record<string, any>) {
     if (!url) return { success: false, message: 'Missing URL' };
     const username = creds.username || creds.Username;
-    const token = creds.apiToken || creds.api_token || creds.token || creds.password;
+    const token = creds.apiToken || creds.api_token || creds['API Token'] || creds.token || creds.password;
     if (!username || !token) return { success: false, message: 'Missing username or API token' };
     const base64 = Buffer.from(`${username}:${token}`).toString('base64');
     const res = await this.fetchWithTimeout(`${this.normalizeUrl(url)}/api/json`, {
@@ -245,7 +254,7 @@ export class ConnectorsController {
 
   private async testAzureDevOps(url: string | undefined, creds: Record<string, any>) {
     if (!url) return { success: false, message: 'Missing URL' };
-    const token = creds.pat || creds.token || creds.apiToken || creds.password;
+    const token = creds.pat || creds.token || creds.apiToken || creds['Personal Access Token'] || creds.password;
     if (!token) return { success: false, message: 'Missing PAT' };
     const base64 = Buffer.from(`:${token}`).toString('base64');
     const res = await this.fetchWithTimeout(`${this.normalizeUrl(url)}/_apis/projects?api-version=7.0`, {
@@ -282,7 +291,7 @@ export class ConnectorsController {
 
   private async testArtifactory(url: string | undefined, creds: Record<string, any>) {
     if (!url) return { success: false, message: 'Missing URL' };
-    const token = creds.apiKey || creds.apiToken || creds.api_token || creds.token;
+    const token = creds.apiKey || creds['API Key'] || creds.apiToken || creds.api_token || creds.token;
     if (!token) return { success: false, message: 'Missing API key' };
     const res = await this.fetchWithTimeout(`${this.normalizeUrl(url)}/api/system/ping`, {
       headers: { 'X-JFrog-Art-Api': token },
@@ -293,9 +302,9 @@ export class ConnectorsController {
 
   private async testSapCpi(url: string | undefined, creds: Record<string, any>) {
     if (!url) return { success: false, message: 'Missing URL' };
-    const tokenUrl = creds.tokenUrl || creds.token_url;
-    const clientId = creds.clientId || creds.client_id;
-    const clientSecret = creds.clientSecret || creds.client_secret;
+    const tokenUrl = creds.tokenUrl || creds.token_url || creds['Token URL'];
+    const clientId = creds.clientId || creds.client_id || creds['Client ID'];
+    const clientSecret = creds.clientSecret || creds.client_secret || creds['Client Secret'];
     if (tokenUrl && clientId && clientSecret) {
       const tokenRes = await this.fetchWithTimeout(tokenUrl, {
         method: 'POST',
@@ -325,7 +334,7 @@ export class ConnectorsController {
   }
 
   private async testSlack(creds: Record<string, any>) {
-    const token = creds.token || creds.botToken || creds.apiToken;
+    const token = creds.token || creds.botToken || creds['Bot Token'] || creds.apiToken;
     if (!token) return { success: false, message: 'Missing token' };
     const res = await this.fetchWithTimeout('https://slack.com/api/auth.test', {
       method: 'POST',
@@ -337,7 +346,7 @@ export class ConnectorsController {
   }
 
   private async testTeams(creds: Record<string, any>) {
-    const webhookUrl = creds.webhookUrl || creds.webhook_url || creds.url;
+    const webhookUrl = creds.webhookUrl || creds.webhook_url || creds['Webhook URL'] || creds.url;
     if (!webhookUrl) return { success: false, message: 'Missing webhook URL' };
     await this.fetchWithTimeout(webhookUrl, {
       method: 'POST',
@@ -348,7 +357,7 @@ export class ConnectorsController {
   }
 
   private async testPagerDuty(creds: Record<string, any>) {
-    const token = creds.token || creds.apiToken || creds.api_token;
+    const token = creds.token || creds.apiToken || creds['API Token'] || creds.api_token;
     if (!token) return { success: false, message: 'Missing API token' };
     const res = await this.fetchWithTimeout('https://api.pagerduty.com/users/me', {
       headers: { Authorization: `Token token=${token}`, Accept: 'application/json' },
@@ -360,7 +369,7 @@ export class ConnectorsController {
 
   private async testGenericUrl(url: string, creds: Record<string, any>) {
     const headers: Record<string, string> = { Accept: 'application/json' };
-    const token = creds.token || creds.apiToken || creds.api_token;
+    const token = creds.token || creds.apiToken || creds['API Key'] || creds.api_token;
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await this.fetchWithTimeout(this.normalizeUrl(url), { headers });
     if (!res.ok) return this.httpError(res);

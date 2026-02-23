@@ -104,37 +104,33 @@ export function EnterpriseProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
         enterprisesData = data || [];
       } else if (selectedAccount) {
+        // Collect enterprise IDs from user_roles
         const userEnterpriseIds = userAccounts
           .filter(ua => ua.accountId === selectedAccount.id && ua.enterpriseId)
           .map(ua => ua.enterpriseId as string);
 
-        if (userEnterpriseIds.length > 0) {
+        // Also collect enterprise IDs from account_licenses
+        const { data: licenses } = await supabase
+          .from("account_licenses")
+          .select("enterprise_id")
+          .eq("account_id", selectedAccount.id);
+
+        const licenseEnterpriseIds = licenses
+          ? [...new Set(licenses.map(l => l.enterprise_id))]
+          : [];
+
+        // Merge both sources
+        const allEnterpriseIds = [...new Set([...userEnterpriseIds, ...licenseEnterpriseIds])];
+
+        if (allEnterpriseIds.length > 0) {
           const { data, error } = await supabase
             .from("enterprises")
             .select("id, name")
-            .in("id", userEnterpriseIds)
+            .in("id", allEnterpriseIds)
             .order("created_at", { ascending: true });
 
           if (error) throw error;
           enterprisesData = data || [];
-        } else {
-          const { data: licenses } = await supabase
-            .from("account_licenses")
-            .select("enterprise_id")
-            .eq("account_id", selectedAccount.id);
-
-          if (licenses && licenses.length > 0) {
-            const licenseEnterpriseIds = [...new Set(licenses.map(l => l.enterprise_id))];
-            
-            const { data, error } = await supabase
-              .from("enterprises")
-              .select("id, name")
-              .in("id", licenseEnterpriseIds)
-              .order("created_at", { ascending: true });
-
-            if (error) throw error;
-            enterprisesData = data || [];
-          }
         }
 
         // Always include Global enterprise if user has access to an account

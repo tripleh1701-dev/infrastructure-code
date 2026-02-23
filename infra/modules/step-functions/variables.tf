@@ -33,6 +33,11 @@ variable "create_admin_worker_arn" {
   type        = string
 }
 
+variable "verify_provisioning_worker_arn" {
+  description = "ARN of the verify-provisioning-worker Lambda"
+  type        = string
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention in days"
   type        = number

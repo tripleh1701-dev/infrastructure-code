@@ -112,7 +112,19 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
 
       if (data) {
         const perms = Array.isArray(data.permissions) ? data.permissions : [];
-        setPermissions(perms.length > 0 ? perms : DEFAULT_ADMIN_PERMISSIONS);
+        if (perms.length > 0) {
+          // Merge with defaults: ensure core menu items (like inbox) are always present
+          // even if the backend role_permissions don't include them
+          const mergedPerms = [...perms];
+          for (const defaultPerm of DEFAULT_ADMIN_PERMISSIONS) {
+            if (!mergedPerms.find(p => p.menuKey === defaultPerm.menuKey)) {
+              mergedPerms.push(defaultPerm);
+            }
+          }
+          setPermissions(mergedPerms);
+        } else {
+          setPermissions(DEFAULT_ADMIN_PERMISSIONS);
+        }
         setCurrentUserRoleId(data.roleId ?? null);
         setCurrentUserRoleName(data.roleName ?? null);
         setCurrentTechnicalUserId(data.technicalUserId ?? null);

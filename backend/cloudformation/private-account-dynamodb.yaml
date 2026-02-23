@@ -45,11 +45,22 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: Enable auto-scaling (reserved for future use)
+  EnableStreams:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable DynamoDB Streams for change data capture
+  StreamViewType:
+    Type: String
+    Default: NEW_AND_OLD_IMAGES
+    AllowedValues: [KEYS_ONLY, NEW_IMAGE, OLD_IMAGE, NEW_AND_OLD_IMAGES]
+    Description: What information is written to the stream when an item is modified
 
 Conditions:
   IsProvisioned: !Equals [!Ref BillingMode, PROVISIONED]
   PITREnabled: !Equals [!Ref EnablePointInTimeRecovery, 'true']
   DeletionProtected: !Equals [!Ref EnableDeletionProtection, 'true']
+  StreamsEnabled: !Equals [!Ref EnableStreams, 'true']
 
 Resources:
   AccountTable:
@@ -67,6 +78,10 @@ Resources:
         - !Ref AWS::NoValue
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: !If [PITREnabled, true, false]
+      StreamSpecification: !If
+        - StreamsEnabled
+        - StreamViewType: !Ref StreamViewType
+        - !Ref AWS::NoValue
       SSESpecification:
         SSEEnabled: true
       AttributeDefinitions:
@@ -140,6 +155,15 @@ Resources:
       Value: !GetAtt AccountTable.Arn
       Description: !Sub 'DynamoDB table ARN for private account ${AccountId}'
 
+  TableStreamArnParam:
+    Type: AWS::SSM::Parameter
+    Condition: StreamsEnabled
+    Properties:
+      Name: !Sub '/accounts/${AccountId}/dynamodb/stream-arn'
+      Type: String
+      Value: !GetAtt AccountTable.StreamArn
+      Description: !Sub 'DynamoDB Stream ARN for private account ${AccountId}'
+
 Outputs:
   TableName:
     Description: Name of the provisioned DynamoDB table
@@ -148,5 +172,6 @@ Outputs:
     Description: ARN of the provisioned DynamoDB table
     Value: !GetAtt AccountTable.Arn
   TableStreamArn:
-    Description: Stream ARN (if enabled)
-    Value: !Ref AWS::NoValue
+    Description: Stream ARN of the DynamoDB table (only when streams enabled)
+    Condition: StreamsEnabled
+    Value: !GetAtt AccountTable.StreamArn

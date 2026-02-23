@@ -279,6 +279,61 @@ export class WorkstreamsService {
     return { id: created.id, name: created.name };
   }
 
+  /**
+   * Auto-assign a workstream to all technical users in an account
+   * that don't currently have any workstream assigned.
+   */
+  async autoAssignToUsers(
+    accountId: string,
+    workstreamId: string,
+  ): Promise<{ assigned: number }> {
+    // Get all technical users for this account
+    const usersResult = await this.dynamoDb.query({
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `ACCOUNT#${accountId}`,
+        ':sk': 'USER#',
+      },
+    });
+
+    const users = (usersResult.Items || []).filter(
+      (u) => u.isTechnicalUser === true || u.isTechnicalUser === 'true',
+    );
+
+    let assigned = 0;
+
+    for (const user of users) {
+      // Check if user already has workstreams
+      const existingResult = await this.dynamoDb.query({
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `USER#${user.id}`,
+          ':sk': 'WORKSTREAM#',
+        },
+      });
+
+      if (!existingResult.Items?.length) {
+        // Assign the workstream
+        const id = uuidv4();
+        await this.dynamoDb.put({
+          Item: {
+            PK: `USER#${user.id}`,
+            SK: `WORKSTREAM#${workstreamId}`,
+            GSI1PK: `WORKSTREAM#${workstreamId}`,
+            GSI1SK: `USER#${user.id}`,
+            id,
+            userId: user.id,
+            workstreamId,
+            createdAt: new Date().toISOString(),
+          },
+        });
+        assigned++;
+      }
+    }
+
+    return { assigned };
+  }
+
   private mapToWorkstream(item: Record<string, any>): Workstream {
     return {
       id: item.id,

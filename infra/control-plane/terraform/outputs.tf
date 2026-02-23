@@ -76,6 +76,10 @@ output "create_admin_worker_arn" {
   value = module.create_admin_worker.function_arn
 }
 
+output "verify_provisioning_worker_arn" {
+  value = module.verify_provisioning_worker.function_arn
+}
+
 # --- Step Functions ---
 output "create_account_sfn_arn" {
   value = module.step_functions.create_account_state_machine_arn
