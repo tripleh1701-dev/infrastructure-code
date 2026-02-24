@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { CloudType } from '../types/cloud-type';
 import { ConfigService } from '@nestjs/config';
 import { resolveAwsCredentials } from '../utils/aws-credentials';
 import {
@@ -29,7 +30,7 @@ export enum ProvisioningEventType {
 export interface ProvisioningEventPayload {
   accountId: string;
   accountName: string;
-  cloudType: 'public' | 'private';
+  cloudType: CloudType;
   status: 'started' | 'success' | 'failed';
   timestamp: string;
   metadata?: Record<string, unknown>;
@@ -266,7 +267,7 @@ export class ProvisioningEventsService {
   createSuccessPayload(
     accountId: string,
     accountName: string,
-    cloudType: 'public' | 'private',
+    cloudType: CloudType,
     tableName: string,
     startTime: number,
     options?: {
@@ -295,7 +296,7 @@ export class ProvisioningEventsService {
   createFailurePayload(
     accountId: string,
     accountName: string,
-    cloudType: 'public' | 'private',
+    cloudType: CloudType,
     error: Error | string,
     startTime?: number,
     options?: {
@@ -327,7 +328,7 @@ export class ProvisioningEventsService {
   createStartedPayload(
     accountId: string,
     accountName: string,
-    cloudType: 'public' | 'private',
+    cloudType: CloudType,
     requestId: string,
   ): ProvisioningStartedPayload {
     return {

@@ -24,15 +24,13 @@ import {
   GetParameterCommand,
   GetParametersByPathCommand,
 } from '@aws-sdk/client-ssm';
-import {
-  STSClient,
-  AssumeRoleCommand,
-} from '@aws-sdk/client-sts';
+import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
+import { CloudType } from '../types/cloud-type';
 
 interface TableConfig {
   tableName: string;
   tableArn: string;
-  cloudType: 'public' | 'private';
+  cloudType: CloudType;
   cachedAt: number;
 }
 
@@ -291,7 +289,7 @@ export class DynamoDBRouterService implements OnModuleInit {
       return {
         tableName: tableNameResult.Parameter.Value,
         tableArn,
-        cloudType: (cloudTypeResult.Parameter?.Value as 'public' | 'private') || 'public',
+        cloudType: (cloudTypeResult.Parameter?.Value as CloudType) || 'public',
         cachedAt: Date.now(),
       };
     } catch (error: any) {

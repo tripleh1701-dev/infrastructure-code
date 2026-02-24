@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { CloudType } from '../types/cloud-type';
 import { ConfigService } from '@nestjs/config';
 import {
   CloudWatchClient,
@@ -193,7 +194,7 @@ export class CloudWatchMetricsService {
    */
   async emitProvisioningMetrics(params: {
     accountId: string;
-    cloudType: 'public' | 'private';
+    cloudType: CloudType;
     success: boolean;
     durationMs: number;
     resourceCount?: number;
@@ -281,7 +282,7 @@ export class CloudWatchMetricsService {
    */
   async emitDeprovisioningMetrics(params: {
     accountId: string;
-    cloudType: 'public' | 'private';
+    cloudType: CloudType;
     success: boolean;
     durationMs: number;
     errorCode?: string;

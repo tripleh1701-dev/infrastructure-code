@@ -6,12 +6,13 @@ import { AccountProvisionerService, ProvisioningConfig } from '../common/dynamod
 import { CognitoUserProvisioningService } from '../auth/cognito-user-provisioning.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
+import { CloudType } from '../common/types/cloud-type';
 
 export interface Account {
   id: string;
   name: string;
   masterAccountName: string;
-  cloudType: 'public' | 'private';
+  cloudType: CloudType;
   status: string;
   tableName?: string;
   provisioningStatus?: string;
@@ -432,7 +433,7 @@ export class AccountsService {
   private async createLicense(
     accountId: string,
     license: any,
-    cloudType: 'public' | 'private',
+    cloudType: CloudType,
     now: string,
   ): Promise<void> {
     const licenseId = uuidv4();
@@ -663,7 +664,7 @@ export class AccountsService {
     workstreamId: string | undefined,
     productId: string | undefined,
     serviceId: string | undefined,
-    cloudType: 'public' | 'private',
+    cloudType: CloudType,
     now: string,
   ): Promise<{ groupId: string; roleId: string }> {
     const roleId = uuidv4();
@@ -796,7 +797,7 @@ export class AccountsService {
   private async assignUserToGroup(
     userId: string,
     groupId: string,
-    cloudType: 'public' | 'private',
+    cloudType: CloudType,
     accountId: string,
     now: string,
   ): Promise<void> {

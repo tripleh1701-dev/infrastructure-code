@@ -12,6 +12,7 @@ import {
 } from '@aws-sdk/client-cloudformation';
 import { resolveAwsCredentials } from '../common/utils/aws-credentials';
 import { v4 as uuidv4 } from 'uuid';
+import { CloudType } from '../common/types/cloud-type';
 
 // In-memory store for active provisioning jobs (in production, use Redis/DynamoDB)
 const provisioningJobs = new Map<string, ProvisioningJobDto>();
@@ -126,7 +127,7 @@ export class ProvisioningService {
       throw new BadRequestException('Cannot deprovision while provisioning is in progress');
     }
 
-    const cloudType = (job?.cloudType === 'public' ? 'public' : 'private') as 'public' | 'private';
+    const cloudType: CloudType = job?.cloudType || 'public';
 
     try {
       await this.accountProvisioner.deprovisionAccount(accountId);
@@ -227,7 +228,7 @@ export class ProvisioningService {
       // ── Emit success metrics ────────────────────────────────────────────
       await this.metricsService.emitProvisioningMetrics({
         accountId: dto.accountId,
-        cloudType: resolvedCloudType as 'public' | 'private',
+        cloudType: resolvedCloudType as CloudType,
         success: true,
         durationMs,
         resourceCount: job.resources.length,
@@ -237,7 +238,7 @@ export class ProvisioningService {
       await this.snsNotificationService.notifyProvisioningEvent({
         accountId: dto.accountId,
         accountName: dto.accountName,
-        cloudType: resolvedCloudType as 'public' | 'private',
+        cloudType: resolvedCloudType as CloudType,
         status: 'completed',
         durationMs,
         resourceCount: job.resources.length,
@@ -263,7 +264,7 @@ export class ProvisioningService {
       // ── Emit failure metrics ────────────────────────────────────────────
       await this.metricsService.emitProvisioningMetrics({
         accountId: dto.accountId,
-        cloudType: resolvedCloudType as 'public' | 'private',
+        cloudType: resolvedCloudType as CloudType,
         success: false,
         durationMs,
         errorCode: error.code || error.name || 'UnknownError',
@@ -273,7 +274,7 @@ export class ProvisioningService {
       await this.snsNotificationService.notifyProvisioningEvent({
         accountId: dto.accountId,
         accountName: dto.accountName,
-        cloudType: resolvedCloudType as 'public' | 'private',
+        cloudType: resolvedCloudType as CloudType,
         status: 'failed',
         durationMs,
         errorCode: error.code || error.name || 'UnknownError',

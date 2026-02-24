@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { resolveAwsCredentials } from '../utils/aws-credentials';
+import { CloudType } from '../types/cloud-type';
 
 /**
  * Parameters for a provisioning lifecycle notification
@@ -9,7 +10,7 @@ import { resolveAwsCredentials } from '../utils/aws-credentials';
 export interface ProvisioningNotificationParams {
   accountId: string;
   accountName: string;
-  cloudType: 'public' | 'private';
+  cloudType: CloudType;
   status: 'completed' | 'failed';
   message?: string;
   durationMs?: number;
@@ -151,7 +152,7 @@ export class SnsNotificationService {
   async notifyDeprovisioningEvent(params: {
     accountId: string;
     accountName?: string;
-    cloudType: 'public' | 'private';
+    cloudType: CloudType;
     status: 'completed' | 'failed';
     durationMs?: number;
     errorCode?: string;

@@ -25,11 +25,12 @@ import { resolveAwsCredentials } from '../utils/aws-credentials';
 import { retryWithBackoff, isTransientAwsError } from '../utils/retry';
 import { PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE } from '../cloudformation/private-account-template';
 import { v4 as uuidv4 } from 'uuid';
+import { CloudType } from '../types/cloud-type';
 
 export interface ProvisioningConfig {
   accountId: string;
   accountName: string;
-  cloudType: 'public' | 'private';
+  cloudType: CloudType;
   billingMode?: 'PAY_PER_REQUEST' | 'PROVISIONED';
   readCapacity?: number;
   writeCapacity?: number;
@@ -43,7 +44,7 @@ export interface ProvisioningResult {
   tableName?: string;
   tableArn?: string;
   stackId?: string;
-  cloudType: 'public' | 'private';
+  cloudType: CloudType;
   message: string;
 }
 
@@ -386,12 +387,12 @@ export class AccountProvisionerService {
   /**
    * Get the cloud type for an account from SSM
    */
-  private async getAccountCloudType(accountId: string): Promise<'public' | 'private'> {
+  private async getAccountCloudType(accountId: string): Promise<CloudType> {
     try {
       const result = await this.ssmClient.send(new GetParameterCommand({
         Name: `/accounts/${accountId}/cloud-type`,
       }));
-      return (result.Parameter?.Value as 'public' | 'private') || 'public';
+      return (result.Parameter?.Value as CloudType) || 'public';
     } catch {
       return 'public'; // Default to public if not found
     }
