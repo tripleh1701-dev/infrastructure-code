@@ -43,6 +43,7 @@ on:
         options:
           - dev
           - qa
+          - staging
           - prod
       skip_tests:
         description: "Skip lint and tests (use with caution)"
