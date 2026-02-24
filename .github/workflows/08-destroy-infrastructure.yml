@@ -135,6 +135,13 @@ jobs:
         with:
           terraform_version: "~1.7"
 
+      - name: Ensure State Backend
+        run: |
+          bash scripts/ensure-state-backend.sh \
+            "${{ secrets.TF_STATE_BUCKET }}" \
+            "${{ secrets.TF_LOCK_TABLE }}" \
+            "${{ env.AWS_REGION }}"
+
       - name: Terraform Init (Data-Plane)
         working-directory: infra/data-plane/terraform
         run: |
@@ -190,6 +197,13 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.7"
+
+      - name: Ensure State Backend
+        run: |
+          bash scripts/ensure-state-backend.sh \
+            "${{ secrets.TF_STATE_BUCKET }}" \
+            "${{ secrets.TF_LOCK_TABLE }}" \
+            "${{ env.AWS_REGION }}"
 
       # ── Empty S3 buckets before destroy (Terraform can't delete non-empty buckets) ──
       - name: Empty S3 buckets

@@ -47,20 +47,17 @@ jobs:
           aws sts get-caller-identity
           echo "::endgroup::"
 
-      - name: Debug S3 Access
-        run: |
-          set -euo pipefail
-          echo "Current identity:"
-          aws sts get-caller-identity
-          BUCKET="${{ secrets.TF_STATE_BUCKET }}"
-          echo "Testing S3 access to bucket: $BUCKET"
-          aws s3 ls "s3://$BUCKET/" --max-items 5 || echo "❌ Cannot list bucket"
-          aws s3api head-bucket --bucket "$BUCKET" || echo "❌ Cannot head bucket"
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.7"
+
+      - name: Ensure State Backend
+        run: |
+          bash scripts/ensure-state-backend.sh \
+            "${{ secrets.TF_STATE_BUCKET }}" \
+            "${{ secrets.TF_LOCK_TABLE }}" \
+            "${{ vars.AWS_REGION || 'us-east-1' }}"
 
       - name: Terraform Init
         working-directory: infra/data-plane/terraform

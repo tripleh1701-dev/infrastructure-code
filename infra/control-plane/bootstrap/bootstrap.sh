@@ -13,11 +13,20 @@ echo "  CONTROL PLANE BOOTSTRAP"
 echo "============================================="
 
 # ---- Pre-checks ----
-echo "[1/5] Running pre-checks..."
+echo "[1/6] Running pre-checks..."
 bash "${SCRIPT_DIR}/../../scripts/prechecks.sh"
 
+# ---- Ensure state backend ----
+echo "[2/6] Ensuring Terraform state backend exists..."
+if [ -n "${TF_STATE_BUCKET:-}" ] && [ -n "${TF_LOCK_TABLE:-}" ]; then
+  bash "${SCRIPT_DIR}/../../scripts/ensure-state-backend.sh" \
+    "${TF_STATE_BUCKET}" "${TF_LOCK_TABLE}" "${AWS_REGION:-us-east-1}"
+else
+  echo "  ⚠ TF_STATE_BUCKET / TF_LOCK_TABLE not set — skipping (using local backend?)"
+fi
+
 # ---- Validate AWS identity ----
-echo "[2/5] Validating AWS identity..."
+echo "[3/6] Validating AWS identity..."
 ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
 echo "  Platform Admin Account: ${ACCOUNT_ID}"
 
@@ -25,7 +34,7 @@ CALLER_ARN=$(aws sts get-caller-identity --query "Arn" --output text)
 echo "  Caller: ${CALLER_ARN}"
 
 # ---- Terraform init ----
-echo "[3/5] Initializing Terraform..."
+echo "[4/6] Initializing Terraform..."
 cd "${TERRAFORM_DIR}"
 
 if [ -f "backend.hcl" ]; then
@@ -35,11 +44,11 @@ else
 fi
 
 # ---- Terraform plan ----
-echo "[4/5] Planning infrastructure..."
+echo "[5/6] Planning infrastructure..."
 terraform plan -out=tfplan
 
 # ---- Terraform apply ----
-echo "[5/5] Applying infrastructure..."
+echo "[6/6] Applying infrastructure..."
 terraform apply tfplan
 rm -f tfplan
 

@@ -13,11 +13,20 @@ echo "  DATA PLANE BOOTSTRAP"
 echo "============================================="
 
 # ---- Pre-checks ----
-echo "[1/6] Running pre-checks..."
+echo "[1/7] Running pre-checks..."
 bash "${SCRIPT_DIR}/../../scripts/prechecks.sh"
 
+# ---- Ensure state backend ----
+echo "[2/7] Ensuring Terraform state backend exists..."
+if [ -n "${TF_STATE_BUCKET:-}" ] && [ -n "${TF_LOCK_TABLE:-}" ]; then
+  bash "${SCRIPT_DIR}/../../scripts/ensure-state-backend.sh" \
+    "${TF_STATE_BUCKET}" "${TF_LOCK_TABLE}" "${AWS_REGION:-us-east-1}"
+else
+  echo "  ⚠ TF_STATE_BUCKET / TF_LOCK_TABLE not set — skipping (using local backend?)"
+fi
+
 # ---- Assume role into customer account ----
-echo "[2/6] Assuming role into customer account..."
+echo "[3/7] Assuming role into customer account..."
 if [ -n "${DATA_PLANE_ROLE_ARN:-}" ]; then
   echo "  Using role: ${DATA_PLANE_ROLE_ARN}"
   bash "${SCRIPT_DIR}/../../scripts/assume-role.sh" "${DATA_PLANE_ROLE_ARN}" "${EXTERNAL_ID:-}"
@@ -26,12 +35,12 @@ else
 fi
 
 # ---- Validate AWS identity ----
-echo "[3/6] Validating AWS identity..."
+echo "[4/7] Validating AWS identity..."
 ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
 echo "  Customer Account: ${ACCOUNT_ID}"
 
 # ---- Terraform init ----
-echo "[4/6] Initializing Terraform..."
+echo "[5/7] Initializing Terraform..."
 cd "${TERRAFORM_DIR}"
 
 if [ -f "backend.hcl" ]; then
@@ -41,13 +50,13 @@ else
 fi
 
 # ---- Terraform apply ----
-echo "[5/6] Applying data-plane infrastructure..."
+echo "[6/7] Applying data-plane infrastructure..."
 terraform plan -out=tfplan
 terraform apply tfplan
 rm -f tfplan
 
 # ---- Validate cross-account access ----
-echo "[6/6] Validating cross-account access..."
+echo "[7/7] Validating cross-account access..."
 DATA_PLANE_ROLE=$(terraform output -raw data_plane_role_arn)
 TABLE_NAME=$(terraform output -raw customer_dynamodb_table_name)
 

@@ -48,7 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS Credentials (Platform Admin)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
@@ -73,6 +73,13 @@ jobs:
 
       - name: Pre-flight Checks
         run: bash scripts/prechecks.sh
+
+      - name: Ensure State Backend
+        run: |
+          bash scripts/ensure-state-backend.sh \
+            "${{ secrets.TF_STATE_BUCKET }}" \
+            "${{ secrets.TF_LOCK_TABLE }}" \
+            "${{ vars.AWS_REGION || 'us-east-1' }}"
 
       - name: Create Lambda Placeholder
         working-directory: infra/control-plane/terraform

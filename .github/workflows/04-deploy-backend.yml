@@ -115,7 +115,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS Credentials (Platform Admin)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
@@ -125,6 +125,13 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.7"
+
+      - name: Ensure State Backend
+        run: |
+          bash scripts/ensure-state-backend.sh \
+            "${{ secrets.TF_STATE_BUCKET }}" \
+            "${{ secrets.TF_LOCK_TABLE }}" \
+            "${{ vars.AWS_REGION || 'us-east-1' }}"
 
       - name: Create Lambda Placeholder
         working-directory: infra/control-plane/terraform
@@ -187,7 +194,7 @@ jobs:
           npm ci --omit=dev
           zip -r ../lambda-package.zip .
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS Credentials (Platform Admin)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
