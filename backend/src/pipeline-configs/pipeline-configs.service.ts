@@ -130,7 +130,7 @@ export class PipelineConfigsService {
 
     const now = new Date().toISOString();
     const status = dto.status || 'ACTIVE';
-    const pipelineName = pipeline.name || buildJob.connector_name || buildJob.connectorName;
+    const pipelineName = pipeline.name || buildJob.connectorName;
 
     // 6. Write pipeline config to CUSTOMER DynamoDB (via router — resolves to customer table)
     const pipelineItem = {
