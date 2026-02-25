@@ -4,6 +4,33 @@ import { toast } from "sonner";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
 
+export interface EnvironmentConnectorRecord {
+  id?: string;
+  category?: string;
+  connector?: string;
+  connectorIconName?: string;
+  environmentType?: string;
+  apiUrl?: string;
+  apiCredentialName?: string;
+  iflowUrl?: string;
+  iflowCredentialName?: string;
+  hostUrl?: string;
+  authenticationType?: string;
+  credentialName?: string;
+  oauth2ClientId?: string;
+  oauth2ClientSecret?: string;
+  oauth2TokenUrl?: string;
+  username?: string;
+  apiKey?: string;
+  url?: string;
+  personalAccessToken?: string;
+  githubInstallationId?: string;
+  githubApplicationId?: string;
+  githubPrivateKey?: string;
+  status?: boolean;
+  description?: string;
+}
+
 export interface EnvironmentRecord {
   id: string;
   name: string;
@@ -15,6 +42,10 @@ export interface EnvironmentRecord {
   service_id: string | null;
   connector_name: string | null;
   connectivity_status: string;
+  scope: string | null;
+  entity: string | null;
+  connector_icon_name: string | null;
+  connectors: EnvironmentConnectorRecord[];
   created_at: string;
   updated_at: string;
   // Resolved names for display
@@ -33,6 +64,10 @@ export interface CreateEnvironmentInput {
   service_id?: string;
   connector_name?: string;
   connectivity_status?: string;
+  scope?: string;
+  entity?: string;
+  connector_icon_name?: string;
+  connectors?: EnvironmentConnectorRecord[];
 }
 
 export interface UpdateEnvironmentInput {
@@ -43,6 +78,10 @@ export interface UpdateEnvironmentInput {
   service_id?: string | null;
   connector_name?: string | null;
   connectivity_status?: string;
+  scope?: string | null;
+  entity?: string | null;
+  connector_icon_name?: string | null;
+  connectors?: EnvironmentConnectorRecord[];
 }
 
 function mapExternalEnvironment(e: any): EnvironmentRecord {
@@ -57,6 +96,10 @@ function mapExternalEnvironment(e: any): EnvironmentRecord {
     service_id: e.serviceId ?? e.service_id ?? null,
     connector_name: e.connectorName ?? e.connector_name ?? null,
     connectivity_status: e.connectivityStatus ?? e.connectivity_status ?? "unknown",
+    scope: e.scope ?? null,
+    entity: e.entity ?? null,
+    connector_icon_name: e.connectorIconName ?? e.connector_icon_name ?? null,
+    connectors: e.connectors ?? [],
     created_at: e.createdAt ?? e.created_at ?? "",
     updated_at: e.updatedAt ?? e.updated_at ?? "",
     workstream: e.workstream ?? null,
@@ -105,6 +148,10 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
           serviceId: input.service_id,
           connectorName: input.connector_name,
           connectivityStatus: input.connectivity_status || "unknown",
+          scope: input.scope,
+          entity: input.entity,
+          connectorIconName: input.connector_icon_name,
+          connectors: input.connectors || [],
         };
         const { data, error } = await httpClient.post<any>("/environments", payload);
         if (error) throw new Error(error.message);
@@ -121,6 +168,10 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
         service_id: input.service_id || null,
         connector_name: input.connector_name || null,
         connectivity_status: input.connectivity_status || "unknown",
+        scope: input.scope || null,
+        entity: input.entity || null,
+        connector_icon_name: input.connector_icon_name || null,
+        connectors: input.connectors || [],
       };
 
       const { data, error } = await (supabase
@@ -151,6 +202,10 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
         if (input.service_id !== undefined) payload.serviceId = input.service_id;
         if (input.connector_name !== undefined) payload.connectorName = input.connector_name;
         if (input.connectivity_status !== undefined) payload.connectivityStatus = input.connectivity_status;
+        if (input.scope !== undefined) payload.scope = input.scope;
+        if (input.entity !== undefined) payload.entity = input.entity;
+        if (input.connector_icon_name !== undefined) payload.connectorIconName = input.connector_icon_name;
+        if (input.connectors !== undefined) payload.connectors = input.connectors;
         const { data, error } = await httpClient.put<any>(`/environments/${id}`, payload);
         if (error) throw new Error(error.message);
         return mapExternalEnvironment(data);

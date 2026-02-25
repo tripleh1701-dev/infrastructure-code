@@ -14,7 +14,10 @@ import {
   CloudCog,
   LogOut,
   ChevronUp,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 import trumpetLogo from "@/assets/trumpet-logo.png";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/contexts/PermissionContext";
@@ -57,6 +60,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { hasMenuAccess, isLoading, currentUserRoleName } = usePermissions();
   const { user, signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   // Fetch inbox pending count for badge
   const { data: inboxCount = 0 } = useQuery({
@@ -295,7 +299,20 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
                 <div className="mx-3 h-px bg-border/60" />
 
                 {/* Actions */}
-                <div className="p-1.5">
+                <div className="p-1.5 space-y-0.5">
+                  {/* Theme toggle */}
+                  <button
+                    onClick={toggleTheme}
+                    className="flex items-center gap-2.5 w-full px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
+                  >
+                    {theme === "dark" ? (
+                      <Sun className="w-4 h-4" />
+                    ) : (
+                      <Moon className="w-4 h-4" />
+                    )}
+                    {theme === "dark" ? "Light Mode" : "Dark Mode"}
+                  </button>
+
                   <button
                     onClick={handleSignOut}
                     className="flex items-center gap-2.5 w-full px-3 py-2 text-sm rounded-lg text-destructive hover:bg-destructive/10 transition-colors"

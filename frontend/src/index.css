@@ -97,6 +97,67 @@
     --spacing-lg: clamp(1rem, 2vw, 2rem);
     --spacing-xl: clamp(1.5rem, 3vw, 3rem);
   }
+
+  .dark {
+    /* Dark Theme - Main content area */
+    --background: 222 47% 8%;
+    --background-elevated: 222 40% 12%;
+    --background-card: 222 40% 12%;
+    --background-subtle: 222 35% 14%;
+
+    /* Foreground */
+    --foreground: 210 40% 98%;
+    --foreground-muted: 215 20% 65%;
+    --foreground-subtle: 215 16% 47%;
+
+    /* Card */
+    --card: 222 40% 12%;
+    --card-foreground: 210 40% 98%;
+
+    /* Popover */
+    --popover: 222 40% 14%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Primary — same brand blue */
+    --primary: 213 97% 47%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 222 35% 18%;
+    --secondary-foreground: 210 40% 98%;
+
+    /* Muted */
+    --muted: 222 35% 18%;
+    --muted-foreground: 215 20% 65%;
+
+    /* Accent */
+    --accent: 186 99% 51%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status Colors — same as light */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --info: 213 97% 47%;
+    --info-foreground: 0 0% 100%;
+    --running: 213 97% 47%;
+    --running-foreground: 0 0% 100%;
+
+    /* Borders & Inputs */
+    --border: 222 30% 22%;
+    --input: 222 30% 22%;
+    --ring: 213 97% 47%;
+
+    /* Shadows — Dark theme */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
 }
 
 @layer base {
@@ -482,4 +543,379 @@
 
 .pulse-running {
   animation: pulse-running 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* =============================================================================
+   DARK MODE OVERRIDES
+   Remaps hardcoded light-mode colors used across components.
+   Light mode is untouched — these rules only activate under .dark
+   ============================================================================= */
+
+/* ── Background Remaps ────────────────────────────────────────────────────── */
+.dark .bg-white,
+.dark .bg-white\/70,
+.dark .bg-white\/80,
+.dark .bg-white\/95,
+.dark .bg-white\/60 {
+  background-color: hsl(var(--card)) !important;
+}
+
+.dark .bg-\[\#f8fafc\],
+.dark .bg-\[\#f1f5f9\] {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-100,
+.dark .bg-gray-50,
+.dark .bg-gray-100 {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.dark .bg-slate-50\/50,
+.dark .bg-slate-50\/80,
+.dark .hover\:bg-slate-50\/50:hover,
+.dark .hover\:bg-\[\#f8fafc\]:hover {
+  background-color: hsl(var(--secondary)) !important;
+}
+
+/* ── Text Remaps ──────────────────────────────────────────────────────────── */
+.dark .text-\[\#0f172a\],
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-gray-900,
+.dark .text-gray-800 {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .text-\[\#334155\],
+.dark .text-\[\#475569\],
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-gray-700,
+.dark .text-gray-600 {
+  color: hsl(var(--foreground)) !important;
+  opacity: 0.85;
+}
+
+.dark .text-\[\#64748b\],
+.dark .text-slate-500,
+.dark .text-slate-400,
+.dark .text-gray-500,
+.dark .text-gray-400 {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.dark .text-slate-300,
+.dark .text-gray-300 {
+  color: hsl(var(--foreground-subtle)) !important;
+}
+
+/* ── Border Remaps ────────────────────────────────────────────────────────── */
+.dark .border-\[\#e2e8f0\],
+.dark .border-\[\#f1f5f9\],
+.dark .border-slate-200,
+.dark .border-slate-200\/80,
+.dark .border-slate-200\/60,
+.dark .border-slate-100,
+.dark .border-slate-300,
+.dark .border-gray-200,
+.dark .border-gray-100 {
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark .border-white\/80 {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Hover state Remaps ───────────────────────────────────────────────────── */
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover {
+  background-color: hsl(var(--secondary)) !important;
+}
+
+.dark .hover\:bg-\[\#f8fafc\]:hover {
+  background-color: hsl(var(--secondary)) !important;
+}
+
+.dark .hover\:text-slate-600:hover,
+.dark .hover\:text-slate-700:hover {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .hover\:border-slate-300:hover,
+.dark .hover\:border-blue-200:hover {
+  border-color: hsl(var(--ring)) !important;
+}
+
+.dark .hover\:shadow-sm:hover,
+.dark .hover\:shadow-md:hover {
+  --tw-shadow-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+/* ── Focus ring Remaps ────────────────────────────────────────────────────── */
+.dark .focus\:ring-blue-100:focus,
+.dark .focus\:ring-blue-200:focus {
+  --tw-ring-color: hsl(var(--ring) / 0.2) !important;
+}
+
+.dark .focus\:border-blue-400:focus {
+  border-color: hsl(var(--ring)) !important;
+}
+
+/* ── Code blocks ──────────────────────────────────────────────────────────── */
+.dark code,
+.dark .bg-\[\#f1f5f9\] code {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* ── Shadow softening in dark mode ────────────────────────────────────────── */
+.dark .shadow-xl,
+.dark .shadow-2xl,
+.dark .shadow-lg,
+.dark .shadow-md,
+.dark .shadow-sm {
+  --tw-shadow-color: rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark .shadow-slate-200\/30,
+.dark .shadow-slate-200\/50,
+.dark .shadow-blue-200\/50 {
+  --tw-shadow-color: transparent !important;
+  --tw-shadow: none !important;
+}
+
+/* ── Backdrop blur cards ──────────────────────────────────────────────────── */
+.dark .backdrop-blur-xl,
+.dark .backdrop-blur-sm,
+.dark .backdrop-blur-md {
+  background-color: hsl(var(--card) / 0.95) !important;
+}
+
+/* ── Status badges — keep vibrant but adapt background ────────────────────── */
+.dark .bg-\[\#dcfce7\] { background-color: hsl(142 71% 45% / 0.15) !important; }
+.dark .bg-\[\#fee2e2\] { background-color: hsl(0 84% 60% / 0.15) !important; }
+.dark .bg-\[\#e0f2fe\] { background-color: hsl(213 97% 47% / 0.15) !important; }
+.dark .bg-\[\#fef3c7\] { background-color: hsl(38 92% 50% / 0.15) !important; }
+.dark .bg-red-100 { background-color: hsl(0 84% 60% / 0.15) !important; }
+.dark .bg-green-100 { background-color: hsl(142 71% 45% / 0.15) !important; }
+.dark .bg-blue-100 { background-color: hsl(213 97% 47% / 0.15) !important; }
+.dark .bg-yellow-100 { background-color: hsl(38 92% 50% / 0.15) !important; }
+.dark .bg-slate-100 { background-color: hsl(var(--muted)) !important; }
+
+/* ── Select triggers & inputs ─────────────────────────────────────────────── */
+.dark select,
+.dark [data-radix-select-trigger],
+.dark .bg-white select,
+.dark button[role="combobox"] {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Select content dropdowns ─────────────────────────────────────────────── */
+.dark [data-radix-select-content],
+.dark [data-radix-popper-content-wrapper] [role="listbox"] {
+  background-color: hsl(var(--popover)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* ── Dropdown menus ───────────────────────────────────────────────────────── */
+.dark [role="menu"] {
+  background-color: hsl(var(--popover)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Dialogs & popovers ──────────────────────────────────────────────────── */
+.dark [role="dialog"] {
+  background-color: hsl(var(--card)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Table header in dark mode ────────────────────────────────────────────── */
+.dark thead tr {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.dark thead th {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.dark tbody tr {
+  border-color: hsl(var(--border)) !important;
+}
+
+.dark tbody tr:hover {
+  background-color: hsl(var(--secondary)) !important;
+}
+
+/* ── Checkbox borders ─────────────────────────────────────────────────────── */
+.dark .border-slate-300 {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Main layout loading spinner ──────────────────────────────────────────── */
+.dark .border-slate-200 {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Stat card colored backgrounds — adapt for dark ───────────────────────── */
+.dark .bg-blue-50 { background-color: hsl(213 97% 47% / 0.1) !important; }
+.dark .bg-emerald-50 { background-color: hsl(152 81% 40% / 0.1) !important; }
+.dark .bg-amber-50 { background-color: hsl(38 92% 50% / 0.1) !important; }
+.dark .bg-violet-50 { background-color: hsl(258 90% 66% / 0.1) !important; }
+.dark .bg-rose-50 { background-color: hsl(350 89% 60% / 0.1) !important; }
+.dark .bg-red-50 { background-color: hsl(0 84% 60% / 0.1) !important; }
+.dark .bg-green-50 { background-color: hsl(142 71% 45% / 0.1) !important; }
+.dark .bg-purple-50 { background-color: hsl(270 76% 55% / 0.1) !important; }
+.dark .bg-indigo-50 { background-color: hsl(234 89% 64% / 0.1) !important; }
+.dark .bg-cyan-50 { background-color: hsl(186 99% 51% / 0.1) !important; }
+.dark .bg-orange-50 { background-color: hsl(25 95% 53% / 0.1) !important; }
+.dark .bg-teal-50 { background-color: hsl(168 80% 40% / 0.1) !important; }
+.dark .bg-pink-50 { background-color: hsl(330 81% 60% / 0.1) !important; }
+
+/* ── Gradient header backgrounds for dark ─────────────────────────────────── */
+.dark .from-violet-50\/50,
+.dark .from-blue-50\/50,
+.dark .from-emerald-50\/50 {
+  --tw-gradient-from: transparent !important;
+}
+
+/* ── Text color fixes for tab triggers ────────────────────────────────────── */
+.dark .text-slate-500 { color: hsl(var(--muted-foreground)) !important; }
+
+/* ── Misc ─────────────────────────────────────────────────────────────────── */
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Input fields ─────────────────────────────────────────────────────────── */
+.dark input,
+.dark textarea {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── Scrollbar in dark mode ───────────────────────────────────────────────── */
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+}
+
+/* ── Absolute white bg in gradient overlay fix ────────────────────────────── */
+.dark .absolute.inset-\[2px\].bg-white {
+  background-color: hsl(var(--card)) !important;
+}
+
+/* ── Stat card colored backgrounds — 100 level adapt for dark ─────────────── */
+.dark .bg-emerald-100 { background-color: hsl(152 81% 40% / 0.15) !important; }
+.dark .bg-amber-100 { background-color: hsl(38 92% 50% / 0.15) !important; }
+.dark .bg-violet-100 { background-color: hsl(258 90% 66% / 0.15) !important; }
+.dark .bg-rose-100 { background-color: hsl(350 89% 60% / 0.15) !important; }
+.dark .bg-purple-100 { background-color: hsl(270 76% 55% / 0.15) !important; }
+.dark .bg-indigo-100 { background-color: hsl(234 89% 64% / 0.15) !important; }
+.dark .bg-cyan-100 { background-color: hsl(186 99% 51% / 0.15) !important; }
+.dark .bg-orange-100 { background-color: hsl(25 95% 53% / 0.15) !important; }
+.dark .bg-teal-100 { background-color: hsl(168 80% 40% / 0.15) !important; }
+.dark .bg-pink-100 { background-color: hsl(330 81% 60% / 0.15) !important; }
+
+/* ── Slate text for credential badge etc ──────────────────────────────────── */
+.dark .bg-slate-100.text-slate-600 {
+  background-color: hsl(var(--secondary)) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* ── Filter bar containers ────────────────────────────────────────────────── */
+.dark .bg-white\/60.backdrop-blur-sm,
+.dark .bg-white\/80.backdrop-blur-sm {
+  background-color: hsl(var(--card) / 0.9) !important;
+}
+
+/* ── Pill status colors for dark ──────────────────────────────────────────── */
+.dark .bg-slate-400 {
+  background-color: hsl(var(--muted-foreground)) !important;
+}
+
+/* ── Page background gradient overrides ───────────────────────────────────── */
+/* These pages use from-slate-50 via-blue-50/30 to-slate-50 which stays light in dark mode */
+.dark .from-slate-50 {
+  --tw-gradient-from: hsl(var(--background)) !important;
+  --tw-gradient-from-position: ;
+  --tw-gradient-to: hsl(var(--background) / 0) !important;
+}
+
+.dark .via-blue-50\/30 {
+  --tw-gradient-to: hsl(var(--background) / 0) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--secondary) / 0.3) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+.dark .via-white {
+  --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--background)) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+
+.dark .to-slate-50 {
+  --tw-gradient-to: hsl(var(--background)) !important;
+}
+
+.dark .to-blue-50\/30 {
+  --tw-gradient-to: hsl(var(--secondary) / 0.3) !important;
+}
+
+/* ── Table header rows with hardcoded slate gradients ─────────────────────── */
+.dark .from-slate-50.to-slate-50\/50,
+.dark .bg-gradient-to-r.from-slate-50 {
+  --tw-gradient-from: hsl(var(--muted)) !important;
+  --tw-gradient-to: hsl(var(--muted) / 0.5) !important;
+}
+
+/* ── Connector icon backgrounds ───────────────────────────────────────────── */
+.dark .from-emerald-100 {
+  --tw-gradient-from: hsl(152 81% 40% / 0.2) !important;
+}
+.dark .to-emerald-200 {
+  --tw-gradient-to: hsl(152 81% 40% / 0.25) !important;
+}
+.dark .from-slate-100 {
+  --tw-gradient-from: hsl(var(--muted)) !important;
+}
+.dark .to-slate-200 {
+  --tw-gradient-to: hsl(var(--secondary)) !important;
+}
+.dark .to-slate-50 {
+  --tw-gradient-to: hsl(var(--background)) !important;
+}
+
+/* ── Section header gradient backgrounds ──────────────────────────────────── */
+.dark .from-blue-50\/50 {
+  --tw-gradient-from: hsl(213 97% 47% / 0.08) !important;
+}
+.dark .from-emerald-50\/50 {
+  --tw-gradient-from: hsl(152 81% 40% / 0.08) !important;
+}
+
+/* ── Gradient via-white for pipelines page ────────────────────────────────── */
+.dark .via-white.to-blue-50\/30 {
+  --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--background)) var(--tw-gradient-via-position), hsl(var(--secondary) / 0.3) !important;
+}
+
+/* ── Border slate-100 used as section dividers ────────────────────────────── */
+.dark .border-slate-100 {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Emerald shadow fix ───────────────────────────────────────────────────── */
+.dark .shadow-emerald-200\/50,
+.dark .shadow-green-200\/50 {
+  --tw-shadow-color: transparent !important;
+  --tw-shadow: none !important;
 }

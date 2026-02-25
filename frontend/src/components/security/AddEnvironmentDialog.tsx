@@ -30,18 +30,16 @@ import {
 } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { X, Save, Globe, Loader2, Plus } from "lucide-react";
-import { useEnvironments, type CreateEnvironmentInput } from "@/hooks/useEnvironments";
+import { Globe, Loader2, Plus } from "lucide-react";
+import { useEnvironments, type CreateEnvironmentInput, type EnvironmentConnectorRecord } from "@/hooks/useEnvironments";
 import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
-
-const CONNECTOR_OPTIONS = [
-  "GitHub", "Jira", "Cloud Foundry", "ServiceNow", "Jenkins", "GitLab", "Bitbucket", "Azure DevOps",
-];
+import { EnvironmentConnectorsEditor, type CredentialOption } from "./EnvironmentConnectorsEditor";
+import { useCredentials } from "@/hooks/useCredentials";
 
 const formSchema = z.object({
   name: z.string().min(1, "Environment Name is required").max(100),
@@ -73,9 +71,81 @@ export function AddEnvironmentDialog({
 
   const { createEnvironment } = useEnvironments(accountId, enterpriseId);
   const { workstreams } = useWorkstreams(accountId, enterpriseId);
+  const { credentials: allCredentials } = useCredentials(accountId, enterpriseId);
+
+  const credentialOptions: CredentialOption[] = (allCredentials || []).map((c: any) => ({
+    id: c.id,
+    name: c.name,
+  }));
 
   const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
   const [services, setServices] = useState<{ id: string; name: string }[]>([]);
+  const [connectors, setConnectors] = useState<EnvironmentConnectorRecord[]>([]);
+  const [testingIndex, setTestingIndex] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, "success" | "failed">>({});
+
+  const handleTestConnector = async (conn: EnvironmentConnectorRecord, idx: number) => {
+    const isCF = conn.connector === "Cloud Foundry";
+    const testUrl = isCF ? (conn.hostUrl || conn.apiUrl || "") : (conn.url || "");
+    const credName = isCF ? (conn.iflowCredentialName || conn.apiCredentialName || "") : (conn.credentialName || "");
+
+    if (!testUrl) {
+      toast.error(`No URL configured for ${conn.connector}`);
+      setTestResults(prev => ({ ...prev, [idx]: "failed" }));
+      return;
+    }
+
+    setTestingIndex(idx);
+    try {
+      let credentialId = "";
+      if (credName && !isExternalApi()) {
+        const { data: creds } = await (supabase as any)
+          .from("credentials")
+          .select("id")
+          .eq("name", credName)
+          .eq("account_id", accountId!)
+          .eq("enterprise_id", enterpriseId!)
+          .limit(1);
+        if (creds?.[0]) credentialId = creds[0].id;
+      }
+
+      if (!credentialId && !isExternalApi()) {
+        toast.error(`Credential "${credName}" not found for ${conn.connector}`);
+        setTestResults(prev => ({ ...prev, [idx]: "failed" }));
+        return;
+      }
+
+      const connectorKey = (conn.connector || "").toLowerCase().replace(/\s+/g, "_");
+      let result: { success: boolean; message?: string };
+
+      if (isExternalApi()) {
+        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
+          connector: connectorKey, url: testUrl, credentialId, credentialName: credName,
+        });
+        if (error) throw new Error(error.message);
+        result = data!;
+      } else {
+        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
+          body: { connector: connectorKey, url: testUrl, credentialId },
+        });
+        if (error) throw error;
+        result = data;
+      }
+
+      if (result?.success) {
+        toast.success(result.message || `${conn.connector} connected successfully`);
+        setTestResults(prev => ({ ...prev, [idx]: "success" }));
+      } else {
+        toast.error(result?.message || `${conn.connector} connection failed`);
+        setTestResults(prev => ({ ...prev, [idx]: "failed" }));
+      }
+    } catch {
+      toast.error(`Connection test failed for ${conn.connector}`);
+      setTestResults(prev => ({ ...prev, [idx]: "failed" }));
+    } finally {
+      setTestingIndex(null);
+    }
+  };
 
   useEffect(() => {
     const fetchMeta = async () => {
@@ -111,7 +181,6 @@ export function AddEnvironmentDialog({
     },
   });
 
-  // Reset form on open
   useEffect(() => {
     if (open) {
       form.reset({
@@ -123,13 +192,13 @@ export function AddEnvironmentDialog({
         connector_name: "",
         connectivity_status: "unknown",
       });
+      setConnectors([]);
     }
   }, [open, form]);
 
   const handleSubmit = async (data: FormValues) => {
     if (!accountId || !enterpriseId) return;
 
-    // Duplicate check
     const isDuplicate = existingEnvironments.some(
       e =>
         e.name === data.name &&
@@ -153,6 +222,7 @@ export function AddEnvironmentDialog({
         service_id: data.service_id || undefined,
         connector_name: data.connector_name || undefined,
         connectivity_status: data.connectivity_status || "unknown",
+        connectors,
       });
       toast.success(`Environment "${data.name}" created successfully`);
       onOpenChange(false);
@@ -164,7 +234,7 @@ export function AddEnvironmentDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[580px] p-0 overflow-hidden rounded-2xl border shadow-2xl bg-card"
+        className="sm:max-w-[680px] p-0 overflow-hidden rounded-2xl border shadow-2xl bg-card"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
@@ -175,20 +245,18 @@ export function AddEnvironmentDialog({
         {/* Gradient Header */}
         <div className="relative bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-500 px-6 py-5">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjEpIi8+PC9zdmc+')] opacity-60" />
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <motion.div
-                className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center"
-                initial={{ rotate: -10, scale: 0.8 }}
-                animate={{ rotate: 0, scale: 1 }}
-                transition={{ type: "spring", stiffness: 200 }}
-              >
-                <Globe className="w-6 h-6 text-white" />
-              </motion.div>
-              <div>
-                <h2 className="text-lg font-bold text-white">Add Environment</h2>
-                <p className="text-white/70 text-xs">Configure a new deployment environment</p>
-              </div>
+          <div className="relative flex items-center gap-3">
+            <motion.div
+              className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center"
+              initial={{ rotate: -10, scale: 0.8 }}
+              animate={{ rotate: 0, scale: 1 }}
+              transition={{ type: "spring", stiffness: 200 }}
+            >
+              <Globe className="w-6 h-6 text-white" />
+            </motion.div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Add Environment</h2>
+              <p className="text-white/70 text-xs">Configure a new deployment environment</p>
             </div>
           </div>
         </div>
@@ -197,176 +265,68 @@ export function AddEnvironmentDialog({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
             {/* Name */}
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-1.5">
-                    Environment Name <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      placeholder="e.g. Production - US East"
-                      className="bg-background transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </FormControl>
-                  <FormDescription className="text-xs">A unique name for this environment</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <FormField control={form.control} name="name" render={({ field }) => (
+              <FormItem>
+                <FormLabel className="flex items-center gap-1.5">Environment Name <span className="text-destructive">*</span></FormLabel>
+                <FormControl><Input {...field} placeholder="e.g. Production - US East" className="bg-background transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary" /></FormControl>
+                <FormDescription className="text-xs">A unique name for this environment</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )} />
 
             {/* Description */}
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      placeholder="Brief description of this environment"
-                      className="bg-background resize-none h-20"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <FormField control={form.control} name="description" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Description</FormLabel>
+                <FormControl><Textarea {...field} placeholder="Brief description of this environment" className="bg-background resize-none h-20" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
 
-            {/* Workstream */}
-            <FormField
-              control={form.control}
-              name="workstream_id"
-              render={({ field }) => (
+            {/* Workstream / Product / Service */}
+            <div className="grid grid-cols-3 gap-3">
+              <FormField control={form.control} name="workstream_id" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-1.5">
-                    Workstream <span className="text-destructive">*</span>
-                  </FormLabel>
+                  <FormLabel className="flex items-center gap-1.5 text-xs">Workstream <span className="text-destructive">*</span></FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="Select workstream" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="z-[200] bg-popover border shadow-lg">
-                      {workstreams.map((ws) => (
-                        <SelectItem key={ws.id} value={ws.id}>{ws.name}</SelectItem>
-                      ))}
-                    </SelectContent>
+                    <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
+                    <SelectContent className="z-[200] bg-popover border shadow-lg">{workstreams.map((ws) => (<SelectItem key={ws.id} value={ws.id}>{ws.name}</SelectItem>))}</SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
-
-            {/* Product */}
-            <FormField
-              control={form.control}
-              name="product_id"
-              render={({ field }) => (
+              )} />
+              <FormField control={form.control} name="product_id" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-1.5">
-                    Product <span className="text-destructive">*</span>
-                  </FormLabel>
+                  <FormLabel className="flex items-center gap-1.5 text-xs">Product <span className="text-destructive">*</span></FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="z-[200] bg-popover border shadow-lg">
-                      {products.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
+                    <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
+                    <SelectContent className="z-[200] bg-popover border shadow-lg">{products.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}</SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
-
-            {/* Service */}
-            <FormField
-              control={form.control}
-              name="service_id"
-              render={({ field }) => (
+              )} />
+              <FormField control={form.control} name="service_id" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-1.5">
-                    Service <span className="text-destructive">*</span>
-                  </FormLabel>
+                  <FormLabel className="flex items-center gap-1.5 text-xs">Service <span className="text-destructive">*</span></FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="Select service" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="z-[200] bg-popover border shadow-lg">
-                      {services.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
+                    <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
+                    <SelectContent className="z-[200] bg-popover border shadow-lg">{services.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
+              )} />
+            </div>
 
-            {/* Connector */}
-            <FormField
-              control={form.control}
-              name="connector_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Connector</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="Select connector (optional)" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="z-[200] bg-popover border shadow-lg">
-                      <SelectItem value="none">None</SelectItem>
-                      {CONNECTOR_OPTIONS.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription className="text-xs">Optionally link a connector tool</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Connectors Editor */}
+            <div className="border-t pt-4">
+              <EnvironmentConnectorsEditor connectors={connectors} onChange={setConnectors} credentials={credentialOptions} onTestConnector={handleTestConnector} testingIndex={testingIndex} testResults={testResults} />
+            </div>
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-3 pt-3 border-t">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="rounded-xl"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createEnvironment.isPending}
-                className="rounded-xl gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
-              >
-                {createEnvironment.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4" />
-                    Create Environment
-                  </>
-                )}
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl">Cancel</Button>
+              <Button type="submit" disabled={createEnvironment.isPending} className="rounded-xl gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
+                {createEnvironment.isPending ? (<><Loader2 className="w-4 h-4 animate-spin" /> Creating...</>) : (<><Plus className="w-4 h-4" /> Create Environment</>)}
               </Button>
             </div>
           </form>

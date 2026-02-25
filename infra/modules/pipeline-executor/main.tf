@@ -17,7 +17,7 @@ variable "description" {
 
 variable "handler" {
   type    = string
-  default = "dist/main.handler"
+  default = "dist/pipeline-executor.handler.handler"
 }
 
 variable "runtime" {

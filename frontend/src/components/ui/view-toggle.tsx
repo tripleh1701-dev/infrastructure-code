@@ -17,7 +17,7 @@ export function ViewToggle({ view, onViewChange, className }: ViewToggleProps) {
         pressed={view === "table"}
         onPressedChange={() => onViewChange("table")}
         aria-label="Table view"
-        className="h-8 w-8 p-0 data-[state=on]:bg-background data-[state=on]:shadow-sm"
+        className="h-8 w-8 p-0 data-[state=on]:bg-background data-[state=on]:shadow-sm data-[state=on]:border data-[state=on]:border-border text-muted-foreground data-[state=on]:text-foreground"
       >
         <List className="h-4 w-4" />
       </Toggle>
@@ -25,7 +25,7 @@ export function ViewToggle({ view, onViewChange, className }: ViewToggleProps) {
         pressed={view === "tile"}
         onPressedChange={() => onViewChange("tile")}
         aria-label="Tile view"
-        className="h-8 w-8 p-0 data-[state=on]:bg-background data-[state=on]:shadow-sm"
+        className="h-8 w-8 p-0 data-[state=on]:bg-background data-[state=on]:shadow-sm data-[state=on]:border data-[state=on]:border-border text-muted-foreground data-[state=on]:text-foreground"
       >
         <LayoutGrid className="h-4 w-4" />
       </Toggle>

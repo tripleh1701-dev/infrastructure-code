@@ -161,6 +161,12 @@ variable "enable_cloudformation" {
   default     = false
 }
 
+variable "invoke_lambda_arns" {
+  description = "ARNs of Lambda functions this function is allowed to invoke"
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "Resource tags"
   type        = map(string)

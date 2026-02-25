@@ -216,6 +216,22 @@ resource "aws_iam_role_policy" "cfn_template_s3" {
   })
 }
 
+# Lambda invoke access (for invoking other Lambdas e.g. pipeline-executor)
+resource "aws_iam_role_policy" "invoke_lambda" {
+  count = length(var.invoke_lambda_arns) > 0 ? 1 : 0
+  name  = "${var.function_name}-invoke-lambda"
+  role  = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "lambda:InvokeFunction"
+      Resource = var.invoke_lambda_arns
+    }]
+  })
+}
+
 # CloudFormation permissions (for direct stack provisioning / status polling)
 resource "aws_iam_role_policy" "cloudformation" {
   count = var.enable_cloudformation ? 1 : 0

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { BuildJob, BuildExecution, useBuilds } from "@/hooks/useBuilds";
 import { useBuildExecution } from "@/hooks/useBuildExecution";
 import { isExternalApi } from "@/lib/api/config";
+import { usePermissions } from "@/contexts/PermissionContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -20,6 +21,9 @@ import {
   Timer,
   History,
   Info,
+  Package,
+  FileCode,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,6 +31,8 @@ import { PipelineStageProgress, PipelineStage } from "./PipelineStageProgress";
 import { PipelineFlowPreview } from "./PipelineFlowPreview";
 import { BuildExecutionTimeline } from "./BuildExecutionTimeline";
 import { BuildLogStream } from "./BuildLogStream";
+import { IntegrationArtifactsModal } from "./IntegrationArtifactsModal";
+import { PipelineConfigDialog } from "./PipelineConfigDialog";
 
 interface BuildDetailPanelProps {
   buildJob: BuildJob | null;
@@ -49,12 +55,14 @@ type DetailTabKey = typeof DETAIL_TABS[number]["key"];
 
 export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isTheaterMode }: BuildDetailPanelProps) {
   const { fetchExecutions, createExecution } = useBuilds();
+  const { currentUserRoleName } = usePermissions();
   const buildExecution = useBuildExecution();
   const [executions, setExecutions] = useState<BuildExecution[]>([]);
   const [loadingExecs, setLoadingExecs] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [selectedExecution, setSelectedExecution] = useState<BuildExecution | null>(null);
-  // approver prompt removed — approvers are now configured at pipeline stage level
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [buildYamlOpen, setBuildYamlOpen] = useState(false);
 
   // Active bottom tab — null means collapsed (pipeline gets full space)
   const [activeTab, setActiveTab] = useState<DetailTabKey | null>(null);
@@ -416,6 +424,31 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* Admin-only View Build YAML button — visible when role name contains "admin" or when using default admin permissions (null role = super_admin fallback) */}
+              {(currentUserRoleName === null || currentUserRoleName?.toLowerCase().includes('admin') || currentUserRoleName?.toLowerCase().includes('super_admin')) && (
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs"
+                    onClick={() => setBuildYamlOpen(true)}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    View YAML
+                  </Button>
+                </motion.div>
+              )}
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs"
+                  onClick={() => setArtifactsOpen(true)}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  Artifacts
+                </Button>
+              </motion.div>
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   size="sm"
@@ -709,6 +742,16 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
       </div>
     </div>
 
+    <IntegrationArtifactsModal
+      open={artifactsOpen}
+      onClose={() => setArtifactsOpen(false)}
+      buildJobName={buildJob.connector_name}
+    />
+    <PipelineConfigDialog
+      open={buildYamlOpen}
+      onOpenChange={setBuildYamlOpen}
+      buildJob={buildJob}
+    />
     </>
   );
 }

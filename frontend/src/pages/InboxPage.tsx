@@ -341,8 +341,8 @@ export default function InboxPage() {
             {/* Tabs + Refresh */}
             <motion.div variants={itemVariants} className="flex items-center gap-3 mb-6">
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-                <TabsList className="bg-white/80 backdrop-blur-sm border border-slate-200/60 p-1.5 rounded-xl shadow-lg shadow-slate-200/50">
-                  <TabsTrigger value="pending" className="gap-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg px-4">
+                <TabsList className="bg-white/80 backdrop-blur-sm border border-slate-200/60 p-1.5 rounded-xl shadow-lg shadow-slate-200/50 dark:bg-card/80 dark:border-border dark:shadow-none">
+                  <TabsTrigger value="pending" className="gap-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg px-4 dark:data-[state=active]:bg-card dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:shadow-none">
                     <Clock className="w-3.5 h-3.5" />
                     Pending
                     {pendingCount > 0 && (
@@ -351,7 +351,7 @@ export default function InboxPage() {
                       </Badge>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="history" className="gap-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg px-4">
+                  <TabsTrigger value="history" className="gap-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg px-4 dark:data-[state=active]:bg-card dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:shadow-none">
                     <History className="w-3.5 h-3.5" />
                     History
                   </TabsTrigger>

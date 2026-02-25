@@ -204,6 +204,7 @@ module "lambda" {
     PLATFORM_SUPPORT_EMAIL           = var.platform_support_email
     SNS_PROVISIONING_TOPIC_ARN       = module.monitoring.provisioning_sns_topic_arn
     CFN_TEMPLATE_BUCKET              = module.frontend.bucket_name
+    PIPELINE_EXECUTOR_FUNCTION       = module.pipeline_executor.function_name
   }
 
   account_registry_dynamodb_arn = module.account_registry_dynamodb.table_arn
@@ -212,6 +213,9 @@ module "lambda" {
   step_functions_arns = [
     module.step_functions.create_account_state_machine_arn,
     module.step_functions.delete_account_state_machine_arn,
+  ]
+  invoke_lambda_arns = [
+    module.pipeline_executor.function_arn,
   ]
 
   tags = local.common_tags

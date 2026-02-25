@@ -7,6 +7,7 @@ import { EnterpriseProvider } from "@/contexts/EnterpriseContext";
 import { AccountProvider } from "@/contexts/AccountContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PermissionProvider } from "@/contexts/PermissionContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import OverviewPage from "./pages/OverviewPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -34,6 +35,7 @@ const App = () => (
         <AccountProvider>
           <EnterpriseProvider>
             <PermissionProvider>
+              <ThemeProvider>
               <TooltipProvider>
                 <Sonner />
                 <Routes>
@@ -67,6 +69,7 @@ const App = () => (
                   />
                 </Routes>
               </TooltipProvider>
+              </ThemeProvider>
             </PermissionProvider>
           </EnterpriseProvider>
         </AccountProvider>

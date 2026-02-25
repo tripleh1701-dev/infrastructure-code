@@ -39,6 +39,12 @@ import {
   Zap,
   ArrowUp,
   ArrowDown,
+  ClipboardList,
+  Code,
+  Hammer,
+  FlaskConical,
+  Tag,
+  Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ViewMode } from "@/components/ui/view-toggle";
@@ -52,6 +58,60 @@ import { EditEnvironmentDialog } from "./EditEnvironmentDialog";
 import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
+import type { EnvironmentConnectorRecord } from "@/hooks/useEnvironments";
+
+const CATEGORY_STYLES: Record<string, string> = {
+  plan: "bg-sky-100 text-sky-700",
+  code: "bg-violet-100 text-violet-700",
+  build: "bg-orange-100 text-orange-700",
+  test: "bg-teal-100 text-teal-700",
+  release: "bg-pink-100 text-pink-700",
+  deploy: "bg-indigo-100 text-indigo-700",
+};
+
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  plan: ClipboardList,
+  code: Code,
+  build: Hammer,
+  test: FlaskConical,
+  release: Tag,
+  deploy: Rocket,
+};
+
+function ConnectorSummaryBadges({ connectors }: { connectors: EnvironmentConnectorRecord[] }) {
+  const active = connectors.filter(c => c.connector && c.status !== false);
+  if (active.length === 0) return <span className="text-slate-400">—</span>;
+
+  // Group by category
+  const byCategory: Record<string, string[]> = {};
+  active.forEach(c => {
+    const cat = (c.category || "other").toLowerCase();
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(c.connector!);
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {Object.entries(byCategory).map(([cat, tools]) => {
+        const IconComp = CATEGORY_ICONS[cat] || Layers;
+        return (
+          <Badge
+            key={cat}
+            variant="secondary"
+            className={cn("text-[10px] px-1.5 py-0 font-medium capitalize gap-0.5", CATEGORY_STYLES[cat] || "bg-slate-100 text-slate-600")}
+            title={tools.join(", ")}
+          >
+            <IconComp className="w-3 h-3" />
+            {cat} · {tools.length}
+          </Badge>
+        );
+      })}
+      {active.length > 1 && (
+        <span className="text-[10px] text-muted-foreground ml-0.5">{active.length} total</span>
+      )}
+    </div>
+  );
+}
 import { httpClient } from "@/lib/api/http-client";
 
 type ColumnKey = "name" | "description" | "workstream" | "product" | "service" | "connector" | "status" | "actions";
@@ -271,63 +331,144 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
   };
 
   const handleTestConnectivity = async (env: EnvironmentRecord) => {
-    if (!env.connector_name) {
+    // New multi-connector model: test the first active connector that has enough info
+    const activeConnectors = (env.connectors || []).filter(c => c.status !== false && c.connector);
+    
+    if (activeConnectors.length === 0 && !env.connector_name) {
       toast.error("No connector configured for this environment");
       return;
     }
+
     setTestingId(env.id);
     try {
-      // Look up a matching connector record to get url and credential_id
-      const toolKey = env.connector_name;
-      let connectorUrl = "";
-      let credentialId = "";
+      let overallSuccess = true;
+      let lastMessage = "";
 
-      if (!isExternalApi()) {
-        const { data: connectors } = await (supabase as any)
-          .from("connectors")
-          .select("url, credential_id, connector_tool")
-          .eq("connector_tool", toolKey)
-          .eq("account_id", accountId!)
-          .eq("enterprise_id", enterpriseId!)
-          .limit(1);
-        if (connectors && connectors.length > 0) {
-          connectorUrl = connectors[0].url || "";
-          credentialId = connectors[0].credential_id || "";
+      // If we have new-style connectors, test each
+      if (activeConnectors.length > 0) {
+        for (const conn of activeConnectors) {
+          const isCloudFoundry = conn.connector === "Cloud Foundry";
+          
+          // For Cloud Foundry: use hostUrl + look up credential by iflowCredentialName
+          // For others: use url + look up credential by credentialName
+          let testUrl = "";
+          let credentialId = "";
+          let credentialName = "";
+
+          if (isCloudFoundry) {
+            testUrl = conn.hostUrl || conn.apiUrl || "";
+            credentialName = conn.iflowCredentialName || conn.apiCredentialName || "";
+          } else {
+            testUrl = conn.url || "";
+            credentialName = conn.credentialName || "";
+          }
+
+          // Look up credential by name to get credentialId
+          if (credentialName && !isExternalApi()) {
+            const { data: creds } = await (supabase as any)
+              .from("credentials")
+              .select("id")
+              .eq("name", credentialName)
+              .eq("account_id", accountId!)
+              .eq("enterprise_id", enterpriseId!)
+              .limit(1);
+            if (creds && creds.length > 0) {
+              credentialId = creds[0].id;
+            }
+          }
+
+          if (!testUrl) {
+            lastMessage = `No URL configured for ${conn.connector}`;
+            overallSuccess = false;
+            continue;
+          }
+
+          if (!credentialId && !isExternalApi()) {
+            lastMessage = `Credential "${credentialName}" not found for ${conn.connector}`;
+            overallSuccess = false;
+            continue;
+          }
+
+          let result: { success: boolean; message?: string };
+          const connectorKey = (conn.connector || "").toLowerCase().replace(/\s+/g, "_");
+
+          if (isExternalApi()) {
+            const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
+              connector: connectorKey,
+              url: testUrl,
+              credentialId,
+              credentialName,
+            });
+            if (error) throw new Error(error.message);
+            result = data!;
+          } else {
+            const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
+              body: { connector: connectorKey, url: testUrl, credentialId },
+            });
+            if (error) throw error;
+            result = data;
+          }
+
+          if (!result?.success) {
+            overallSuccess = false;
+            lastMessage = result?.message || `Connection failed for ${conn.connector}`;
+          } else {
+            lastMessage = result?.message || `Connected to ${conn.connector}`;
+          }
         }
-      }
-
-      if (!connectorUrl && !credentialId) {
-        // No matching connector found — do a simple status update
-        toast.info("No matching connector found to test connectivity. Configure a connector first.");
-        setTestingId(null);
-        return;
-      }
-
-      let result: { success: boolean; message?: string };
-
-      if (isExternalApi()) {
-        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
-          connector: toolKey.toLowerCase().replace(/\s+/g, "_"),
-          url: connectorUrl,
-          credentialId,
-        });
-        if (error) throw new Error(error.message);
-        result = data!;
       } else {
-        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-          body: { connector: toolKey.toLowerCase().replace(/\s+/g, "_"), url: connectorUrl, credentialId },
-        });
-        if (error) throw error;
-        result = data;
+        // Fallback: legacy connector_name approach
+        const toolKey = env.connector_name!;
+        let connectorUrl = "";
+        let credentialId = "";
+
+        if (!isExternalApi()) {
+          const { data: connectors } = await (supabase as any)
+            .from("connectors")
+            .select("url, credential_id, connector_tool")
+            .eq("connector_tool", toolKey)
+            .eq("account_id", accountId!)
+            .eq("enterprise_id", enterpriseId!)
+            .limit(1);
+          if (connectors && connectors.length > 0) {
+            connectorUrl = connectors[0].url || "";
+            credentialId = connectors[0].credential_id || "";
+          }
+        }
+
+        if (!connectorUrl && !credentialId) {
+          toast.info("No matching connector found to test connectivity.");
+          setTestingId(null);
+          return;
+        }
+
+        let result: { success: boolean; message?: string };
+        if (isExternalApi()) {
+          const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
+            connector: toolKey.toLowerCase().replace(/\s+/g, "_"),
+            url: connectorUrl,
+            credentialId,
+          });
+          if (error) throw new Error(error.message);
+          result = data!;
+        } else {
+          const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
+            body: { connector: toolKey.toLowerCase().replace(/\s+/g, "_"), url: connectorUrl, credentialId },
+          });
+          if (error) throw error;
+          result = data;
+        }
+
+        overallSuccess = !!result?.success;
+        lastMessage = result?.message || "";
       }
 
-      const data = result;
-      const newStatus = data?.success ? "healthy" : "failed";
+      const newStatus = overallSuccess ? "healthy" : "failed";
       await updateEnvironment.mutateAsync({ id: env.id, connectivity_status: newStatus });
-      if (data?.success) {
-        toast.success("Connection successful");
+      if (overallSuccess) {
+        toast.success(lastMessage || "Connection successful");
       } else {
-        toast.error(data?.message || "Connection failed");
+        toast.error(lastMessage || "Connection failed");
       }
     } catch {
       await updateEnvironment.mutateAsync({ id: env.id, connectivity_status: "failed" });
@@ -610,13 +751,19 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
                           </TableCell>
                         )}
                         {visibleColumns.has("connector") && (
-                          <TableCell className="text-slate-600 text-sm">{env.connector_name || "—"}</TableCell>
+                          <TableCell>
+                            {env.connectors && env.connectors.length > 0 ? (
+                              <ConnectorSummaryBadges connectors={env.connectors} />
+                            ) : env.connector_name ? (
+                              <Badge variant="outline" className="text-xs">{env.connector_name}</Badge>
+                            ) : <span className="text-slate-400">—</span>}
+                          </TableCell>
                         )}
                         {visibleColumns.has("status") && (
                           <TableCell>
                             <div className="flex items-center gap-2">
                               {getStatusBadge(env.connectivity_status)}
-                              {env.connector_name && (
+                              {(env.connector_name || (env.connectors && env.connectors.length > 0)) && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -699,7 +846,7 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
                           <Pencil className="w-4 h-4" />
                           Edit
                         </DropdownMenuItem>
-                        {env.connector_name && (
+                        {(env.connector_name || (env.connectors && env.connectors.length > 0)) && (
                           <DropdownMenuItem 
                             className="gap-2" 
                             onClick={() => handleTestConnectivity(env)}
@@ -730,11 +877,13 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
 
                   <div className="flex flex-wrap items-center gap-2 mb-4">
                     {getStatusBadge(env.connectivity_status)}
-                    {env.connector_name && (
+                    {env.connectors && env.connectors.length > 0 ? (
+                      <ConnectorSummaryBadges connectors={env.connectors} />
+                    ) : env.connector_name ? (
                       <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-xs">
                         {env.connector_name}
                       </Badge>
-                    )}
+                    ) : null}
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 space-y-2">
