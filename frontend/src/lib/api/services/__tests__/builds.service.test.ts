@@ -66,6 +66,7 @@ describe("buildsService.mapApiToBuildJob", () => {
       pipeline_stages_state: { build: "ok" },
       created_at: "2025-01-01T00:00:00Z",
       updated_at: "2025-01-02T00:00:00Z",
+      yaml_content: null,
     });
   });
 
