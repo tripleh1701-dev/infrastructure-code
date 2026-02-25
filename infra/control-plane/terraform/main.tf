@@ -520,85 +520,97 @@ module "monitoring" {
 # =============================================================================
 
 resource "aws_ssm_parameter" "cognito_user_pool_id" {
-  name  = "${local.ssm_prefix}/cognito/user-pool-id"
-  type  = "String"
-  value = module.cognito.user_pool_id
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/cognito/user-pool-id"
+  type      = "String"
+  value     = module.cognito.user_pool_id
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "cognito_client_id" {
-  name  = "${local.ssm_prefix}/cognito/client-id"
-  type  = "String"
-  value = module.cognito.client_id
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/cognito/client-id"
+  type      = "String"
+  value     = module.cognito.client_id
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "cognito_domain" {
-  name  = "${local.ssm_prefix}/cognito/domain"
-  type  = "String"
-  value = module.cognito.domain
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/cognito/domain"
+  type      = "String"
+  value     = module.cognito.domain
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "api_base_url" {
-  name  = "${local.ssm_prefix}/api/base-url"
-  type  = "String"
-  value = module.api_gateway.invoke_url
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/api/base-url"
+  type      = "String"
+  value     = module.api_gateway.invoke_url
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "frontend_url" {
-  name  = "${local.ssm_prefix}/frontend/url"
-  type  = "String"
-  value = module.frontend.cloudfront_url
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/frontend/url"
+  type      = "String"
+  value     = module.frontend.cloudfront_url
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "control_plane_table" {
-  name  = "${local.ssm_prefix}/dynamodb/control-plane-table"
-  type  = "String"
-  value = module.control_plane_dynamodb.table_name
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/dynamodb/control-plane-table"
+  type      = "String"
+  value     = module.control_plane_dynamodb.table_name
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "account_registry_table" {
-  name  = "${local.ssm_prefix}/dynamodb/account-registry-table"
-  type  = "String"
-  value = module.account_registry_dynamodb.table_name
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/dynamodb/account-registry-table"
+  type      = "String"
+  value     = module.account_registry_dynamodb.table_name
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "data_plane_role_arn" {
-  name  = "${local.ssm_prefix}/cross-account/data-plane-role-arn"
-  type  = "String"
-  value = var.data_plane_role_arn != "" ? var.data_plane_role_arn : "NOT_CONFIGURED"
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/cross-account/data-plane-role-arn"
+  type      = "String"
+  value     = var.data_plane_role_arn != "" ? var.data_plane_role_arn : "NOT_CONFIGURED"
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "sns_alarm_topic" {
-  name  = "${local.ssm_prefix}/monitoring/sns-alarm-topic-arn"
-  type  = "String"
-  value = module.monitoring.sns_topic_arn
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/monitoring/sns-alarm-topic-arn"
+  type      = "String"
+  value     = module.monitoring.sns_topic_arn
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "vpc_id" {
-  name  = "${local.ssm_prefix}/vpc/vpc-id"
-  type  = "String"
-  value = module.vpc.vpc_id
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/vpc/vpc-id"
+  type      = "String"
+  value     = module.vpc.vpc_id
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "create_account_sfn" {
-  name  = "${local.ssm_prefix}/step-functions/create-account-arn"
-  type  = "String"
-  value = module.step_functions.create_account_state_machine_arn
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/step-functions/create-account-arn"
+  type      = "String"
+  value     = module.step_functions.create_account_state_machine_arn
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "delete_account_sfn" {
-  name  = "${local.ssm_prefix}/step-functions/delete-account-arn"
-  type  = "String"
-  value = module.step_functions.delete_account_state_machine_arn
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/step-functions/delete-account-arn"
+  type      = "String"
+  value     = module.step_functions.delete_account_state_machine_arn
+  overwrite = true
+  tags      = local.common_tags
 }

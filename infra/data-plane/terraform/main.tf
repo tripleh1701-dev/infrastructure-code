@@ -227,22 +227,25 @@ resource "aws_iam_role_policy" "cfn_execution_permissions" {
 # 4. SSM Parameters
 # =============================================================================
 resource "aws_ssm_parameter" "customer_dynamodb_table" {
-  name  = "${local.ssm_prefix}/dynamodb/customer-table"
-  type  = "String"
-  value = module.customer_dynamodb.table_name
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/dynamodb/customer-table"
+  type      = "String"
+  value     = module.customer_dynamodb.table_name
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "customer_account_role_arn" {
-  name  = "${local.ssm_prefix}/cross-account/customer-account-role-arn"
-  type  = "String"
-  value = aws_iam_role.customer_account_access.arn
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/cross-account/customer-account-role-arn"
+  type      = "String"
+  value     = aws_iam_role.customer_account_access.arn
+  overwrite = true
+  tags      = local.common_tags
 }
 
 resource "aws_ssm_parameter" "cfn_execution_role_arn" {
-  name  = "${local.ssm_prefix}/cloudformation/execution-role-arn"
-  type  = "String"
-  value = aws_iam_role.cloudformation_execution.arn
-  tags  = local.common_tags
+  name      = "${local.ssm_prefix}/cloudformation/execution-role-arn"
+  type      = "String"
+  value     = aws_iam_role.cloudformation_execution.arn
+  overwrite = true
+  tags      = local.common_tags
 }
