@@ -52,14 +52,17 @@ export function useIntegrationArtifacts() {
       const apiUrl = connector.apiUrl;
       if (!apiUrl) throw new Error("Cloud Foundry connector is missing apiUrl");
 
-      const authenticationType = connector.authenticationType || "Basic";
-
       // Resolve credential details from the credential name
       let credentialData: Record<string, any> = {};
       const credName = connector.apiCredentialName || connector.credentialName;
 
       if (credName) {
         credentialData = await resolveCredential(credName, accountId);
+      }
+
+      const authenticationType = resolveAuthenticationType(connector, credentialData);
+      if (!authenticationType) {
+        throw new Error("Authentication type could not be resolved from environment connector or credential");
       }
 
       // Build request payload
@@ -73,13 +76,15 @@ export function useIntegrationArtifacts() {
       };
 
       // Attach auth-specific fields
+      // Credential JSON stores values keyed by UI field labels (e.g. "Username", "API Key", "Client ID")
+      // so we check both label-based keys and snake_case/camelCase variants
       if (authenticationType.toLowerCase() === "oauth2") {
-        payload.oauth2ClientId = connector.oauth2ClientId || credentialData.client_id || credentialData.oauth2ClientId || "";
-        payload.oauth2ClientSecret = connector.oauth2ClientSecret || credentialData.client_secret || credentialData.oauth2ClientSecret || "";
-        payload.oauth2TokenUrl = connector.oauth2TokenUrl || credentialData.token_url || credentialData.oauth2TokenUrl || "";
+        payload.oauth2ClientId = connector.oauth2ClientId || credentialData["Client ID"] || credentialData.client_id || credentialData.oauth2ClientId || "";
+        payload.oauth2ClientSecret = connector.oauth2ClientSecret || credentialData["Client Secret"] || credentialData.client_secret || credentialData.oauth2ClientSecret || "";
+        payload.oauth2TokenUrl = connector.oauth2TokenUrl || credentialData["Token URL"] || credentialData.token_url || credentialData.oauth2TokenUrl || "";
       } else {
-        payload.username = connector.username || credentialData.username || "";
-        payload.apiKey = connector.apiKey || credentialData.api_key || credentialData.apiKey || credentialData.password || "";
+        payload.username = connector.username || credentialData["Username"] || credentialData.username || "";
+        payload.apiKey = connector.apiKey || credentialData["API Key"] || credentialData.api_key || credentialData.apiKey || credentialData["Password"] || credentialData.password || "";
       }
 
       let result: FetchPackagesResult;
@@ -125,6 +130,61 @@ export function useIntegrationArtifacts() {
 }
 
 /**
+ * Resolve auth type from connector first, then credential metadata/shape.
+ */
+function resolveAuthenticationType(
+  connector: EnvironmentConnectorRecord,
+  credentialData: Record<string, any>,
+): string {
+  const explicitType = connector.authenticationType?.trim();
+  if (explicitType) return explicitType;
+
+  const credentialAuthType = (
+    credentialData.__authType ||
+    credentialData.authType ||
+    credentialData.auth_type ||
+    ""
+  )
+    .toString()
+    .toLowerCase();
+
+  if (credentialAuthType === "oauth" || credentialAuthType === "oauth2") return "OAuth2";
+  if (
+    credentialAuthType === "basic" ||
+    credentialAuthType === "username_api_key" ||
+    credentialAuthType === "username and api key"
+  ) {
+    return "Basic";
+  }
+
+  const hasOauthFields = Boolean(
+    credentialData["Client ID"] ||
+      credentialData.client_id ||
+      credentialData.oauth2ClientId ||
+      credentialData["Client Secret"] ||
+      credentialData.client_secret ||
+      credentialData.oauth2ClientSecret ||
+      credentialData["Token URL"] ||
+      credentialData.token_url ||
+      credentialData.oauth2TokenUrl,
+  );
+  if (hasOauthFields) return "OAuth2";
+
+  const hasBasicFields = Boolean(
+    credentialData["Username"] ||
+      credentialData.username ||
+      credentialData["API Key"] ||
+      credentialData.api_key ||
+      credentialData.apiKey ||
+      credentialData["Password"] ||
+      credentialData.password,
+  );
+  if (hasBasicFields) return "Basic";
+
+  return "";
+}
+
+/**
  * Resolve credential secrets by name from the credentials table / API.
  */
 async function resolveCredential(
@@ -140,7 +200,11 @@ async function resolveCredential(
       const cred = data.find(
         (c: any) => c.name === credentialName || c.credentialName === credentialName,
       );
-      return cred?.credentials ?? cred ?? {};
+      if (!cred) return {};
+      return {
+        ...(cred.credentials ?? {}),
+        __authType: cred.authType ?? cred.auth_type ?? "",
+      };
     }
 
     const { data, error } = await supabase
@@ -151,7 +215,10 @@ async function resolveCredential(
       .maybeSingle();
 
     if (error || !data) return {};
-    return (data as any).credentials ?? {};
+    return {
+      ...((data as any).credentials ?? {}),
+      __authType: (data as any).auth_type ?? (data as any).authType ?? "",
+    };
   } catch {
     return {};
   }
