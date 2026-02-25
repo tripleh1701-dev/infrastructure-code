@@ -74,12 +74,12 @@ export function useIntegrationArtifacts() {
 
       // Attach auth-specific fields
       if (authenticationType.toLowerCase() === "oauth2") {
-        payload.oauth2ClientId = connector.oauth2ClientId || credentialData.oauth2ClientId || "";
-        payload.oauth2ClientSecret = connector.oauth2ClientSecret || credentialData.oauth2ClientSecret || "";
-        payload.oauth2TokenUrl = connector.oauth2TokenUrl || credentialData.oauth2TokenUrl || "";
+        payload.oauth2ClientId = connector.oauth2ClientId || credentialData.client_id || credentialData.oauth2ClientId || "";
+        payload.oauth2ClientSecret = connector.oauth2ClientSecret || credentialData.client_secret || credentialData.oauth2ClientSecret || "";
+        payload.oauth2TokenUrl = connector.oauth2TokenUrl || credentialData.token_url || credentialData.oauth2TokenUrl || "";
       } else {
         payload.username = connector.username || credentialData.username || "";
-        payload.apiKey = connector.apiKey || credentialData.apiKey || credentialData.password || "";
+        payload.apiKey = connector.apiKey || credentialData.api_key || credentialData.apiKey || credentialData.password || "";
       }
 
       let result: FetchPackagesResult;
