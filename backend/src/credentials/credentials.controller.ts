@@ -62,8 +62,11 @@ export class CredentialsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.credentialsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.credentialsService.findOne(id, accountId);
   }
 
   @Post()
@@ -77,15 +80,23 @@ export class CredentialsController {
   @Put(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager', 'user')
-  async update(@Param('id') id: string, @Body() dto: UpdateCredentialDto) {
-    return this.credentialsService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateCredentialDto,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.credentialsService.update(id, dto, accountId);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager', 'user')
-  async patch(@Param('id') id: string, @Body() dto: UpdateCredentialDto) {
-    return this.credentialsService.update(id, dto);
+  async patch(
+    @Param('id') id: string,
+    @Body() dto: UpdateCredentialDto,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.credentialsService.update(id, dto, accountId);
   }
 
   @Post(':id/rotate')
@@ -94,15 +105,19 @@ export class CredentialsController {
   async rotate(
     @Param('id') id: string,
     @Body() body: { credentials: Record<string, any> },
+    @Query('accountId') accountId?: string,
   ) {
-    return this.credentialsService.rotate(id, body.credentials);
+    return this.credentialsService.rotate(id, body.credentials, accountId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager')
-  async remove(@Param('id') id: string) {
-    await this.credentialsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    await this.credentialsService.remove(id, accountId);
   }
 }

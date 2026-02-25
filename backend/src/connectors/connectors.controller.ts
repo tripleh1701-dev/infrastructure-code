@@ -83,8 +83,11 @@ export class ConnectorsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.connectorsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.connectorsService.findOne(id, accountId);
   }
 
   @Post()
@@ -98,16 +101,23 @@ export class ConnectorsController {
   @Put(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager', 'user')
-  async update(@Param('id') id: string, @Body() dto: UpdateConnectorDto) {
-    return this.connectorsService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateConnectorDto,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.connectorsService.update(id, dto, accountId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager')
-  async remove(@Param('id') id: string) {
-    await this.connectorsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    await this.connectorsService.remove(id, accountId);
   }
 
   // ─── Private: Connectivity test logic ──────────────────────────────────────
@@ -120,7 +130,7 @@ export class ConnectorsController {
     let cred: Record<string, any> | null = null;
     if (credentialId) {
       try {
-        cred = await this.credentialsService.findOne(credentialId);
+        cred = await this.credentialsService.findOne(credentialId, dto.accountId);
       } catch {
         return { success: false, message: 'Credential not found' };
       }

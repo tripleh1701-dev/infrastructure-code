@@ -35,8 +35,11 @@ export class BuildsController {
   }
 
   @Get('jobs/:id')
-  async findOneJob(@Param('id') id: string) {
-    return this.buildsService.findOneJob(id);
+  async findOneJob(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.buildsService.findOneJob(id, accountId);
   }
 
   @Post('jobs')
@@ -65,8 +68,11 @@ export class BuildsController {
   // ─── BUILD EXECUTIONS ─────────────────────────────────────────────────────
 
   @Get('jobs/:buildJobId/executions')
-  async findExecutions(@Param('buildJobId') buildJobId: string) {
-    return this.buildsService.findExecutions(buildJobId);
+  async findExecutions(
+    @Param('buildJobId') buildJobId: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.buildsService.findExecutions(buildJobId, accountId);
   }
 
   @Post('executions')
@@ -95,8 +101,9 @@ export class BuildsController {
   async updateExecution(
     @Param('buildJobId') buildJobId: string,
     @Param('executionId') executionId: string,
-    @Body() updates: { status?: string; duration?: string; logs?: string },
+    @Query('accountId') accountId?: string,
+    @Body() updates?: { status?: string; duration?: string; logs?: string },
   ) {
-    return this.buildsService.updateExecution(buildJobId, executionId, updates);
+    return this.buildsService.updateExecution(buildJobId, executionId, updates || {}, accountId);
   }
 }

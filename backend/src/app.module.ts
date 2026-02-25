@@ -26,6 +26,8 @@ import { ScheduledModule } from './scheduled/scheduled.module';
 import { EnvironmentsModule } from './environments/environments.module';
 import { InboxModule } from './inbox/inbox.module';
 import { NotificationsHistoryModule } from './notifications/notifications-history.module';
+import { IntegrationArtifactsModule } from './integration-artifacts/integration-artifacts.module';
+import { PipelineConfigsModule } from './pipeline-configs/pipeline-configs.module';
 import { HealthModule } from './common/health/health.module';
 
 @Module({
@@ -78,6 +80,8 @@ import { HealthModule } from './common/health/health.module';
     EnvironmentsModule,
     InboxModule,
     NotificationsHistoryModule,
+    IntegrationArtifactsModule,
+    PipelineConfigsModule,
     ProvisioningModule,
     HealthModule,
   ],

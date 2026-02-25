@@ -171,8 +171,12 @@ export class AccountProvisionerService {
    * Provision a public cloud account (uses shared table)
    */
   private async provisionPublicAccount(config: ProvisioningConfig): Promise<ProvisioningResult> {
-    const sharedTablePrefix = this.configService.get('DYNAMODB_TABLE_PREFIX', 'app_');
-    const sharedTableName = `${sharedTablePrefix}data`;
+    // Use explicit public customer table name — NOT the control plane table.
+    // This is the shared DynamoDB table in the customer AWS account for all public accounts.
+    const publicTableName = this.configService.get(
+      'PUBLIC_ACCOUNT_TABLE_NAME',
+      'account-admin-public-staging',
+    );
 
     try {
       // Store account configuration in SSM for consistency
@@ -186,10 +190,10 @@ export class AccountProvisionerService {
 
       await this.ssmClient.send(new PutParameterCommand({
         Name: `/accounts/${config.accountId}/dynamodb/table-name`,
-        Value: sharedTableName,
+        Value: publicTableName,
         Type: 'String',
         Overwrite: true,
-        Description: `DynamoDB table for public account ${config.accountId} (shared)`,
+        Description: `DynamoDB table for public account ${config.accountId} (shared customer table)`,
       }));
 
       await this.ssmClient.send(new PutParameterCommand({
@@ -200,13 +204,13 @@ export class AccountProvisionerService {
         Description: `Provisioning status for account ${config.accountId}`,
       }));
 
-      this.logger.log(`Public account ${config.accountId} registered in shared table`);
+      this.logger.log(`Public account ${config.accountId} registered in customer table: ${publicTableName}`);
 
       return {
         success: true,
-        tableName: sharedTableName,
+        tableName: publicTableName,
         cloudType: 'public',
-        message: `Account registered in shared table: ${sharedTableName}`,
+        message: `Account registered in customer table: ${publicTableName}`,
       };
     } catch (error: any) {
       this.logger.error(`Failed to register public account: ${error.message}`);

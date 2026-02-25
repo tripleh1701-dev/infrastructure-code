@@ -40,6 +40,16 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Verify Pipeline Executor Handler
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          if [ ! -f dist/pipeline-executor.handler.js ]; then
+            echo "::error::dist/pipeline-executor.handler.js not found — nest build may not have compiled it"
+            exit 1
+          fi
+          echo "✅ pipeline-executor.handler.js present in dist/"
+
       - name: Package Lambda Artifact
         working-directory: backend
         run: |

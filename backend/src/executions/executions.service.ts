@@ -6,7 +6,9 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { PipelinesService } from '../pipelines/pipelines.service';
@@ -14,6 +16,7 @@ import { YamlParserService, ParsedPipeline } from './yaml-parser.service';
 import { DependencyResolverService } from './dependency-resolver.service';
 import { StageHandlersService } from './stage-handlers.service';
 import { InboxService } from '../inbox/inbox.service';
+import { resolveAwsCredentials } from '../common/utils/aws-credentials';
 
 export type ExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'WAITING_APPROVAL';
 
@@ -32,11 +35,22 @@ export interface ExecutionRecord {
   pipelineSnapshot?: any;
 }
 
+/**
+ * Executions Service
+ *
+ * Routes all customer operational data to the correct DynamoDB table:
+ * - Public accounts → shared customer table (PK: ACCT#<accountId>)
+ * - Private accounts → dedicated customer table (PK: EXEC#LIST)
+ * - Admin queries → control plane table
+ */
 @Injectable()
 export class ExecutionsService {
   private readonly logger = new Logger(ExecutionsService.name);
+  private lambdaClient: LambdaClient;
+  private executorFunctionName: string;
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly dynamoDb: DynamoDBService,
     private readonly dynamoDbRouter: DynamoDBRouterService,
     private readonly pipelinesService: PipelinesService,
@@ -45,7 +59,18 @@ export class ExecutionsService {
     private readonly stageHandlers: StageHandlersService,
     @Inject(forwardRef(() => InboxService))
     private readonly inboxService: InboxService,
-  ) {}
+  ) {
+    const region = this.configService.get('AWS_REGION', 'us-east-1');
+    const credentials = resolveAwsCredentials(
+      this.configService.get<string>('AWS_ACCESS_KEY_ID'),
+      this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
+    );
+    this.lambdaClient = new LambdaClient({ region, ...(credentials && { credentials }) });
+    this.executorFunctionName = this.configService.get<string>(
+      'PIPELINE_EXECUTOR_FUNCTION',
+      'license-portal-staging-pipeline-executor',
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // RUN PIPELINE
@@ -60,13 +85,11 @@ export class ExecutionsService {
     branch?: string,
     approverEmails?: string[],
   ): Promise<{ executionId: string }> {
-    // 1. Fetch pipeline
     const pipeline = await this.pipelinesService.findOne(accountId, pipelineId);
     if (!pipeline) {
       throw new NotFoundException(`Pipeline ${pipelineId} not found`);
     }
 
-    // 2. Parse YAML or canvas data
     let parsedPipeline: ParsedPipeline;
     if (pipeline.yamlContent) {
       parsedPipeline = this.yamlParser.parse(pipeline.yamlContent);
@@ -81,10 +104,10 @@ export class ExecutionsService {
       throw new BadRequestException('Pipeline has no executable nodes');
     }
 
-    // 3. Generate execution ID and create record
     const executionId = uuidv4();
     const now = new Date().toISOString();
 
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
     const executionItem: Record<string, any> = {
@@ -113,7 +136,7 @@ export class ExecutionsService {
       updatedAt: now,
     };
 
-    if (isPrivate) {
+    if (isCustomer) {
       await this.dynamoDbRouter.put(accountId, { Item: executionItem });
     } else {
       await this.dynamoDb.put({ Item: executionItem });
@@ -121,16 +144,55 @@ export class ExecutionsService {
 
     this.logger.log(`[EXECUTION:${executionId}] Pipeline execution started for ${pipelineId}`);
 
-    // 4. Execute asynchronously (don't await — return immediately)
-    this.executePipeline(
-      executionId, accountId, parsedPipeline, isPrivate,
-      userId, userEmail, approverEmails || [], pipelineId, buildJobId, branch,
-      pipeline?.name,
-    ).catch(
-      (err) => {
-        this.logger.error(`[EXECUTION:${executionId}] Unhandled error: ${err.message}`);
-      },
-    );
+    // Invoke the pipeline-executor Lambda asynchronously (InvocationType: Event)
+    // This ensures the execution runs in its own Lambda invocation and is not
+    // killed when the API Gateway Lambda returns the response.
+    try {
+      const payload = {
+        executionId,
+        accountId,
+        pipelineId,
+        buildJobId: buildJobId || null,
+        userId,
+        userEmail: userEmail || null,
+        branch: branch || 'main',
+        approverEmails: approverEmails || [],
+        pipelineName: pipeline?.name || parsedPipeline.name,
+        parsedPipeline: {
+          name: parsedPipeline.name,
+          nodes: parsedPipeline.nodes,
+        },
+        isCustomer,
+        isPrivate,
+      };
+
+      this.logger.log(
+        `[EXECUTION:${executionId}] Invoking Lambda ${this.executorFunctionName} asynchronously`,
+      );
+
+      const result = await this.lambdaClient.send(
+        new InvokeCommand({
+          FunctionName: this.executorFunctionName,
+          InvocationType: 'Event', // Async — returns 202 immediately
+          Payload: Buffer.from(JSON.stringify(payload)),
+        }),
+      );
+
+      this.logger.log(
+        `[EXECUTION:${executionId}] Lambda invoked, StatusCode: ${result.StatusCode}`,
+      );
+    } catch (lambdaErr: any) {
+      this.logger.error(
+        `[EXECUTION:${executionId}] Failed to invoke pipeline-executor Lambda: ${lambdaErr.message}`,
+      );
+
+      // Mark execution as FAILED since the executor won't run
+      await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'FAILED');
+
+      throw new BadRequestException(
+        `Failed to start pipeline execution: ${lambdaErr.message}`,
+      );
+    }
 
     return { executionId };
   }
@@ -151,11 +213,14 @@ export class ExecutionsService {
     endTime?: string;
     logs: string[];
   }> {
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
-    const result = isPrivate
+    const pk = isPrivate ? 'EXEC#LIST' : `ACCT#${accountId}`;
+
+    const result = isCustomer
       ? await this.dynamoDbRouter.get(accountId, {
-          Key: { PK: 'EXEC#LIST', SK: `EXEC#${executionId}` },
+          Key: { PK: pk, SK: `EXEC#${executionId}` },
         })
       : await this.dynamoDb.get({
           Key: { PK: `ACCT#${accountId}`, SK: `EXEC#${executionId}` },
@@ -170,8 +235,7 @@ export class ExecutionsService {
       throw new NotFoundException(`Execution ${executionId} not found`);
     }
 
-    // Fetch stage records
-    const stagesResult = isPrivate
+    const stagesResult = isCustomer
       ? await this.dynamoDbRouter.query(accountId, {
           KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
           ExpressionAttributeValues: {
@@ -196,7 +260,6 @@ export class ExecutionsService {
       message: s.message,
     }));
 
-    // Build log lines from stage records
     const logs = stageRecords.map(
       (s) =>
         `[NODE:${s.nodeId}][STAGE:${s.stageId}] ${s.status}${s.message ? ` — ${s.message}` : ''} (${s.startedAt || ''})`,
@@ -221,9 +284,9 @@ export class ExecutionsService {
     accountId: string,
     pipelineId: string,
   ): Promise<any[]> {
-    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
 
-    const result = isPrivate
+    const result = isCustomer
       ? await this.dynamoDbRouter.queryByIndex(
           accountId,
           'GSI2',
@@ -261,66 +324,50 @@ export class ExecutionsService {
     stageId: string,
     userId: string,
   ): Promise<void> {
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
-    // Update stage record
-    const stageKey = isPrivate
-      ? { PK: `EXEC#${executionId}`, SK: `STAGE#${stageId}` }
-      : { PK: `EXEC#${executionId}`, SK: `STAGE#${stageId}` };
+    const stageKey = { PK: `EXEC#${executionId}`, SK: `STAGE#${stageId}` };
 
     try {
-      if (isPrivate) {
-        await this.dynamoDbRouter.update(accountId, {
-          Key: stageKey,
-          UpdateExpression: 'SET #status = :status, approvedBy = :user, approvedAt = :now',
-          ExpressionAttributeNames: { '#status': 'status' },
-          ExpressionAttributeValues: {
-            ':status': 'APPROVED',
-            ':user': userId,
-            ':now': new Date().toISOString(),
-          },
-        });
+      const stageParams = {
+        Key: stageKey,
+        UpdateExpression: 'SET #status = :status, approvedBy = :user, approvedAt = :now',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': 'APPROVED',
+          ':user': userId,
+          ':now': new Date().toISOString(),
+        },
+      };
+
+      if (isCustomer) {
+        await this.dynamoDbRouter.update(accountId, stageParams);
       } else {
-        await this.dynamoDb.update({
-          Key: stageKey,
-          UpdateExpression: 'SET #status = :status, approvedBy = :user, approvedAt = :now',
-          ExpressionAttributeNames: { '#status': 'status' },
-          ExpressionAttributeValues: {
-            ':status': 'APPROVED',
-            ':user': userId,
-            ':now': new Date().toISOString(),
-          },
-        });
+        await this.dynamoDb.update(stageParams);
       }
     } catch {
       throw new NotFoundException(`Stage ${stageId} not found for execution ${executionId}`);
     }
 
-    // Update execution status back to RUNNING
     const execKey = isPrivate
       ? { PK: 'EXEC#LIST', SK: `EXEC#${executionId}` }
       : { PK: `ACCT#${accountId}`, SK: `EXEC#${executionId}` };
 
-    if (isPrivate) {
-      await this.dynamoDbRouter.update(accountId, {
-        Key: execKey,
-        UpdateExpression: 'SET #status = :status, updatedAt = :now',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':status': 'RUNNING',
-          ':now': new Date().toISOString(),
-        },
-      });
+    const execParams = {
+      Key: execKey,
+      UpdateExpression: 'SET #status = :status, updatedAt = :now',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: {
+        ':status': 'RUNNING',
+        ':now': new Date().toISOString(),
+      },
+    };
+
+    if (isCustomer) {
+      await this.dynamoDbRouter.update(accountId, execParams);
     } else {
-      await this.dynamoDb.update({
-        Key: execKey,
-        UpdateExpression: 'SET #status = :status, updatedAt = :now',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':status': 'RUNNING',
-          ':now': new Date().toISOString(),
-        },
-      });
+      await this.dynamoDb.update(execParams);
     }
 
     console.log(`[EXECUTION:${executionId}][STAGE:${stageId}] APPROVED by ${userId}`);
@@ -331,10 +378,11 @@ export class ExecutionsService {
   // EXECUTION ENGINE (async, runs after returning executionId)
   // ---------------------------------------------------------------------------
 
-  private async executePipeline(
+  async executePipeline(
     executionId: string,
     accountId: string,
     pipeline: ParsedPipeline,
+    isCustomer: boolean,
     isPrivate: boolean,
     userId?: string,
     userEmail?: string,
@@ -348,28 +396,24 @@ export class ExecutionsService {
     console.log(`[EXECUTION:${executionId}] Nodes: ${pipeline.nodes.map((n) => n.id).join(', ')}`);
 
     try {
-      // Resolve node execution order
       const nodeTiers = this.dependencyResolver.resolveNodeOrder(pipeline.nodes);
 
       for (const tier of nodeTiers) {
-        // Execute nodes in same tier sequentially (for Lambda, avoid parallel)
         for (const node of tier) {
           console.log(`[EXECUTION:${executionId}][NODE:${node.id}] Starting node: ${node.name}`);
 
-          await this.updateExecutionProgress(executionId, accountId, isPrivate, {
+          await this.updateExecutionProgress(executionId, accountId, isCustomer, isPrivate, {
             currentNode: node.id,
           });
 
-          // Resolve stage order within node
           const orderedStages = this.dependencyResolver.resolveStageOrder(node.stages);
 
           for (const stage of orderedStages) {
-            await this.updateExecutionProgress(executionId, accountId, isPrivate, {
+            await this.updateExecutionProgress(executionId, accountId, isCustomer, isPrivate, {
               currentStage: stage.id,
             });
 
-            // Write stage record — started
-            await this.writeStageRecord(executionId, accountId, isPrivate, {
+            await this.writeStageRecord(executionId, accountId, isCustomer, {
               nodeId: node.id,
               stageId: stage.id,
               stageName: stage.name,
@@ -378,38 +422,34 @@ export class ExecutionsService {
               startedAt: new Date().toISOString(),
             });
 
-            // Execute
             const result = await this.stageHandlers.executeStage(
               executionId,
               node.id,
               stage,
               approverEmails,
+              accountId,
             );
 
-            // Update stage record
-            await this.writeStageRecord(executionId, accountId, isPrivate, {
+            await this.writeStageRecord(executionId, accountId, isCustomer, {
               nodeId: node.id,
               stageId: stage.id,
               stageName: stage.name,
               stageType: stage.type,
               status: result.status,
-              startedAt: undefined, // don't overwrite
+              startedAt: undefined,
               completedAt: new Date().toISOString(),
               message: result.message,
               durationMs: result.durationMs,
             });
 
-            // Handle failure
             if (result.status === 'FAILED') {
-              await this.finalizeExecution(executionId, accountId, isPrivate, 'FAILED');
+              await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'FAILED');
               return;
             }
 
-            // Handle approval pause
             if (result.status === 'WAITING_APPROVAL') {
-              await this.updateExecutionStatus(executionId, accountId, isPrivate, 'WAITING_APPROVAL');
+              await this.updateExecutionStatus(executionId, accountId, isCustomer, isPrivate, 'WAITING_APPROVAL');
 
-              // Create inbox notifications for all designated approvers
               if (approverEmails && approverEmails.length > 0) {
                 for (const approverEmail of approverEmails) {
                   try {
@@ -443,7 +483,6 @@ export class ExecutionsService {
                 );
               }
 
-              // Execution pauses here — will resume via approveStage API
               return;
             }
           }
@@ -452,11 +491,10 @@ export class ExecutionsService {
         }
       }
 
-      // All nodes completed
-      await this.finalizeExecution(executionId, accountId, isPrivate, 'SUCCESS');
+      await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'SUCCESS');
     } catch (error) {
       console.log(`[EXECUTION:${executionId}] FATAL ERROR: ${error.message}`);
-      await this.finalizeExecution(executionId, accountId, isPrivate, 'FAILED');
+      await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'FAILED');
     }
   }
 
@@ -467,6 +505,7 @@ export class ExecutionsService {
   private async updateExecutionProgress(
     executionId: string,
     accountId: string,
+    isCustomer: boolean,
     isPrivate: boolean,
     updates: Record<string, any>,
   ): Promise<void> {
@@ -488,7 +527,7 @@ export class ExecutionsService {
       ExpressionAttributeValues: values,
     };
 
-    if (isPrivate) {
+    if (isCustomer) {
       await this.dynamoDbRouter.update(accountId, params);
     } else {
       await this.dynamoDb.update(params);
@@ -498,14 +537,10 @@ export class ExecutionsService {
   private async updateExecutionStatus(
     executionId: string,
     accountId: string,
+    isCustomer: boolean,
     isPrivate: boolean,
     status: ExecutionStatus,
   ): Promise<void> {
-    await this.updateExecutionProgress(executionId, accountId, isPrivate, {
-      '#status': status,
-    });
-
-    // Use proper expression for reserved word
     const key = isPrivate
       ? { PK: 'EXEC#LIST', SK: `EXEC#${executionId}` }
       : { PK: `ACCT#${accountId}`, SK: `EXEC#${executionId}` };
@@ -520,7 +555,7 @@ export class ExecutionsService {
       },
     };
 
-    if (isPrivate) {
+    if (isCustomer) {
       await this.dynamoDbRouter.update(accountId, params);
     } else {
       await this.dynamoDb.update(params);
@@ -530,6 +565,7 @@ export class ExecutionsService {
   private async finalizeExecution(
     executionId: string,
     accountId: string,
+    isCustomer: boolean,
     isPrivate: boolean,
     status: ExecutionStatus,
   ): Promise<void> {
@@ -551,7 +587,7 @@ export class ExecutionsService {
       },
     };
 
-    if (isPrivate) {
+    if (isCustomer) {
       await this.dynamoDbRouter.update(accountId, params);
     } else {
       await this.dynamoDb.update(params);
@@ -561,7 +597,7 @@ export class ExecutionsService {
   private async writeStageRecord(
     executionId: string,
     accountId: string,
-    isPrivate: boolean,
+    isCustomer: boolean,
     stage: {
       nodeId: string;
       stageId: string;
@@ -591,7 +627,7 @@ export class ExecutionsService {
       ...(stage.durationMs !== undefined && { durationMs: stage.durationMs }),
     };
 
-    if (isPrivate) {
+    if (isCustomer) {
       await this.dynamoDbRouter.put(accountId, { Item: item });
     } else {
       await this.dynamoDb.put({ Item: item });

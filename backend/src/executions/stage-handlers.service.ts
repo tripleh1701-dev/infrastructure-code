@@ -30,6 +30,7 @@ export class StageHandlersService {
     nodeId: string,
     stage: ParsedStage,
     approverEmails?: string[],
+    accountId?: string,
   ): Promise<StageResult> {
     const prefix = `[EXECUTION:${executionId}][NODE:${nodeId}]`;
 
@@ -55,7 +56,7 @@ export class StageHandlersService {
 
     try {
       // Resolve credentials: YAML-embedded auth or DynamoDB credential
-      const resolvedAuth = await this.resolveAuth(stage);
+      const resolvedAuth = await this.resolveAuth(stage, accountId);
 
       switch (stage.type.toLowerCase()) {
         case 'plan':
@@ -109,6 +110,7 @@ export class StageHandlersService {
    */
   private async resolveAuth(
     stage: ParsedStage,
+    accountId?: string,
   ): Promise<{ auth: ConnectorAuth | null; credential: Credential | null; toolConfig: ToolConfig | null }> {
     const toolConfig = stage.toolConfig || null;
 
@@ -126,7 +128,7 @@ export class StageHandlersService {
     // 2. DynamoDB credential (canvas pipeline with selectedConnectors)
     if (stage.credentialId) {
       try {
-        const credential = await this.credentialsService.findOne(stage.credentialId);
+        const credential = await this.credentialsService.findOne(stage.credentialId, accountId);
         this.logger.log(`[STAGE:${stage.id}] Using DynamoDB credential: ${credential.name} (${credential.authType})`);
 
         // Map credential fields to ConnectorAuth

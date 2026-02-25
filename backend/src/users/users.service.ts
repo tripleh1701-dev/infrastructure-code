@@ -898,6 +898,61 @@ export class UsersService {
     };
   }
 
+  // ─── USER PREFERENCES ────────────────────────────────────────────────
+
+  /**
+   * Get user preferences by Cognito sub.
+   * Stored as PK=USERPREF#<sub> SK=METADATA
+   */
+  async getPreferences(cognitoSub: string): Promise<Record<string, any>> {
+    const result = await this.dynamoDb.get({
+      Key: { PK: `USERPREF#${cognitoSub}`, SK: 'METADATA' },
+    });
+    if (!result.Item) return { theme: 'light' };
+    const { PK, SK, GSI1PK, GSI1SK, GSI2PK, GSI2SK, ...prefs } = result.Item as Record<string, any>;
+    return prefs;
+  }
+
+  /**
+   * Upsert user preferences.
+   */
+  async updatePreferences(cognitoSub: string, prefs: Record<string, any>): Promise<void> {
+    const now = new Date().toISOString();
+    const existing = await this.dynamoDb.get({
+      Key: { PK: `USERPREF#${cognitoSub}`, SK: 'METADATA' },
+    });
+
+    if (!existing.Item) {
+      await this.dynamoDb.put({
+        Item: {
+          PK: `USERPREF#${cognitoSub}`,
+          SK: 'METADATA',
+          ...prefs,
+          updatedAt: now,
+        },
+      });
+      return;
+    }
+
+    const updateExpressions: string[] = ['#updatedAt = :updatedAt'];
+    const names: Record<string, string> = { '#updatedAt': 'updatedAt' };
+    const values: Record<string, any> = { ':updatedAt': now };
+
+    for (const [key, val] of Object.entries(prefs)) {
+      if (['PK', 'SK'].includes(key)) continue;
+      updateExpressions.push(`#${key} = :${key}`);
+      names[`#${key}`] = key;
+      values[`:${key}`] = val;
+    }
+
+    await this.dynamoDb.update({
+      Key: { PK: `USERPREF#${cognitoSub}`, SK: 'METADATA' },
+      UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
+    });
+  }
+
   private mapToUser(item: Record<string, any>): User {
     return {
       id: item.id,

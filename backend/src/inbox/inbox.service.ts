@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
-import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { NotificationService } from '../common/notifications/notification.service';
 
 export type NotificationType = 'APPROVAL_REQUEST' | 'APPROVAL_GRANTED' | 'APPROVAL_REJECTED' | 'INFO';
@@ -22,7 +21,6 @@ export interface InboxNotification {
   status: NotificationStatus;
   title: string;
   message: string;
-  /** Link context for approval-type notifications */
   context?: {
     executionId?: string;
     pipelineId?: string;
@@ -45,27 +43,21 @@ export class InboxService {
 
   constructor(
     private readonly dynamoDb: DynamoDBService,
-    private readonly dynamoDbRouter: DynamoDBRouterService,
     private readonly notificationService: NotificationService,
   ) {}
 
-  /**
-   * Create an inbox notification (typically an approval request).
-   */
   async createNotification(
     accountId: string,
     notification: Omit<InboxNotification, 'notificationId' | 'createdAt' | 'updatedAt'>,
   ): Promise<InboxNotification> {
     const notificationId = uuidv4();
     const now = new Date().toISOString();
-    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
     const item: Record<string, any> = {
-      PK: isPrivate ? 'INBOX#LIST' : `ACCT#${accountId}`,
+      PK: `ACCT#${accountId}`,
       SK: `INBOX#${notificationId}`,
       GSI1PK: 'ENTITY#INBOX',
       GSI1SK: `INBOX#${notificationId}`,
-      // GSI2 for querying by recipient email
       GSI2PK: `INBOX_USER#${notification.recipientEmail}`,
       GSI2SK: `INBOX#${now}#${notificationId}`,
       entityType: 'INBOX_NOTIFICATION',
@@ -85,17 +77,10 @@ export class InboxService {
       updatedAt: now,
     };
 
-    if (isPrivate) {
-      await this.dynamoDbRouter.put(accountId, { Item: item });
-    } else {
-      await this.dynamoDb.put({ Item: item });
-    }
+    await this.dynamoDb.put({ Item: item });
 
-    this.logger.log(
-      `[INBOX] Notification ${notificationId} created for ${notification.recipientEmail}`,
-    );
+    this.logger.log(`[INBOX] Notification ${notificationId} created for ${notification.recipientEmail}`);
 
-    // Send SES email for approval requests so approvers are notified even when offline
     if (notification.type === 'APPROVAL_REQUEST') {
       try {
         await this.notificationService.sendApprovalRequestEmail(
@@ -110,51 +95,26 @@ export class InboxService {
           { accountId },
         );
       } catch (emailErr: any) {
-        // Never block inbox creation if email fails
-        this.logger.error(
-          `[INBOX] SES email failed for ${notification.recipientEmail}: ${emailErr.message}`,
-        );
+        this.logger.error(`[INBOX] SES email failed for ${notification.recipientEmail}: ${emailErr.message}`);
       }
     }
 
     return {
-      notificationId,
-      accountId,
-      recipientEmail: notification.recipientEmail,
-      recipientUserId: notification.recipientUserId,
-      senderEmail: notification.senderEmail,
-      senderUserId: notification.senderUserId,
-      type: notification.type,
-      status: notification.status,
-      title: notification.title,
-      message: notification.message,
-      context: notification.context,
-      createdAt: now,
-      updatedAt: now,
+      notificationId, accountId,
+      recipientEmail: notification.recipientEmail, recipientUserId: notification.recipientUserId,
+      senderEmail: notification.senderEmail, senderUserId: notification.senderUserId,
+      type: notification.type, status: notification.status,
+      title: notification.title, message: notification.message,
+      context: notification.context, createdAt: now, updatedAt: now,
     };
   }
 
-  /**
-   * List all notifications for a user (by email).
-   */
-  async listForUser(
-    accountId: string,
-    userEmail: string,
-  ): Promise<InboxNotification[]> {
-    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
-
-    const result = isPrivate
-      ? await this.dynamoDbRouter.queryByIndex(
-          accountId,
-          'GSI2',
-          'GSI2PK = :pk',
-          { ':pk': `INBOX_USER#${userEmail}` },
-        )
-      : await this.dynamoDb.queryByIndex(
-          'GSI2',
-          'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
-          { ':pk': `INBOX_USER#${userEmail}`, ':sk': 'INBOX#' },
-        );
+  async listForUser(accountId: string, userEmail: string): Promise<InboxNotification[]> {
+    const result = await this.dynamoDb.queryByIndex(
+      'GSI2',
+      'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
+      { ':pk': `INBOX_USER#${userEmail}`, ':sk': 'INBOX#' },
+    );
 
     return (result.Items || [])
       .filter((item) => item.entityType === 'INBOX_NOTIFICATION')
@@ -162,61 +122,20 @@ export class InboxService {
       .map(this.mapToNotification);
   }
 
-  /**
-   * Approve an approval request notification.
-   */
-  async approveNotification(
-    accountId: string,
-    notificationId: string,
-    userId: string,
-    userEmail: string,
-  ): Promise<InboxNotification> {
-    const notification = await this.updateNotificationStatus(
-      accountId,
-      notificationId,
-      'APPROVED',
-      userId,
-      userEmail,
-    );
-
-    // Mark sibling approval notifications for the same execution+stage as STALE
+  async approveNotification(accountId: string, notificationId: string, userId: string, userEmail: string): Promise<InboxNotification> {
+    const notification = await this.updateNotificationStatus(accountId, notificationId, 'APPROVED', userId, userEmail);
     if (notification.context?.executionId && notification.context?.stageId) {
-      await this.markSiblingNotificationsStale(
-        accountId,
-        notificationId,
-        notification.context.executionId,
-        notification.context.stageId,
-      );
+      await this.markSiblingNotificationsStale(accountId, notificationId, notification.context.executionId, notification.context.stageId);
     }
-
     return notification;
   }
 
-  /**
-   * Mark all other PENDING approval notifications for the same execution+stage as STALE.
-   * Called when one approver approves — remaining approvers see a stale status.
-   */
-  private async markSiblingNotificationsStale(
-    accountId: string,
-    approvedNotificationId: string,
-    executionId: string,
-    stageId: string,
-  ): Promise<void> {
-    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
-
-    // Query all notifications for this account
-    const result = isPrivate
-      ? await this.dynamoDbRouter.queryByIndex(
-          accountId,
-          'GSI1',
-          'GSI1PK = :pk',
-          { ':pk': 'ENTITY#INBOX' },
-        )
-      : await this.dynamoDb.queryByIndex(
-          'GSI1',
-          'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
-          { ':pk': 'ENTITY#INBOX', ':sk': 'INBOX#' },
-        );
+  private async markSiblingNotificationsStale(accountId: string, approvedNotificationId: string, executionId: string, stageId: string): Promise<void> {
+    const result = await this.dynamoDb.queryByIndex(
+      'GSI1',
+      'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
+      { ':pk': 'ENTITY#INBOX', ':sk': 'INBOX#' },
+    );
 
     const siblings = (result.Items || []).filter((item) =>
       item.entityType === 'INBOX_NOTIFICATION' &&
@@ -229,129 +148,52 @@ export class InboxService {
 
     const now = new Date().toISOString();
     for (const sibling of siblings) {
-      const key = isPrivate
-        ? { PK: 'INBOX#LIST', SK: `INBOX#${sibling.notificationId || sibling.id}` }
-        : { PK: `ACCT#${accountId}`, SK: `INBOX#${sibling.notificationId || sibling.id}` };
-
-      const params = {
-        Key: key,
-        UpdateExpression: 'SET #status = :status, updatedAt = :now',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':status': 'STALE',
-          ':now': now,
-        },
-      };
+      const key = { PK: `ACCT#${accountId}`, SK: `INBOX#${sibling.notificationId || sibling.id}` };
 
       try {
-        if (isPrivate) {
-          await this.dynamoDbRouter.update(accountId, params);
-        } else {
-          await this.dynamoDb.update(params);
-        }
-        this.logger.log(
-          `[INBOX] Marked notification ${sibling.notificationId || sibling.id} as STALE`,
-        );
+        await this.dynamoDb.update({
+          Key: key,
+          UpdateExpression: 'SET #status = :status, updatedAt = :now',
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: { ':status': 'STALE', ':now': now },
+        });
       } catch (err: any) {
-        this.logger.error(
-          `[INBOX] Failed to mark notification as STALE: ${err.message}`,
-        );
+        this.logger.error(`[INBOX] Failed to mark notification as STALE: ${err.message}`);
       }
     }
   }
 
-  /**
-   * Reject an approval request notification.
-   */
-  async rejectNotification(
-    accountId: string,
-    notificationId: string,
-    userId: string,
-    userEmail: string,
-  ): Promise<InboxNotification> {
-    return this.updateNotificationStatus(
-      accountId,
-      notificationId,
-      'REJECTED',
-      userId,
-      userEmail,
-    );
+  async rejectNotification(accountId: string, notificationId: string, userId: string, userEmail: string): Promise<InboxNotification> {
+    return this.updateNotificationStatus(accountId, notificationId, 'REJECTED', userId, userEmail);
   }
 
-  /**
-   * Dismiss an info notification.
-   */
-  async dismissNotification(
-    accountId: string,
-    notificationId: string,
-  ): Promise<void> {
-    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
-    const key = isPrivate
-      ? { PK: 'INBOX#LIST', SK: `INBOX#${notificationId}` }
-      : { PK: `ACCT#${accountId}`, SK: `INBOX#${notificationId}` };
+  async dismissNotification(accountId: string, notificationId: string): Promise<void> {
+    const key = { PK: `ACCT#${accountId}`, SK: `INBOX#${notificationId}` };
 
-    const params = {
+    await this.dynamoDb.update({
       Key: key,
       UpdateExpression: 'SET #status = :status, updatedAt = :now',
       ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: {
-        ':status': 'DISMISSED',
-        ':now': new Date().toISOString(),
-      },
-    };
-
-    if (isPrivate) {
-      await this.dynamoDbRouter.update(accountId, params);
-    } else {
-      await this.dynamoDb.update(params);
-    }
+      ExpressionAttributeValues: { ':status': 'DISMISSED', ':now': new Date().toISOString() },
+    });
   }
 
-  /**
-   * Get count of pending notifications for badge display.
-   */
-  async getPendingCount(
-    accountId: string,
-    userEmail: string,
-  ): Promise<number> {
+  async getPendingCount(accountId: string, userEmail: string): Promise<number> {
     const notifications = await this.listForUser(accountId, userEmail);
     return notifications.filter((n) => n.status === 'PENDING').length;
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
-
-  private async updateNotificationStatus(
-    accountId: string,
-    notificationId: string,
-    status: NotificationStatus,
-    userId: string,
-    userEmail: string,
-  ): Promise<InboxNotification> {
-    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
-    const key = isPrivate
-      ? { PK: 'INBOX#LIST', SK: `INBOX#${notificationId}` }
-      : { PK: `ACCT#${accountId}`, SK: `INBOX#${notificationId}` };
-
+  private async updateNotificationStatus(accountId: string, notificationId: string, status: NotificationStatus, userId: string, userEmail: string): Promise<InboxNotification> {
+    const key = { PK: `ACCT#${accountId}`, SK: `INBOX#${notificationId}` };
     const now = new Date().toISOString();
-    const params = {
-      Key: key,
-      UpdateExpression:
-        'SET #status = :status, actionedAt = :now, actionedBy = :user, updatedAt = :now',
-      ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: {
-        ':status': status,
-        ':user': userEmail,
-        ':now': now,
-      },
-      ReturnValues: 'ALL_NEW' as const,
-    };
 
-    let result;
-    if (isPrivate) {
-      result = await this.dynamoDbRouter.update(accountId, params);
-    } else {
-      result = await this.dynamoDb.update(params);
-    }
+    const result = await this.dynamoDb.update({
+      Key: key,
+      UpdateExpression: 'SET #status = :status, actionedAt = :now, actionedBy = :user, updatedAt = :now',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':status': status, ':user': userEmail, ':now': now },
+      ReturnValues: 'ALL_NEW' as const,
+    });
 
     if (!result?.Attributes) {
       throw new NotFoundException(`Notification ${notificationId} not found`);
@@ -364,19 +206,13 @@ export class InboxService {
     return {
       notificationId: item.notificationId || item.id,
       accountId: item.accountId,
-      recipientEmail: item.recipientEmail,
-      recipientUserId: item.recipientUserId,
-      senderEmail: item.senderEmail,
-      senderUserId: item.senderUserId,
-      type: item.type,
-      status: item.status,
-      title: item.title,
-      message: item.message,
+      recipientEmail: item.recipientEmail, recipientUserId: item.recipientUserId,
+      senderEmail: item.senderEmail, senderUserId: item.senderUserId,
+      type: item.type, status: item.status,
+      title: item.title, message: item.message,
       context: item.context,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-      actionedAt: item.actionedAt,
-      actionedBy: item.actionedBy,
+      createdAt: item.createdAt, updatedAt: item.updatedAt,
+      actionedAt: item.actionedAt, actionedBy: item.actionedBy,
     };
   }
 }

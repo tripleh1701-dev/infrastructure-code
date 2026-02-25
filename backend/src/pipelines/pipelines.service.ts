@@ -37,16 +37,14 @@ export interface Pipeline {
 /**
  * Pipelines Service
  *
- * Implements full CRUD with DynamoDB single-table design:
- *
- * Shared table (public accounts):
+ * Routes all customer operational data to the correct DynamoDB table:
+ * - Public accounts → shared customer table (account-admin-public-staging)
  *   PK: ACCT#<accountId>       SK: PIPELINE#<pipelineId>
- *   GSI1PK: ENTITY#PIPELINE    GSI1SK: PIPELINE#<pipelineId>
- *   GSI2PK: ENT#<enterpriseId> GSI2SK: PIPELINE#<pipelineId>
- *   GSI3PK: STATUS#<status>    GSI3SK: <updatedAt>
- *
- * Dedicated table (private accounts):
+ * - Private accounts → dedicated customer table
  *   PK: PIPELINE#LIST          SK: PIPELINE#<pipelineId>
+ * - Admin queries (no accountId) → control plane table
+ *
+ * GSI keys (same for both):
  *   GSI1PK: ENTITY#PIPELINE    GSI1SK: PIPELINE#<pipelineId>
  *   GSI2PK: ENT#<enterpriseId> GSI2SK: PIPELINE#<pipelineId>
  *   GSI3PK: STATUS#<status>    GSI3SK: <updatedAt>
@@ -64,19 +62,17 @@ export class PipelinesService {
   // READ operations
   // ---------------------------------------------------------------------------
 
-  /**
-   * List all pipelines for an account, optionally filtered by enterprise
-   */
   async findAll(
     accountId: string,
     enterpriseId?: string,
     status?: PipelineStatus,
   ): Promise<Pipeline[]> {
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
     if (enterpriseId) {
       // Query by enterprise via GSI2
-      const result = isPrivate
+      const result = isCustomer
         ? await this.dynamoDbRouter.queryByIndex(
             accountId,
             'GSI2',
@@ -93,7 +89,7 @@ export class PipelinesService {
         (item) => item.entityType === 'PIPELINE',
       );
 
-      // For shared table, also filter by accountId for tenant isolation
+      // For shared tables (public customer or control plane), filter by accountId for tenant isolation
       if (!isPrivate) {
         items = items.filter((item) => item.accountId === accountId);
       }
@@ -106,11 +102,12 @@ export class PipelinesService {
     }
 
     // No enterprise filter — query all pipelines for the account
-    if (isPrivate) {
+    if (isCustomer) {
+      const pk = isPrivate ? 'PIPELINE#LIST' : `ACCT#${accountId}`;
       const result = await this.dynamoDbRouter.query(accountId, {
         KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
         ExpressionAttributeValues: {
-          ':pk': 'PIPELINE#LIST',
+          ':pk': pk,
           ':sk': 'PIPELINE#',
         },
       });
@@ -122,7 +119,7 @@ export class PipelinesService {
       return items.map(this.mapToPipeline);
     }
 
-    // Public account — query by ACCT PK partition
+    // No customer table configured — fallback to control plane (admin scenario)
     const result = await this.dynamoDb.query({
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
       ExpressionAttributeValues: {
@@ -138,15 +135,15 @@ export class PipelinesService {
     return items.map(this.mapToPipeline);
   }
 
-  /**
-   * Get a single pipeline by ID
-   */
   async findOne(accountId: string, pipelineId: string): Promise<Pipeline> {
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
-    const result = isPrivate
+    const pk = isPrivate ? 'PIPELINE#LIST' : `ACCT#${accountId}`;
+
+    const result = isCustomer
       ? await this.dynamoDbRouter.get(accountId, {
-          Key: { PK: 'PIPELINE#LIST', SK: `PIPELINE#${pipelineId}` },
+          Key: { PK: pk, SK: `PIPELINE#${pipelineId}` },
         })
       : await this.dynamoDb.get({
           Key: { PK: `ACCT#${accountId}`, SK: `PIPELINE#${pipelineId}` },
@@ -156,7 +153,7 @@ export class PipelinesService {
       throw new NotFoundException(`Pipeline ${pipelineId} not found`);
     }
 
-    // Verify tenant isolation for shared table
+    // Verify tenant isolation for shared tables
     if (!isPrivate && result.Item.accountId !== accountId) {
       throw new ForbiddenException('Access denied to this pipeline');
     }
@@ -168,9 +165,6 @@ export class PipelinesService {
   // WRITE operations
   // ---------------------------------------------------------------------------
 
-  /**
-   * Create a new pipeline
-   */
   async create(dto: CreatePipelineDto, user: CognitoUser): Promise<Pipeline> {
     const id = uuidv4();
     const now = new Date().toISOString();
@@ -180,10 +174,11 @@ export class PipelinesService {
       `Creating pipeline "${dto.name}" for account ${dto.accountId}`,
     );
 
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(dto.accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(dto.accountId);
 
     const item: Record<string, any> = {
-      // Keys — vary by table type
+      // Keys — vary by cloud type
       PK: isPrivate ? 'PIPELINE#LIST' : `ACCT#${dto.accountId}`,
       SK: `PIPELINE#${id}`,
 
@@ -216,7 +211,7 @@ export class PipelinesService {
       updatedAt: now,
     };
 
-    if (isPrivate) {
+    if (isCustomer) {
       await this.dynamoDbRouter.put(dto.accountId, { Item: item });
     } else {
       await this.dynamoDb.put({ Item: item });
@@ -226,28 +221,21 @@ export class PipelinesService {
     return this.mapToPipeline(item);
   }
 
-  /**
-   * Update an existing pipeline
-   *
-   * Uses a DynamoDB UpdateExpression to patch only the changed fields,
-   * including GSI key updates when status changes.
-   */
   async update(
     accountId: string,
     pipelineId: string,
     dto: UpdatePipelineDto,
   ): Promise<Pipeline> {
-    // Verify existence + tenant access
     const existing = await this.findOne(accountId, pipelineId);
 
     const now = new Date().toISOString();
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
     const updateExpressions: string[] = ['#updatedAt = :updatedAt'];
     const names: Record<string, string> = { '#updatedAt': 'updatedAt' };
     const values: Record<string, any> = { ':updatedAt': now };
 
-    // Build dynamic update expression from provided fields
     const fieldMap: [keyof UpdatePipelineDto, string][] = [
       ['name', 'name'],
       ['description', 'description'],
@@ -271,7 +259,6 @@ export class PipelinesService {
       }
     }
 
-    // Status change also updates GSI3PK for status-based queries
     if (dto.status !== undefined) {
       updateExpressions.push('#status = :status');
       updateExpressions.push('GSI3PK = :gsi3pk');
@@ -294,7 +281,7 @@ export class PipelinesService {
       ReturnValues: 'ALL_NEW' as const,
     };
 
-    const result = isPrivate
+    const result = isCustomer
       ? await this.dynamoDbRouter.update(accountId, updateParams)
       : await this.dynamoDb.update(updateParams);
 
@@ -302,20 +289,17 @@ export class PipelinesService {
     return this.mapToPipeline(result.Attributes!);
   }
 
-  /**
-   * Delete a pipeline
-   */
   async remove(accountId: string, pipelineId: string): Promise<void> {
-    // Verify existence + tenant access
     await this.findOne(accountId, pipelineId);
 
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
     const key = isPrivate
       ? { PK: 'PIPELINE#LIST', SK: `PIPELINE#${pipelineId}` }
       : { PK: `ACCT#${accountId}`, SK: `PIPELINE#${pipelineId}` };
 
-    if (isPrivate) {
+    if (isCustomer) {
       await this.dynamoDbRouter.delete(accountId, { Key: key });
     } else {
       await this.dynamoDb.delete({ Key: key });
@@ -328,9 +312,6 @@ export class PipelinesService {
   // Bulk / Utility operations
   // ---------------------------------------------------------------------------
 
-  /**
-   * Duplicate a pipeline (clone with a new ID)
-   */
   async duplicate(
     accountId: string,
     pipelineId: string,
@@ -355,9 +336,6 @@ export class PipelinesService {
     return this.create(createDto, user);
   }
 
-  /**
-   * Count pipelines by status for a given account (dashboard metrics)
-   */
   async countByStatus(
     accountId: string,
     enterpriseId?: string,

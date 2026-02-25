@@ -32,8 +32,11 @@ export class EnvironmentsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.environmentsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.environmentsService.findOne(id, accountId);
   }
 
   @Post()
@@ -47,15 +50,22 @@ export class EnvironmentsController {
   @Put(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager', 'user')
-  async update(@Param('id') id: string, @Body() dto: UpdateEnvironmentDto) {
-    return this.environmentsService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateEnvironmentDto,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.environmentsService.update(id, dto, accountId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager')
-  async remove(@Param('id') id: string) {
-    await this.environmentsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    await this.environmentsService.remove(id, accountId);
   }
 }

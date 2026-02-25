@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
+import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { CreateCredentialDto } from './dto/create-credential.dto';
 import { UpdateCredentialDto } from './dto/update-credential.dto';
 
@@ -31,33 +32,60 @@ export interface Credential {
   workstreams?: string[];
 }
 
+/**
+ * Credentials Service
+ *
+ * Routes all customer operational data to the correct DynamoDB table:
+ * - Public accounts → shared customer table (PK: ACCOUNT#<accountId>)
+ * - Private accounts → dedicated customer table (PK: CREDENTIAL#LIST)
+ * - Admin queries (no accountId) → control plane table
+ */
 @Injectable()
 export class CredentialsService {
-  constructor(private readonly dynamoDb: DynamoDBService) {}
+  constructor(
+    private readonly dynamoDb: DynamoDBService,
+    private readonly dynamoDbRouter: DynamoDBRouterService,
+  ) {}
 
   async findAll(accountId?: string, enterpriseId?: string): Promise<(Credential & { workstreams: string[] })[]> {
     let items: Credential[];
 
     if (accountId) {
-      const result = await this.dynamoDb.query({
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        ExpressionAttributeValues: {
-          ':pk': `ACCOUNT#${accountId}`,
-          ':sk': 'CREDENTIAL#',
-        },
-      });
+      const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
+      const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
 
-      items = (result.Items || []).map(this.mapToCredential);
+      if (isCustomer) {
+        const pk = isPrivate ? 'CREDENTIAL#LIST' : `ACCOUNT#${accountId}`;
+        const result = await this.dynamoDbRouter.query(accountId, {
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': pk,
+            ':sk': 'CREDENTIAL#',
+          },
+        });
+        items = (result.Items || []).map(this.mapToCredential);
+      } else {
+        // Fallback: control plane
+        const result = await this.dynamoDb.query({
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `ACCOUNT#${accountId}`,
+            ':sk': 'CREDENTIAL#',
+          },
+        });
+        items = (result.Items || []).map(this.mapToCredential);
+      }
+
       if (enterpriseId) {
         items = items.filter((c) => c.enterpriseId === enterpriseId);
       }
     } else {
+      // Admin query — control plane
       const result = await this.dynamoDb.queryByIndex(
         'GSI1',
         'GSI1PK = :pk',
         { ':pk': 'ENTITY#CREDENTIAL' },
       );
-
       items = (result.Items || []).map(this.mapToCredential);
       if (enterpriseId) {
         items = items.filter((c) => c.enterpriseId === enterpriseId);
@@ -67,13 +95,22 @@ export class CredentialsService {
     // Enrich each credential with its workstream associations
     const enriched = await Promise.all(
       items.map(async (cred) => {
-        const wsResult = await this.dynamoDb.query({
-          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-          ExpressionAttributeValues: {
-            ':pk': `CREDENTIAL#${cred.id}`,
-            ':sk': 'WORKSTREAM#',
-          },
-        });
+        const isCustomer = await this.dynamoDbRouter.isCustomerAccount(cred.accountId);
+        const wsResult = isCustomer
+          ? await this.dynamoDbRouter.query(cred.accountId, {
+              KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+              ExpressionAttributeValues: {
+                ':pk': `CREDENTIAL#${cred.id}`,
+                ':sk': 'WORKSTREAM#',
+              },
+            })
+          : await this.dynamoDb.query({
+              KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+              ExpressionAttributeValues: {
+                ':pk': `CREDENTIAL#${cred.id}`,
+                ':sk': 'WORKSTREAM#',
+              },
+            });
         return {
           ...cred,
           workstreams: (wsResult.Items || []).map((item) => item.workstreamId),
@@ -84,9 +121,6 @@ export class CredentialsService {
     return enriched;
   }
 
-  /**
-   * Find credentials expiring within a given number of days.
-   */
   async findExpiring(filters: {
     accountId?: string;
     enterpriseId?: string;
@@ -112,7 +146,35 @@ export class CredentialsService {
       .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
   }
 
-  async findOne(id: string): Promise<Credential & { workstreams: string[] }> {
+  async findOne(id: string, accountId?: string): Promise<Credential & { workstreams: string[] }> {
+    if (accountId) {
+      const isCustomer = await this.dynamoDbRouter.isCustomerAccount(accountId);
+      const isPrivate = await this.dynamoDbRouter.isPrivateAccount(accountId);
+
+      if (isCustomer) {
+        const pk = isPrivate ? 'CREDENTIAL#LIST' : `ACCOUNT#${accountId}`;
+        const result = await this.dynamoDbRouter.get(accountId, {
+          Key: { PK: pk, SK: `CREDENTIAL#${id}` },
+        });
+
+        if (result.Item) {
+          const credential = this.mapToCredential(result.Item);
+          const wsResult = await this.dynamoDbRouter.query(accountId, {
+            KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+            ExpressionAttributeValues: {
+              ':pk': `CREDENTIAL#${id}`,
+              ':sk': 'WORKSTREAM#',
+            },
+          });
+          return {
+            ...credential,
+            workstreams: (wsResult.Items || []).map((item) => item.workstreamId),
+          };
+        }
+      }
+    }
+
+    // Fallback: control plane GSI lookup
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
       'GSI1PK = :pk AND GSI1SK = :sk',
@@ -128,7 +190,6 @@ export class CredentialsService {
 
     const credential = this.mapToCredential(result.Items[0]);
 
-    // Get workstreams
     const wsResult = await this.dynamoDb.query({
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
       ExpressionAttributeValues: {
@@ -146,9 +207,11 @@ export class CredentialsService {
   async create(dto: CreateCredentialDto): Promise<Credential> {
     const id = uuidv4();
     const now = new Date().toISOString();
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(dto.accountId);
+    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(dto.accountId);
 
     const credential: Record<string, any> = {
-      PK: `ACCOUNT#${dto.accountId}`,
+      PK: isPrivate ? 'CREDENTIAL#LIST' : `ACCOUNT#${dto.accountId}`,
       SK: `CREDENTIAL#${id}`,
       GSI1PK: 'ENTITY#CREDENTIAL',
       GSI1SK: `CREDENTIAL#${id}`,
@@ -174,32 +237,38 @@ export class CredentialsService {
       updatedAt: now,
     };
 
-    const operations: any[] = [{ Put: { Item: credential } }];
-
+    const wsItems: any[] = [];
     if (dto.workstreamIds?.length) {
       for (const wsId of dto.workstreamIds) {
-        operations.push({
-          Put: {
-            Item: {
-              PK: `CREDENTIAL#${id}`,
-              SK: `WORKSTREAM#${wsId}`,
-              id: uuidv4(),
-              credentialId: id,
-              workstreamId: wsId,
-              createdAt: now,
-            },
-          },
+        wsItems.push({
+          PK: `CREDENTIAL#${id}`,
+          SK: `WORKSTREAM#${wsId}`,
+          id: uuidv4(),
+          credentialId: id,
+          workstreamId: wsId,
+          createdAt: now,
         });
       }
     }
 
-    await this.dynamoDb.transactWrite(operations);
+    const operations: any[] = [{ Put: { Item: credential } }];
+    for (const ws of wsItems) {
+      operations.push({ Put: { Item: ws } });
+    }
+
+    if (isCustomer) {
+      await this.dynamoDbRouter.transactWrite(dto.accountId, operations);
+    } else {
+      await this.dynamoDb.transactWrite(operations);
+    }
 
     return this.mapToCredential(credential);
   }
 
-  async update(id: string, dto: UpdateCredentialDto): Promise<Credential> {
-    const existing = await this.findOne(id);
+  async update(id: string, dto: UpdateCredentialDto, accountId?: string): Promise<Credential> {
+    const existing = await this.findOne(id, accountId);
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(existing.accountId);
+    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(existing.accountId);
 
     const now = new Date().toISOString();
     const updateExpressions: string[] = ['#updatedAt = :updatedAt'];
@@ -226,29 +295,46 @@ export class CredentialsService {
       }
     }
 
-    const result = await this.dynamoDb.update({
-      Key: { PK: `ACCOUNT#${existing.accountId}`, SK: `CREDENTIAL#${id}` },
+    const key = {
+      PK: isPrivate ? 'CREDENTIAL#LIST' : `ACCOUNT#${existing.accountId}`,
+      SK: `CREDENTIAL#${id}`,
+    };
+
+    const updateParams = {
+      Key: key,
       UpdateExpression: `SET ${updateExpressions.join(', ')}`,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
-      ReturnValues: 'ALL_NEW',
-    });
+      ReturnValues: 'ALL_NEW' as const,
+    };
+
+    const result = isCustomer
+      ? await this.dynamoDbRouter.update(existing.accountId, updateParams)
+      : await this.dynamoDb.update(updateParams);
 
     // Update workstreams if provided
     if (dto.workstreamIds !== undefined) {
-      const existingWs = await this.dynamoDb.query({
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        ExpressionAttributeValues: {
-          ':pk': `CREDENTIAL#${id}`,
-          ':sk': 'WORKSTREAM#',
-        },
-      });
+      const queryFn = isCustomer
+        ? () => this.dynamoDbRouter.query(existing.accountId, {
+            KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+            ExpressionAttributeValues: { ':pk': `CREDENTIAL#${id}`, ':sk': 'WORKSTREAM#' },
+          })
+        : () => this.dynamoDb.query({
+            KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+            ExpressionAttributeValues: { ':pk': `CREDENTIAL#${id}`, ':sk': 'WORKSTREAM#' },
+          });
+
+      const existingWs = await queryFn();
 
       if (existingWs.Items?.length) {
         const deleteRequests = existingWs.Items.map((item) => ({
           DeleteRequest: { Key: { PK: item.PK, SK: item.SK } },
         }));
-        await this.dynamoDb.batchWrite(deleteRequests);
+        if (isCustomer) {
+          await this.dynamoDbRouter.batchWrite(existing.accountId, deleteRequests);
+        } else {
+          await this.dynamoDb.batchWrite(deleteRequests);
+        }
       }
 
       if (dto.workstreamIds.length > 0) {
@@ -264,38 +350,61 @@ export class CredentialsService {
             },
           },
         }));
-        await this.dynamoDb.transactWrite(operations);
+        if (isCustomer) {
+          await this.dynamoDbRouter.transactWrite(existing.accountId, operations);
+        } else {
+          await this.dynamoDb.transactWrite(operations);
+        }
       }
     }
 
     return this.mapToCredential(result.Attributes!);
   }
 
-  async rotate(id: string, newCredentials: Record<string, any>): Promise<Credential> {
+  async rotate(id: string, newCredentials: Record<string, any>, accountId?: string): Promise<Credential> {
     return this.update(id, {
       credentials: newCredentials,
       status: 'active',
-    });
+    }, accountId);
   }
 
-  async remove(id: string): Promise<void> {
-    const existing = await this.findOne(id);
+  async remove(id: string, accountId?: string): Promise<void> {
+    const existing = await this.findOne(id, accountId);
+    const isCustomer = await this.dynamoDbRouter.isCustomerAccount(existing.accountId);
+    const isPrivate = await this.dynamoDbRouter.isPrivateAccount(existing.accountId);
 
     // Delete workstream associations
-    const wsResult = await this.dynamoDb.query({
-      KeyConditionExpression: 'PK = :pk',
-      ExpressionAttributeValues: { ':pk': `CREDENTIAL#${id}` },
-    });
+    const wsResult = isCustomer
+      ? await this.dynamoDbRouter.query(existing.accountId, {
+          KeyConditionExpression: 'PK = :pk',
+          ExpressionAttributeValues: { ':pk': `CREDENTIAL#${id}` },
+        })
+      : await this.dynamoDb.query({
+          KeyConditionExpression: 'PK = :pk',
+          ExpressionAttributeValues: { ':pk': `CREDENTIAL#${id}` },
+        });
 
     const deleteRequests = [
-      { DeleteRequest: { Key: { PK: `ACCOUNT#${existing.accountId}`, SK: `CREDENTIAL#${id}` } } },
+      {
+        DeleteRequest: {
+          Key: {
+            PK: isPrivate ? 'CREDENTIAL#LIST' : `ACCOUNT#${existing.accountId}`,
+            SK: `CREDENTIAL#${id}`,
+          },
+        },
+      },
       ...(wsResult.Items || []).map((item) => ({
         DeleteRequest: { Key: { PK: item.PK, SK: item.SK } },
       })),
     ];
 
     for (let i = 0; i < deleteRequests.length; i += 25) {
-      await this.dynamoDb.batchWrite(deleteRequests.slice(i, i + 25));
+      const batch = deleteRequests.slice(i, i + 25);
+      if (isCustomer) {
+        await this.dynamoDbRouter.batchWrite(existing.accountId, batch);
+      } else {
+        await this.dynamoDb.batchWrite(batch);
+      }
     }
   }
 

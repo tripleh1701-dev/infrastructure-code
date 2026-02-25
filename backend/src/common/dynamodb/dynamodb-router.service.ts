@@ -301,11 +301,45 @@ export class DynamoDBRouterService implements OnModuleInit {
   }
 
   /**
-   * Check if an account is a private cloud account
+   * Check if an account is a private cloud account (dedicated table, simplified PKs)
    */
   async isPrivateAccount(accountId: string): Promise<boolean> {
+    const cloudType = await this.getCloudType(accountId);
+    return cloudType === 'private';
+  }
+
+  /**
+   * Check if an account has a customer-specific table (private OR public customer table).
+   * Returns true for any account with SSM routing parameters — both private (dedicated)
+   * and public (shared customer table like account-admin-public-staging).
+   */
+  async isCustomerAccount(accountId: string): Promise<boolean> {
     const tableName = await this.resolveTableName(accountId);
     return tableName !== this.sharedTableName;
+  }
+
+  /**
+   * Get the cloud type for an account from SSM cache.
+   * Returns 'public' by default if not found.
+   */
+  async getCloudType(accountId: string): Promise<CloudType> {
+    // Check table config cache first
+    const cached = this.tableCache.get(accountId);
+    if (cached && Date.now() - cached.cachedAt < this.CACHE_TTL_MS) {
+      return cached.cloudType;
+    }
+
+    try {
+      const config = await this.getAccountTableConfig(accountId);
+      if (config) {
+        this.tableCache.set(accountId, config);
+        return config.cloudType;
+      }
+    } catch {
+      // Fall through to default
+    }
+
+    return 'public';
   }
 
   /**

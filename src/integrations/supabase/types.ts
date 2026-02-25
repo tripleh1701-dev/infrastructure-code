@@ -313,6 +313,7 @@ export type Database = {
           service: string
           status: string
           updated_at: string
+          yaml_content: string | null
         }
         Insert: {
           account_id: string
@@ -330,6 +331,7 @@ export type Database = {
           service?: string
           status?: string
           updated_at?: string
+          yaml_content?: string | null
         }
         Update: {
           account_id?: string
@@ -347,6 +349,7 @@ export type Database = {
           service?: string
           status?: string
           updated_at?: string
+          yaml_content?: string | null
         }
         Relationships: [
           {
@@ -810,13 +813,17 @@ export type Database = {
         Row: {
           account_id: string
           connectivity_status: string
+          connector_icon_name: string | null
           connector_name: string | null
+          connectors: Json
           created_at: string
           description: string | null
           enterprise_id: string
+          entity: string | null
           id: string
           name: string
           product_id: string | null
+          scope: string | null
           service_id: string | null
           updated_at: string
           workstream_id: string | null
@@ -824,13 +831,17 @@ export type Database = {
         Insert: {
           account_id: string
           connectivity_status?: string
+          connector_icon_name?: string | null
           connector_name?: string | null
+          connectors?: Json
           created_at?: string
           description?: string | null
           enterprise_id: string
+          entity?: string | null
           id?: string
           name: string
           product_id?: string | null
+          scope?: string | null
           service_id?: string | null
           updated_at?: string
           workstream_id?: string | null
@@ -838,13 +849,17 @@ export type Database = {
         Update: {
           account_id?: string
           connectivity_status?: string
+          connector_icon_name?: string | null
           connector_name?: string | null
+          connectors?: Json
           created_at?: string
           description?: string | null
           enterprise_id?: string
+          entity?: string | null
           id?: string
           name?: string
           product_id?: string | null
+          scope?: string | null
           service_id?: string | null
           updated_at?: string
           workstream_id?: string | null

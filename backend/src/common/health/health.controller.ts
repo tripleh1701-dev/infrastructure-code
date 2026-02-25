@@ -61,20 +61,24 @@ export class HealthController {
       };
     }
 
-    // 2. Check if private account
-    const privateStart = Date.now();
+    // 2. Check account type (customer vs control-plane, private vs public)
+    const typeStart = Date.now();
     try {
+      const isCustomer = await this.dynamoRouter.isCustomerAccount(accountId);
       const isPrivate = await this.dynamoRouter.isPrivateAccount(accountId);
+      const cloudType = await this.dynamoRouter.getCloudType(accountId);
       checks['account_type'] = {
         status: 'pass',
-        message: isPrivate ? 'Private account (dedicated table)' : 'Public account (shared table)',
-        duration_ms: Date.now() - privateStart,
+        message: isCustomer
+          ? `Customer account (${cloudType}, ${isPrivate ? 'dedicated' : 'shared customer'} table)`
+          : 'No customer table configured — falls back to control plane',
+        duration_ms: Date.now() - typeStart,
       };
     } catch (error: any) {
       checks['account_type'] = {
         status: 'fail',
         message: `Failed to determine account type: ${error.message}`,
-        duration_ms: Date.now() - privateStart,
+        duration_ms: Date.now() - typeStart,
       };
     }
 
