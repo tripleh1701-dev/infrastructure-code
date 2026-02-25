@@ -166,7 +166,7 @@ export function EnvironmentConnectorsEditor({
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">Environment Type</Label>
+                      <Label className="text-xs">Environment Type <span className="text-destructive">*</span></Label>
                       <Select
                         value={conn.environmentType || ""}
                         onValueChange={(v) => update(idx, { environmentType: v })}
@@ -180,7 +180,7 @@ export function EnvironmentConnectorsEditor({
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Host URL (for connectivity test)</Label>
+                      <Label className="text-xs">Host URL <span className="text-destructive">*</span></Label>
                       <Input
                         className="h-8 text-xs bg-background"
                         placeholder="https://xxx.it-cpitrial06.cfapps.us10-001.hana.ondemand.com"
@@ -191,7 +191,7 @@ export function EnvironmentConnectorsEditor({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">API URL (SAP CPI)</Label>
+                      <Label className="text-xs">API URL <span className="text-destructive">*</span></Label>
                       <Input
                         className="h-8 text-xs bg-background"
                         placeholder="https://xxx.it-cpitrial06.cfapps.us10-001.hana.ondemand.com"
@@ -200,7 +200,7 @@ export function EnvironmentConnectorsEditor({
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">API Credential</Label>
+                      <Label className="text-xs">API Credential Name <span className="text-destructive">*</span></Label>
                       <Select
                         value={conn.apiCredentialName || ""}
                         onValueChange={(v) => update(idx, { apiCredentialName: v })}
@@ -216,7 +216,7 @@ export function EnvironmentConnectorsEditor({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">IFlow URL</Label>
+                      <Label className="text-xs">IFlow URL <span className="text-destructive">*</span></Label>
                       <Input
                         className="h-8 text-xs bg-background"
                         placeholder="IFlow endpoint URL"
@@ -225,7 +225,7 @@ export function EnvironmentConnectorsEditor({
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">IFlow Credential</Label>
+                      <Label className="text-xs">IFlow Credential Name <span className="text-destructive">*</span></Label>
                       <Select
                         value={conn.iflowCredentialName || ""}
                         onValueChange={(v) => update(idx, { iflowCredentialName: v })}
@@ -239,64 +239,10 @@ export function EnvironmentConnectorsEditor({
                       </Select>
                     </div>
                   </div>
-                </>
-              )}
-
-              {/* Authentication — for non-CF connectors */}
-              {!isCloudFoundry(conn.connector) && conn.connector && (
-                <>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Authentication Type</Label>
-                    <Select
-                      value={conn.authenticationType || ""}
-                      onValueChange={(v) => update(idx, { authenticationType: v })}
-                    >
-                      <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="Select auth type" /></SelectTrigger>
-                      <SelectContent className="z-[200] bg-popover border shadow-lg">
-                        {AUTH_TYPES.map((a) => (
-                          <SelectItem key={a} value={a}>{a}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Credential Name from Manage Credentials */}
-                  <div className="space-y-1">
-                    <Label className="text-xs">Credential</Label>
-                    <Select
-                      value={conn.credentialName || ""}
-                      onValueChange={(v) => update(idx, { credentialName: v })}
-                    >
-                      <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="Select credential from Manage Credentials" /></SelectTrigger>
-                      <SelectContent className="z-[200] bg-popover border shadow-lg">
-                        {credentials.map((c) => (
-                          <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-
-              {/* Cloud Foundry uses credentials from Manage Credentials, show auth type info */}
-              {isCloudFoundry(conn.connector) && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Authentication Type</Label>
-                  <Select
-                    value={conn.authenticationType || "OAuth2"}
-                    onValueChange={(v) => update(idx, { authenticationType: v })}
-                  >
-                    <SelectTrigger className="h-8 text-xs bg-background"><SelectValue placeholder="Select auth type" /></SelectTrigger>
-                    <SelectContent className="z-[200] bg-popover border shadow-lg">
-                      {AUTH_TYPES.map((a) => (
-                        <SelectItem key={a} value={a}>{a}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    OAuth2 credentials (Client ID, Client Secret, Token URL) are loaded from the selected API/IFlow credential in Manage Credentials.
+                  <p className="text-[10px] text-muted-foreground">
+                    Authentication credentials (OAuth2 or Basic) are configured in Manage Credentials. API Credential should use Service Key Details: API. IFlow Credential should use Service Key Details: IFlow.
                   </p>
-                </div>
+                </>
               )}
 
               {/* GitHub-specific */}

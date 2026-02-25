@@ -317,12 +317,17 @@ const CONNECTOR_AUTH_CONFIG: Record<string, {
   "Cloud Foundry": {
     authTypes: [
       { value: "oauth2", label: "OAuth2" },
+      { value: "basic", label: "Basic" },
     ],
     fields: {
       oauth2: [
         { label: "Client ID", type: "text", placeholder: "Enter your Client ID" },
         { label: "Client Secret", type: "password", placeholder: "Enter your Client Secret" },
-        { label: "Token URL", type: "text", placeholder: "Enter the Token URL" },
+        { label: "Token URL", type: "text", placeholder: "e.g. https://<subdomain>.authentication.us10.hana.ondemand.com/oauth/token" },
+      ],
+      basic: [
+        { label: "Username", type: "text", placeholder: "Enter your username" },
+        { label: "API Key", type: "password", placeholder: "Enter your API key" },
       ],
     },
     // Special config for Cloud Foundry - requires service key type selection
