@@ -25,6 +25,7 @@ import {
   FileCode,
   Eye,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PipelineStageProgress, PipelineStage } from "./PipelineStageProgress";
@@ -599,7 +600,9 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               }[tab.key];
 
               return (
-                <div key={tab.key} className="relative z-10 group/tab">
+                <Tooltip key={tab.key} delayDuration={200}>
+                  <TooltipTrigger asChild>
+                  <div className="relative z-10">
                   <motion.button
                     onClick={() => toggleTab(tab.key)}
                     className={cn(
@@ -677,13 +680,12 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
                       />
                     )}
                   </motion.button>
-
-                  {/* Tooltip on hover */}
-                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 px-2.5 py-1.5 rounded-lg bg-foreground text-background text-[10px] font-semibold whitespace-nowrap opacity-0 pointer-events-none group-hover/tab:opacity-100 transition-all duration-200 shadow-xl z-50 group-hover/tab:translate-x-0 translate-x-1">
-                    {tab.label}
-                    <div className="absolute right-[-5px] top-1/2 -translate-y-1/2 w-0 h-0 border-t-[5px] border-b-[5px] border-l-[5px] border-transparent border-l-foreground" />
                   </div>
-                </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" sideOffset={8}>
+                    <p className="text-xs font-semibold">{tab.label}</p>
+                  </TooltipContent>
+                </Tooltip>
               );
             })}
 
@@ -746,6 +748,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
       open={artifactsOpen}
       onClose={() => setArtifactsOpen(false)}
       buildJobName={buildJob.connector_name}
+      buildJobId={buildJob.id}
     />
     <PipelineConfigDialog
       open={buildYamlOpen}

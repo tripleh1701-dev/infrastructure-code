@@ -44,7 +44,10 @@ export const handler = async (event: any, context: Context) => {
     await executionsService.executePipeline(
       event.executionId,
       event.accountId,
-      event.parsedPipeline,       // { name, nodes }
+      {
+        ...event.parsedPipeline,
+        buildVersion: event.buildVersion || event.parsedPipeline?.buildVersion,
+      },
       event.isCustomer ?? false,
       event.isPrivate ?? false,
       event.userId,

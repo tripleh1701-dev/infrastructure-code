@@ -36,6 +36,7 @@ import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
+import { testConnectivity } from "@/lib/testConnectivity";
 import { EnvironmentConnectorsEditor, type CredentialOption } from "./EnvironmentConnectorsEditor";
 import { useCredentials } from "@/hooks/useCredentials";
 
@@ -116,24 +117,12 @@ export function EditEnvironmentDialog({
       }
 
       const connectorKey = (conn.connector || "").toLowerCase().replace(/\s+/g, "_");
-      let result: { success: boolean; message?: string };
-
-      if (isExternalApi()) {
-        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
-          connector: connectorKey,
-          url: testUrl,
-          credentialId,
-          credentialName: credName,
-        });
-        if (error) throw new Error(error.message);
-        result = data!;
-      } else {
-        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-          body: { connector: connectorKey, url: testUrl, credentialId },
-        });
-        if (error) throw error;
-        result = data;
-      }
+      const result = await testConnectivity({
+        connector: connectorKey,
+        url: testUrl,
+        credentialId,
+        credentialName: credName,
+      });
 
       if (result?.success) {
         toast.success(result.message || `${conn.connector} connected successfully`);

@@ -58,6 +58,7 @@ import { EditEnvironmentDialog } from "./EditEnvironmentDialog";
 import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
+import { testConnectivity } from "@/lib/testConnectivity";
 import type { EnvironmentConnectorRecord } from "@/hooks/useEnvironments";
 
 const CATEGORY_STYLES: Record<string, string> = {
@@ -389,25 +390,14 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
             continue;
           }
 
-          let result: { success: boolean; message?: string };
           const connectorKey = (conn.connector || "").toLowerCase().replace(/\s+/g, "_");
 
-          if (isExternalApi()) {
-            const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
-              connector: connectorKey,
-              url: testUrl,
-              credentialId,
-              credentialName,
-            });
-            if (error) throw new Error(error.message);
-            result = data!;
-          } else {
-            const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-              body: { connector: connectorKey, url: testUrl, credentialId },
-            });
-            if (error) throw error;
-            result = data;
-          }
+          const result = await testConnectivity({
+            connector: connectorKey,
+            url: testUrl,
+            credentialId,
+            credentialName,
+          });
 
           if (!result?.success) {
             overallSuccess = false;
@@ -442,22 +432,11 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
           return;
         }
 
-        let result: { success: boolean; message?: string };
-        if (isExternalApi()) {
-          const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
-            connector: toolKey.toLowerCase().replace(/\s+/g, "_"),
-            url: connectorUrl,
-            credentialId,
-          });
-          if (error) throw new Error(error.message);
-          result = data!;
-        } else {
-          const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-            body: { connector: toolKey.toLowerCase().replace(/\s+/g, "_"), url: connectorUrl, credentialId },
-          });
-          if (error) throw error;
-          result = data;
-        }
+        const result = await testConnectivity({
+          connector: toolKey.toLowerCase().replace(/\s+/g, "_"),
+          url: connectorUrl,
+          credentialId,
+        });
 
         overallSuccess = !!result?.success;
         lastMessage = result?.message || "";

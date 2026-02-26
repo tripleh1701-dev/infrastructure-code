@@ -26,6 +26,7 @@ export interface BuildJob {
   connector_icon_name: string | null;
   pipeline_stages_state: any;
   yaml_content: string | null;
+  selected_artifacts: any[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +85,7 @@ export const buildsService = {
       connector_icon_name: item.connectorIconName ?? item.connector_icon_name ?? null,
       pipeline_stages_state: item.pipelineStagesState ?? item.pipeline_stages_state ?? null,
       yaml_content: item.yamlContent ?? item.yaml_content ?? null,
+      selected_artifacts: item.selectedArtifacts ?? item.selected_artifacts ?? null,
       created_at: item.createdAt ?? item.created_at ?? '',
       updated_at: item.updatedAt ?? item.updated_at ?? '',
     };

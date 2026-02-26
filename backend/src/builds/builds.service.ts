@@ -20,6 +20,7 @@ export interface BuildJob {
   scope?: string;
   connectorIconName?: string;
   pipelineStagesState?: Record<string, any>;
+  selectedArtifacts?: any[];
   createdAt: string;
   updatedAt: string;
 }
@@ -166,6 +167,7 @@ export class BuildsService {
       scope: dto.scope || null,
       connectorIconName: dto.connectorIconName || null,
       pipelineStagesState: dto.pipelineStagesState || {},
+      selectedArtifacts: dto.selectedArtifacts || [],
       createdAt: now,
       updatedAt: now,
     };
@@ -201,6 +203,7 @@ export class BuildsService {
       ["scope", "scope"],
       ["connectorIconName", "connectorIconName"],
       ["pipelineStagesState", "pipelineStagesState"],
+      ["selectedArtifacts", "selectedArtifacts"],
     ];
 
     for (const [dtoKey, dbKey] of fields) {
@@ -424,6 +427,7 @@ export class BuildsService {
       scope: item.scope,
       connectorIconName: item.connectorIconName,
       pipelineStagesState: item.pipelineStagesState,
+      selectedArtifacts: item.selectedArtifacts || [],
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

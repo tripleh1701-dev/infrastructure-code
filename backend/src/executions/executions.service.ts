@@ -12,10 +12,14 @@ import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { PipelinesService } from '../pipelines/pipelines.service';
-import { YamlParserService, ParsedPipeline } from './yaml-parser.service';
+import { BuildsService } from '../builds/builds.service';
+import { YamlParserService, ParsedPipeline, ParsedStage, ToolConfig, ConnectorAuth } from './yaml-parser.service';
 import { DependencyResolverService } from './dependency-resolver.service';
-import { StageHandlersService } from './stage-handlers.service';
+import { StageHandlersService, ExecutionContext } from './stage-handlers.service';
 import { InboxService } from '../inbox/inbox.service';
+import { ConnectorsService } from '../connectors/connectors.service';
+import { EnvironmentsService, EnvironmentConnector } from '../environments/environments.service';
+import { CredentialsService } from '../credentials/credentials.service';
 import { resolveAwsCredentials } from '../common/utils/aws-credentials';
 
 export type ExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'WAITING_APPROVAL';
@@ -54,11 +58,15 @@ export class ExecutionsService {
     private readonly dynamoDb: DynamoDBService,
     private readonly dynamoDbRouter: DynamoDBRouterService,
     private readonly pipelinesService: PipelinesService,
+    private readonly buildsService: BuildsService,
     private readonly yamlParser: YamlParserService,
     private readonly dependencyResolver: DependencyResolverService,
     private readonly stageHandlers: StageHandlersService,
     @Inject(forwardRef(() => InboxService))
     private readonly inboxService: InboxService,
+    private readonly connectorsService: ConnectorsService,
+    private readonly environmentsService: EnvironmentsService,
+    private readonly credentialsService: CredentialsService,
   ) {
     const region = this.configService.get('AWS_REGION', 'us-east-1');
     const credentials = resolveAwsCredentials(
@@ -90,14 +98,35 @@ export class ExecutionsService {
       throw new NotFoundException(`Pipeline ${pipelineId} not found`);
     }
 
+    // Fetch build job to get selectedArtifacts and pipelineStagesState
+    let buildJob: any = null;
+    if (buildJobId) {
+      try {
+        buildJob = await this.buildsService.findOneJob(buildJobId, accountId);
+      } catch (err) {
+        this.logger.warn(`Build job ${buildJobId} not found: ${err.message}`);
+      }
+    }
+
     let parsedPipeline: ParsedPipeline;
     if (pipeline.yamlContent) {
       parsedPipeline = this.yamlParser.parse(pipeline.yamlContent);
     } else {
+      // Parse from canvas data, enriched with build job's stages state
+      const stagesState = buildJob?.pipelineStagesState || {};
       parsedPipeline = this.yamlParser.parseFromCanvasData(
         pipeline.nodes || [],
         pipeline.edges || [],
+        stagesState,
       );
+    }
+
+    // Resolve credentials, connector URLs, and environment configs from DynamoDB
+    await this.resolveStageCredentials(parsedPipeline, accountId, buildJob);
+
+    // Enrich deploy stages with selectedArtifacts from build job
+    if (buildJob?.selectedArtifacts?.length > 0) {
+      this.enrichDeployStagesWithArtifacts(parsedPipeline, buildJob.selectedArtifacts);
     }
 
     if (parsedPipeline.nodes.length === 0) {
@@ -144,9 +173,7 @@ export class ExecutionsService {
 
     this.logger.log(`[EXECUTION:${executionId}] Pipeline execution started for ${pipelineId}`);
 
-    // Invoke the pipeline-executor Lambda asynchronously (InvocationType: Event)
-    // This ensures the execution runs in its own Lambda invocation and is not
-    // killed when the API Gateway Lambda returns the response.
+    // Invoke the pipeline-executor Lambda asynchronously
     try {
       const payload = {
         executionId,
@@ -158,8 +185,10 @@ export class ExecutionsService {
         branch: branch || 'main',
         approverEmails: approverEmails || [],
         pipelineName: pipeline?.name || parsedPipeline.name,
+        buildVersion: parsedPipeline.buildVersion || buildJob?.buildVersion || '1.0.0',
         parsedPipeline: {
           name: parsedPipeline.name,
+          buildVersion: parsedPipeline.buildVersion,
           nodes: parsedPipeline.nodes,
         },
         isCustomer,
@@ -173,7 +202,7 @@ export class ExecutionsService {
       const result = await this.lambdaClient.send(
         new InvokeCommand({
           FunctionName: this.executorFunctionName,
-          InvocationType: 'Event', // Async — returns 202 immediately
+          InvocationType: 'Event',
           Payload: Buffer.from(JSON.stringify(payload)),
         }),
       );
@@ -186,7 +215,6 @@ export class ExecutionsService {
         `[EXECUTION:${executionId}] Failed to invoke pipeline-executor Lambda: ${lambdaErr.message}`,
       );
 
-      // Mark execution as FAILED since the executor won't run
       await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'FAILED');
 
       throw new BadRequestException(
@@ -195,6 +223,310 @@ export class ExecutionsService {
     }
 
     return { executionId };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Enrich deploy stages with selectedArtifacts
+  // ---------------------------------------------------------------------------
+
+  private enrichDeployStagesWithArtifacts(
+    pipeline: ParsedPipeline,
+    selectedArtifacts: any[],
+  ): void {
+    // Map selectedArtifacts to ArtifactDescriptor format
+    const artifacts = selectedArtifacts.map((a) => ({
+      name: a.artifactId || a.artifactName || a.name || '',
+      type: this.mapArtifactType(a.artifactType || a.type || ''),
+    }));
+
+    if (artifacts.length === 0) return;
+
+    for (const node of pipeline.nodes) {
+      for (const stage of node.stages) {
+        if (stage.type.toLowerCase() === 'deploy' && stage.toolConfig) {
+          // Add artifacts to the deploy tool config
+          stage.toolConfig.artifacts = [
+            ...(stage.toolConfig.artifacts || []),
+            ...artifacts,
+          ];
+          this.logger.log(
+            `Enriched deploy stage ${stage.id} with ${artifacts.length} selectedArtifacts`,
+          );
+        }
+      }
+    }
+  }
+
+  private mapArtifactType(type: string): string {
+    // Map display types back to API types
+    const typeMap: Record<string, string> = {
+      'Integration Flow': 'IntegrationFlow',
+      'Value Mapping': 'ValueMapping',
+      'Message Mapping': 'MessageMapping',
+      'Script Collection': 'ScriptCollection',
+      'Groovy Script': 'GroovyScript',
+      'IntegrationDesigntimeArtifacts': 'IntegrationFlow',
+      'ValueMappingDesigntimeArtifacts': 'ValueMapping',
+      'MessageMappingDesigntimeArtifacts': 'MessageMapping',
+      'ScriptCollectionDesigntimeArtifacts': 'ScriptCollection',
+    };
+    return typeMap[type] || type;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resolve Credentials & Environments from DynamoDB
+  // ---------------------------------------------------------------------------
+
+  /**
+   * For each stage in the parsed pipeline, resolve:
+   * 1. Connector ID → Credential ID → actual credential fields (URL, auth)
+   * 2. Environment name → Environment record → API URL, auth from connectors array
+   * 3. Repository URLs and branches from stagesState
+   *
+   * This populates `stage.toolConfig` with real auth data so the executor
+   * doesn't need embedded YAML credentials.
+   */
+  private async resolveStageCredentials(
+    pipeline: ParsedPipeline,
+    accountId: string,
+    buildJob?: any,
+  ): Promise<void> {
+    // Pre-fetch all environments for this account (used by deploy stages)
+    let environments: any[] = [];
+    try {
+      const enterpriseId = buildJob?.enterpriseId;
+      environments = await this.environmentsService.findAll(accountId, enterpriseId);
+    } catch (err) {
+      this.logger.warn(`Could not fetch environments: ${err.message}`);
+    }
+
+    for (const node of pipeline.nodes) {
+      for (const stage of node.stages) {
+        const config = stage.config || {};
+        const connectorId = config._connectorId;
+        const envName = config._environmentName;
+        const branch = config._branch;
+        const repoUrl = config._repoUrl;
+
+        try {
+          // ── Plan / Code stages: resolve connector → credential ──
+          if (connectorId && (stage.type === 'plan' || stage.type === 'code')) {
+            await this.resolveConnectorCredential(stage, connectorId, accountId, repoUrl, branch);
+          }
+
+          // ── Deploy stages: resolve environment → API URL + auth ──
+          if (stage.type === 'deploy' && envName) {
+            await this.resolveEnvironmentCredential(stage, envName, environments, accountId);
+          }
+
+          // ── Deploy stages with connector (fallback) ──
+          if (stage.type === 'deploy' && connectorId && !stage.toolConfig?.environment?.authentication) {
+            await this.resolveConnectorCredential(stage, connectorId, accountId, repoUrl, branch);
+          }
+        } catch (err) {
+          this.logger.warn(
+            `[STAGE:${stage.id}] Credential resolution failed: ${err.message}`,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Resolve a connector ID to its credential, populating the stage's toolConfig.
+   */
+  private async resolveConnectorCredential(
+    stage: ParsedStage,
+    connectorId: string,
+    accountId: string,
+    repoUrl?: string,
+    branch?: string,
+  ): Promise<void> {
+    const connector = await this.connectorsService.findOne(connectorId, accountId);
+
+    if (!connector) {
+      this.logger.warn(`Connector ${connectorId} not found`);
+      return;
+    }
+
+    this.logger.log(
+      `[STAGE:${stage.id}] Resolved connector: ${connector.name} (${connector.connectorTool}), credentialId: ${connector.credentialId}`,
+    );
+
+    let auth: ConnectorAuth | undefined;
+
+    if (connector.credentialId) {
+      try {
+        const credential = await this.credentialsService.findOne(connector.credentialId, accountId);
+        const c = credential.credentials || {};
+
+        auth = {
+          type: credential.authType,
+          username: c.username || c.Username || c.email || c['Email'],
+          apiKey: c.apiToken || c.api_token || c['API Key'] || c.apiKey || c['Api Key'],
+          token: c.token || c['Personal Access Token'] || c.pat || c['Token'],
+          clientId: c.clientId || c.client_id || c['Client ID'],
+          clientSecret: c.clientSecret || c.client_secret || c['Client Secret'],
+          tokenUrl: c.tokenUrl || c.token_url || c['Token URL'],
+        };
+
+        // Set credentialId for the stage handler's own resolution (as backup)
+        stage.credentialId = connector.credentialId;
+
+        this.logger.log(
+          `[STAGE:${stage.id}] Resolved credential: ${credential.name} (${credential.authType})`,
+        );
+      } catch (err) {
+        this.logger.warn(`Credential ${connector.credentialId} not found: ${err.message}`);
+      }
+    }
+
+    // Build toolConfig based on tool type
+    const toolType = stage.toolId || connector.connectorTool?.toUpperCase() || '';
+    const upperTool = toolType.toUpperCase();
+
+    if (!stage.toolConfig) {
+      stage.toolConfig = { type: toolType };
+    }
+
+    if (upperTool === 'JIRA' || upperTool.includes('JIRA')) {
+      stage.toolConfig.type = 'JIRA';
+      stage.toolConfig.connector = {
+        url: connector.url || '',
+        authentication: auth,
+      };
+    } else if (upperTool === 'GITHUB' || upperTool.includes('GITHUB')) {
+      stage.toolConfig.type = 'GITHUB';
+      stage.toolConfig.connector = {
+        repoUrl: repoUrl || connector.url || '',
+        branch: branch || 'main',
+        authentication: auth,
+      };
+    } else if (upperTool === 'GITLAB' || upperTool.includes('GITLAB')) {
+      stage.toolConfig.type = 'GITLAB';
+      stage.toolConfig.connector = {
+        repoUrl: repoUrl || connector.url || '',
+        branch: branch || 'main',
+        authentication: auth,
+      };
+    } else {
+      // Generic connector
+      stage.toolConfig.connector = {
+        url: connector.url || '',
+        authentication: auth,
+      };
+    }
+  }
+
+  /**
+   * Resolve an environment name to its Cloud Foundry / SAP CPI credentials.
+   * Looks up the environment record and extracts the deploy connector's API URL + auth.
+   */
+  private async resolveEnvironmentCredential(
+    stage: ParsedStage,
+    envName: string,
+    environments: any[],
+    accountId: string,
+  ): Promise<void> {
+    // Find environment by name (case-insensitive)
+    const env = environments.find(
+      (e) => e.name?.toLowerCase() === envName.toLowerCase(),
+    );
+
+    if (!env) {
+      this.logger.warn(`Environment "${envName}" not found for stage ${stage.id}`);
+      return;
+    }
+
+    this.logger.log(`[STAGE:${stage.id}] Resolved environment: ${env.name} (${env.id})`);
+
+    // Find the deploy connector in the environment's connectors array
+    const deployConnector: EnvironmentConnector | undefined = (env.connectors || []).find(
+      (c: EnvironmentConnector) =>
+        c.category === 'deploy' ||
+        c.connector === 'Cloud Foundry' ||
+        c.connector === 'SAP CPI',
+    );
+
+    if (!deployConnector) {
+      this.logger.warn(`No deploy connector found in environment "${envName}"`);
+      return;
+    }
+
+    // Resolve API credential if referenced by name
+    let auth: ConnectorAuth | undefined;
+
+    if (deployConnector.apiCredentialName) {
+      auth = await this.resolveNamedCredential(deployConnector.apiCredentialName, accountId);
+    }
+
+    // Fall back to inline auth on the environment connector
+    if (!auth) {
+      if (deployConnector.oauth2ClientId && deployConnector.oauth2ClientSecret) {
+        auth = {
+          type: 'OAuth2',
+          clientId: deployConnector.oauth2ClientId,
+          clientSecret: deployConnector.oauth2ClientSecret,
+          tokenUrl: deployConnector.oauth2TokenUrl || '',
+        };
+      } else if (deployConnector.username && deployConnector.apiKey) {
+        auth = {
+          type: 'Basic',
+          username: deployConnector.username,
+          apiKey: deployConnector.apiKey,
+        };
+      }
+    }
+
+    // Build the deploy toolConfig
+    if (!stage.toolConfig) {
+      stage.toolConfig = { type: 'SAP_CPI' };
+    }
+
+    stage.toolConfig.type = 'SAP_CPI';
+    stage.toolConfig.environment = {
+      apiUrl: deployConnector.apiUrl || deployConnector.hostUrl || deployConnector.url || '',
+      authentication: auth,
+    };
+
+    this.logger.log(
+      `[STAGE:${stage.id}] Deploy config: apiUrl=${stage.toolConfig.environment.apiUrl}, authType=${auth?.type || 'none'}`,
+    );
+  }
+
+  /**
+   * Resolve a credential by name (used by environment connectors that reference credentials by name).
+   */
+  private async resolveNamedCredential(
+    credentialName: string,
+    accountId: string,
+  ): Promise<ConnectorAuth | undefined> {
+    try {
+      // Fetch all credentials and find by name
+      const allCredentials = await this.credentialsService.findAll(accountId);
+      const credential = allCredentials.find(
+        (c) => c.name?.toLowerCase() === credentialName.toLowerCase(),
+      );
+
+      if (!credential) {
+        this.logger.warn(`Named credential "${credentialName}" not found`);
+        return undefined;
+      }
+
+      const c = credential.credentials || {};
+      return {
+        type: credential.authType,
+        username: c.username || c.Username || c.email,
+        apiKey: c.apiToken || c.api_token || c['API Key'] || c.apiKey,
+        token: c.token || c['Personal Access Token'] || c.pat,
+        clientId: c.clientId || c.client_id || c['Client ID'],
+        clientSecret: c.clientSecret || c.client_secret || c['Client Secret'],
+        tokenUrl: c.tokenUrl || c.token_url || c['Token URL'],
+      };
+    } catch (err) {
+      this.logger.warn(`Failed to resolve named credential "${credentialName}": ${err.message}`);
+      return undefined;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -235,6 +567,7 @@ export class ExecutionsService {
       throw new NotFoundException(`Execution ${executionId} not found`);
     }
 
+    // Query stage records
     const stagesResult = isCustomer
       ? await this.dynamoDbRouter.query(accountId, {
           KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
@@ -251,6 +584,23 @@ export class ExecutionsService {
           },
         });
 
+    // Query detailed log entries
+    const logsResult = isCustomer
+      ? await this.dynamoDbRouter.query(accountId, {
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `EXEC#${executionId}`,
+            ':sk': 'LOG#',
+          },
+        })
+      : await this.dynamoDb.query({
+          KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+          ExpressionAttributeValues: {
+            ':pk': `EXEC#${executionId}`,
+            ':sk': 'LOG#',
+          },
+        });
+
     const stageRecords = (stagesResult.Items || []).map((s) => ({
       stageId: s.stageId,
       nodeId: s.nodeId,
@@ -260,10 +610,19 @@ export class ExecutionsService {
       message: s.message,
     }));
 
-    const logs = stageRecords.map(
+    // Combine stage summary logs with detailed log entries
+    const stageLogs = stageRecords.map(
       (s) =>
         `[NODE:${s.nodeId}][STAGE:${s.stageId}] ${s.status}${s.message ? ` — ${s.message}` : ''} (${s.startedAt || ''})`,
     );
+
+    // Detailed log lines from LOG# items, sorted by timestamp
+    const detailedLogs = (logsResult.Items || [])
+      .sort((a, b) => (a.SK || '').localeCompare(b.SK || ''))
+      .flatMap((item) => item.logLines || []);
+
+    // Merge: detailed logs first (real-time), then stage summaries
+    const allLogs = detailedLogs.length > 0 ? detailedLogs : stageLogs;
 
     return {
       status: item.status as ExecutionStatus,
@@ -272,7 +631,7 @@ export class ExecutionsService {
       currentStage: item.currentStage,
       startTime: item.startTime,
       endTime: item.endTime,
-      logs,
+      logs: allLogs,
     };
   }
 
@@ -375,7 +734,7 @@ export class ExecutionsService {
   }
 
   // ---------------------------------------------------------------------------
-  // EXECUTION ENGINE (async, runs after returning executionId)
+  // EXECUTION ENGINE (async, runs in pipeline-executor Lambda)
   // ---------------------------------------------------------------------------
 
   async executePipeline(
@@ -392,19 +751,43 @@ export class ExecutionsService {
     branch?: string,
     pipelineName?: string,
   ): Promise<void> {
-    console.log(`[EXECUTION:${executionId}] Starting pipeline: ${pipeline.name}`);
-    console.log(`[EXECUTION:${executionId}] Nodes: ${pipeline.nodes.map((n) => n.id).join(', ')}`);
+    const pName = pipelineName || pipeline.name;
+    const buildVersion = pipeline.buildVersion || '1.0.0';
+
+    console.log(`\n🚀 [EXECUTION:${executionId}] Executing pipeline: ${pName} | Version: ${buildVersion}`);
+    console.log(`[EXECUTION:${executionId}] Nodes: ${pipeline.nodes.map((n) => n.id).join(', ')}\n`);
+
+    // Create cross-stage execution context
+    const context: ExecutionContext = {
+      pipelineName: pName,
+      buildVersion,
+      logs: [],
+    };
+
+    // Write initial log entry
+    await this.writeLogEntry(executionId, accountId, isCustomer, [
+      `🚀 Executing pipeline: ${pName} | Version: ${buildVersion}`,
+      `Nodes: ${pipeline.nodes.map((n) => n.name || n.id).join(' → ')}`,
+    ]);
 
     try {
       const nodeTiers = this.dependencyResolver.resolveNodeOrder(pipeline.nodes);
 
       for (const tier of nodeTiers) {
         for (const node of tier) {
-          console.log(`[EXECUTION:${executionId}][NODE:${node.id}] Starting node: ${node.name}`);
+          const nodeLabel = node.name || node.id;
+          console.log(`▶ [EXECUTION:${executionId}][NODE:${node.id}] Starting node: ${nodeLabel}`);
+
+          // Set current node in context
+          context.currentNodeName = nodeLabel;
 
           await this.updateExecutionProgress(executionId, accountId, isCustomer, isPrivate, {
             currentNode: node.id,
           });
+
+          await this.writeLogEntry(executionId, accountId, isCustomer, [
+            `▶ Node: ${nodeLabel}`,
+          ]);
 
           const orderedStages = this.dependencyResolver.resolveStageOrder(node.stages);
 
@@ -422,13 +805,24 @@ export class ExecutionsService {
               startedAt: new Date().toISOString(),
             });
 
+            await this.writeLogEntry(executionId, accountId, isCustomer, [
+              `  ➡ Stage: ${stage.name} (${stage.type})`,
+            ]);
+
+            // Execute stage with cross-stage context
             const result = await this.stageHandlers.executeStage(
               executionId,
               node.id,
               stage,
               approverEmails,
               accountId,
+              context,
             );
+
+            // Write detailed log lines from stage execution
+            if (result.logLines && result.logLines.length > 0) {
+              await this.writeLogEntry(executionId, accountId, isCustomer, result.logLines);
+            }
 
             await this.writeStageRecord(executionId, accountId, isCustomer, {
               nodeId: node.id,
@@ -443,6 +837,9 @@ export class ExecutionsService {
             });
 
             if (result.status === 'FAILED') {
+              await this.writeLogEntry(executionId, accountId, isCustomer, [
+                `❌ Stage FAILED: ${stage.name} — ${result.message}`,
+              ]);
               await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'FAILED');
               return;
             }
@@ -461,14 +858,14 @@ export class ExecutionsService {
                       type: 'APPROVAL_REQUEST',
                       status: 'PENDING',
                       title: `Approval Required: ${stage.name}`,
-                      message: `Pipeline "${pipelineName || pipeline.name}" requires your approval at stage "${stage.name}" (Node: ${node.name}).`,
+                      message: `Pipeline "${pName}" requires your approval at stage "${stage.name}" (Node: ${nodeLabel}).`,
                       context: {
                         executionId,
                         pipelineId,
                         buildJobId,
                         stageId: stage.id,
                         stageName: stage.name,
-                        pipelineName: pipelineName || pipeline.name,
+                        pipelineName: pName,
                         branch: branch || 'main',
                       },
                     });
@@ -487,13 +884,22 @@ export class ExecutionsService {
             }
           }
 
-          console.log(`[EXECUTION:${executionId}][NODE:${node.id}] Node completed`);
+          console.log(`✅ [EXECUTION:${executionId}][NODE:${node.id}] Node completed: ${nodeLabel}`);
+          await this.writeLogEntry(executionId, accountId, isCustomer, [
+            `✅ Node completed: ${nodeLabel}`,
+          ]);
         }
       }
 
+      await this.writeLogEntry(executionId, accountId, isCustomer, [
+        `🎉 Pipeline execution completed successfully`,
+      ]);
       await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'SUCCESS');
     } catch (error) {
       console.log(`[EXECUTION:${executionId}] FATAL ERROR: ${error.message}`);
+      await this.writeLogEntry(executionId, accountId, isCustomer, [
+        `💥 FATAL ERROR: ${error.message}`,
+      ]);
       await this.finalizeExecution(executionId, accountId, isCustomer, isPrivate, 'FAILED');
     }
   }
@@ -631,6 +1037,47 @@ export class ExecutionsService {
       await this.dynamoDbRouter.put(accountId, { Item: item });
     } else {
       await this.dynamoDb.put({ Item: item });
+    }
+  }
+
+  /**
+   * Write detailed log entries to DynamoDB for real-time polling.
+   * Each call creates a LOG# item with a timestamp-based sort key
+   * so getExecutionLogs can stream them in order.
+   */
+  private logSequence = 0;
+
+  private async writeLogEntry(
+    executionId: string,
+    accountId: string,
+    isCustomer: boolean,
+    logLines: string[],
+  ): Promise<void> {
+    if (!logLines || logLines.length === 0) return;
+
+    this.logSequence++;
+    const timestamp = new Date().toISOString();
+    const seq = String(this.logSequence).padStart(6, '0');
+
+    const item: Record<string, any> = {
+      PK: `EXEC#${executionId}`,
+      SK: `LOG#${timestamp}#${seq}`,
+      entityType: 'EXECUTION_LOG',
+      executionId,
+      accountId,
+      logLines,
+      timestamp,
+    };
+
+    try {
+      if (isCustomer) {
+        await this.dynamoDbRouter.put(accountId, { Item: item });
+      } else {
+        await this.dynamoDb.put({ Item: item });
+      }
+    } catch (err: any) {
+      // Don't fail execution if log writing fails
+      this.logger.warn(`Failed to write log entry: ${err.message}`);
     }
   }
 }

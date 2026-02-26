@@ -54,6 +54,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
+import { testConnectivity } from "@/lib/testConnectivity";
 import { toast } from "sonner";
 import { ViewToggle } from "@/components/ui/view-toggle";
 import { useViewPreference } from "@/hooks/useViewPreference";
@@ -330,27 +331,11 @@ export default function SecurityPage() {
     }
     setTestingConnectorId(connector.id);
     try {
-      let result: { success: boolean; message?: string };
-
-      if (isExternalApi()) {
-        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
-          connector: connector.connector_tool,
-          url: connector.url,
-          credentialId: connector.credential_id,
-        });
-        if (error) throw new Error(error.message);
-        result = data!;
-      } else {
-        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-          body: {
-            connector: connector.connector_tool,
-            url: connector.url,
-            credentialId: connector.credential_id,
-          },
-        });
-        if (error) throw error;
-        result = data;
-      }
+      const result = await testConnectivity({
+        connector: connector.connector_tool,
+        url: connector.url,
+        credentialId: connector.credential_id,
+      });
 
       const newHealth = result?.success ? "healthy" : "error";
       if (isExternalApi()) {
@@ -372,7 +357,7 @@ export default function SecurityPage() {
         await (supabase.from("connectors" as any).update({ health: "error" }).eq("id", connector.id) as any);
       }
       refetchConnectors();
-      toast.error("Failed to test connectivity");
+      toast.error(err instanceof Error ? err.message : "Failed to test connectivity");
     } finally {
       setTestingConnectorId(null);
     }

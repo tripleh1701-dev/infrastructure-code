@@ -52,6 +52,7 @@ const mockBuildJob = {
   connector_icon_name: "jenkins",
   pipeline_stages_state: null,
   yaml_content: null,
+  selected_artifacts: null,
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2025-01-01T00:00:00Z",
 };

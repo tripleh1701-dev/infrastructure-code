@@ -310,6 +310,7 @@ export type Database = {
           pipeline_stages_state: Json | null
           product: string
           scope: string | null
+          selected_artifacts: Json | null
           service: string
           status: string
           updated_at: string
@@ -328,6 +329,7 @@ export type Database = {
           pipeline_stages_state?: Json | null
           product?: string
           scope?: string | null
+          selected_artifacts?: Json | null
           service?: string
           status?: string
           updated_at?: string
@@ -346,6 +348,7 @@ export type Database = {
           pipeline_stages_state?: Json | null
           product?: string
           scope?: string | null
+          selected_artifacts?: Json | null
           service?: string
           status?: string
           updated_at?: string

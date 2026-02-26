@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray } from 'class-validator';
 
 export class CreateBuildJobDto {
   @IsString()
@@ -45,4 +45,8 @@ export class CreateBuildJobDto {
   @IsObject()
   @IsOptional()
   pipelineStagesState?: Record<string, any>;
+
+  @IsArray()
+  @IsOptional()
+  selectedArtifacts?: any[];
 }

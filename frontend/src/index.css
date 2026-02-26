@@ -919,3 +919,61 @@
   --tw-shadow-color: transparent !important;
   --tw-shadow: none !important;
 }
+
+/* ── AccountTableRow expanded/selected states ─────────────────────────────── */
+.dark .bg-\[\#f0f7ff\] {
+  background-color: hsl(213 97% 47% / 0.08) !important;
+}
+
+.dark .bg-\[\#f8fbff\] {
+  background-color: hsl(213 97% 47% / 0.05) !important;
+}
+
+.dark .bg-blue-50\/50 {
+  background-color: hsl(213 97% 47% / 0.06) !important;
+}
+
+.dark .bg-blue-50\/30 {
+  background-color: hsl(213 97% 47% / 0.04) !important;
+}
+
+.dark .hover\:bg-\[\#f1f5f9\]:hover {
+  background-color: hsl(var(--secondary)) !important;
+}
+
+/* ── Table body dividers ──────────────────────────────────────────────────── */
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: hsl(var(--border)) !important;
+}
+
+/* ── Status badge hex backgrounds ─────────────────────────────────────────── */
+.dark .bg-\[\#dcfce7\] { background-color: hsl(142 71% 45% / 0.15) !important; }
+.dark .text-\[\#16a34a\] { color: hsl(142 71% 45%) !important; }
+.dark .border-\[\#bbf7d0\] { border-color: hsl(142 71% 45% / 0.3) !important; }
+
+.dark .text-\[\#d97706\] { color: hsl(38 92% 50%) !important; }
+.dark .border-\[\#fcd34d\] { border-color: hsl(38 92% 50% / 0.3) !important; }
+
+.dark .text-\[\#94a3b8\] { color: hsl(var(--muted-foreground)) !important; }
+
+/* ── Hover bg-red-50 ──────────────────────────────────────────────────────── */
+.dark .hover\:bg-red-50:hover {
+  background-color: hsl(0 84% 60% / 0.1) !important;
+}
+
+/* ── Gradient from-blue-100, from-slate-100 for empty states ──────────────── */
+.dark .from-blue-100 {
+  --tw-gradient-from: hsl(213 97% 47% / 0.15) !important;
+}
+.dark .to-blue-50 {
+  --tw-gradient-to: hsl(213 97% 47% / 0.08) !important;
+}
+
+/* ── Inline style shadow overrides in AccountTableRow ─────────────────────── */
+.dark .shadow-\[inset_0_0_0_1px_rgba\(1\,113\,236\,0\.15\)\] {
+  box-shadow: inset 0 0 0 1px hsl(213 97% 47% / 0.25) !important;
+}
+
+.dark .shadow-\[inset_0_0_0_1px_rgba\(1\,113\,236\,0\.2\)\,0_2px_8px_-2px_rgba\(1\,113\,236\,0\.15\)\] {
+  box-shadow: inset 0 0 0 1px hsl(213 97% 47% / 0.3), 0 2px 8px -2px hsl(213 97% 47% / 0.2) !important;
+}

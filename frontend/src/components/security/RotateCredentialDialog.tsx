@@ -82,6 +82,9 @@ const CONNECTOR_AUTH_CONFIG: Record<string, Record<string, { label: string; type
     ],
   },
   GitHub: {
+    personal_access_token: [
+      { label: "Personal Access Token", type: "password", placeholder: "Enter your GitHub Personal Access Token (ghp_...)" },
+    ],
     username_token: [
       { label: "Username", type: "text", placeholder: "Enter your GitHub username" },
       { label: "Personal Access Token", type: "password", placeholder: "Enter your new Personal Access Token" },

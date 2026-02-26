@@ -288,6 +288,9 @@ export class PipelineConfigsService {
     const branches = stagesState.selectedBranches || {};
     const approvers = stagesState.selectedApprovers || {};
 
+    // Collect selected artifacts from the build job for embedding in YAML
+    const selectedArtifacts: any[] = buildJob.selectedArtifacts || [];
+
     let yaml = `pipeline:\n`;
     yaml += `  name: "${this.esc(pipelineName)}"\n`;
     yaml += `  buildVersion: "${this.esc(buildVersion)}"\n`;
@@ -297,6 +300,36 @@ export class PipelineConfigsService {
     yaml += `      successMessage: "🎉 Pipeline execution completed successfully"\n`;
     yaml += `      errorBehavior: "exit_on_failure"\n`;
     yaml += `      failureExitCode: 1\n`;
+
+    // ── Selected artifacts section ──────────────────────────────────────────
+    if (selectedArtifacts.length > 0) {
+      yaml += `  selectedArtifacts:\n`;
+
+      // Group by package for readable YAML
+      const byPackage = new Map<string, any[]>();
+      for (const art of selectedArtifacts) {
+        const pkgKey = art.packageId || 'unknown';
+        if (!byPackage.has(pkgKey)) byPackage.set(pkgKey, []);
+        byPackage.get(pkgKey)!.push(art);
+      }
+
+      for (const [pkgId, arts] of byPackage) {
+        const pkgName = arts[0]?.packageName || pkgId;
+        const pkgVersion = arts[0]?.packageVersion || 'latest';
+        yaml += `    - package:\n`;
+        yaml += `        id: "${this.esc(pkgId)}"\n`;
+        yaml += `        name: "${this.esc(pkgName)}"\n`;
+        yaml += `        version: "${this.esc(pkgVersion)}"\n`;
+        yaml += `      artifacts:\n`;
+        for (const a of arts) {
+          yaml += `        - id: "${this.esc(a.artifactId || '')}"\n`;
+          yaml += `          name: "${this.esc(a.artifactName || '')}"\n`;
+          yaml += `          version: "${this.esc(a.artifactVersion || 'Active')}"\n`;
+          yaml += `          type: "${this.esc(a.artifactType || '')}"\n`;
+        }
+      }
+    }
+
     yaml += `  nodes:\n`;
 
     // Parse nodes from pipeline canvas data
@@ -326,8 +359,19 @@ export class PipelineConfigsService {
           yaml += `          tool:\n`;
           yaml += `            type: "${this.esc(stage.tool)}"\n`;
 
+          // For deploy stages, pass selectedArtifacts so they appear in the tool's artifacts section
+          const isDeployTool = stage.tool.toUpperCase().includes('SAP') ||
+            stage.tool.toUpperCase().includes('CPI') ||
+            stage.tool.toUpperCase().includes('CLOUD_FOUNDRY');
+
           if (cred) {
-            yaml += this.buildToolYaml(stage.tool, cred, repoUrl, branch);
+            yaml += this.buildToolYaml(
+              stage.tool,
+              cred,
+              repoUrl,
+              branch,
+              isDeployTool ? selectedArtifacts : [],
+            );
           }
         }
 
@@ -348,6 +392,7 @@ export class PipelineConfigsService {
     cred: ResolvedCredential,
     repoUrl: string,
     branch: string,
+    selectedArtifacts: any[] = [],
   ): string {
     const upper = toolType.toUpperCase();
     let yaml = '';
@@ -373,9 +418,22 @@ export class PipelineConfigsService {
       yaml += `                clientId: "ENCRYPTED"\n`;
       yaml += `                clientSecret: "ENCRYPTED"\n`;
       if (cred.tokenUrl) yaml += `                tokenUrl: "${this.esc(cred.tokenUrl)}"\n`;
-      if (cred.artifacts && cred.artifacts.length > 0) {
+
+      // Embed selectedArtifacts from build job into the deploy tool's artifacts section
+      const allArtifacts = [...(cred.artifacts || [])];
+
+      // Add selectedArtifacts (mapped to name/type format)
+      for (const sa of selectedArtifacts) {
+        const artName = sa.artifactId || sa.artifactName || sa.name || '';
+        const artType = this.mapArtifactTypeForYaml(sa.artifactType || sa.type || '');
+        if (artName) {
+          allArtifacts.push({ name: artName, type: artType });
+        }
+      }
+
+      if (allArtifacts.length > 0) {
         yaml += `            artifacts:\n`;
-        for (const art of cred.artifacts) {
+        for (const art of allArtifacts) {
           yaml += `              - name: "${this.esc(art.name)}"\n`;
           yaml += `                type: "${this.esc(art.type)}"\n`;
         }
@@ -389,6 +447,20 @@ export class PipelineConfigsService {
     }
 
     return yaml;
+  }
+
+  private mapArtifactTypeForYaml(type: string): string {
+    const typeMap: Record<string, string> = {
+      'Integration Flow': 'IntegrationFlow',
+      'Value Mapping': 'ValueMapping',
+      'Message Mapping': 'MessageMapping',
+      'Script Collection': 'ScriptCollection',
+      'IntegrationDesigntimeArtifacts': 'IntegrationFlow',
+      'ValueMappingDesigntimeArtifacts': 'ValueMapping',
+      'MessageMappingDesigntimeArtifacts': 'MessageMapping',
+      'ScriptCollectionDesigntimeArtifacts': 'ScriptCollection',
+    };
+    return typeMap[type] || type;
   }
 
   private extractEnvironmentNodes(nodes: any[]): EnvironmentNode[] {

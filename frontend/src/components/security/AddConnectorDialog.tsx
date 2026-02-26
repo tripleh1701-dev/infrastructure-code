@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
+import { testConnectivity } from "@/lib/testConnectivity";
 import {
   Dialog,
   DialogContent,
@@ -464,27 +465,11 @@ export function AddConnectorDialog({
     setTestResult(null);
 
     try {
-      let result: { success: boolean; message?: string };
-
-      if (isExternalApi()) {
-        const { data, error } = await httpClient.post<typeof result>("/connectors/test-connection", {
-          connector: selectedConnector,
-          url: connectivityUrl,
-          credentialId: selectedCredentialId,
-        });
-        if (error) throw new Error(error.message);
-        result = data!;
-      } else {
-        const { data, error } = await supabase.functions.invoke("test-connector-connectivity", {
-          body: {
-            connector: selectedConnector,
-            url: connectivityUrl,
-            credentialId: selectedCredentialId,
-          },
-        });
-        if (error) throw error;
-        result = data;
-      }
+      const result = await testConnectivity({
+        connector: selectedConnector,
+        url: connectivityUrl,
+        credentialId: selectedCredentialId,
+      });
 
       if (result?.success) {
         setTestResult("success");
@@ -496,7 +481,7 @@ export function AddConnectorDialog({
     } catch (error) {
       console.error("Connectivity test failed:", error);
       setTestResult("failed");
-      toast.error("Failed to test connectivity");
+      toast.error(error instanceof Error ? error.message : "Failed to test connectivity");
     } finally {
       setIsTesting(false);
     }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
@@ -23,6 +23,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2,
   Package,
@@ -35,17 +36,20 @@ import {
   Filter,
   GitMerge,
   FileText,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEnvironments, type EnvironmentRecord, type EnvironmentConnectorRecord } from "@/hooks/useEnvironments";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { useIntegrationArtifacts, type IntegrationPackage } from "@/hooks/useIntegrationArtifacts";
+import { useSelectedArtifacts, type SelectedArtifact } from "@/hooks/useSelectedArtifacts";
 
 interface IntegrationArtifactsModalProps {
   open: boolean;
   onClose: () => void;
   buildJobName?: string;
+  buildJobId?: string;
 }
 
 const ARTIFACT_TYPE_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
@@ -56,7 +60,7 @@ const ARTIFACT_TYPE_META: Record<string, { label: string; icon: React.ComponentT
   MessageResourcesDesigntimeArtifacts: { label: "Message Resources", icon: FileText, color: "bg-rose-100 text-rose-700" },
 };
 
-export function IntegrationArtifactsModal({ open, onClose, buildJobName }: IntegrationArtifactsModalProps) {
+export function IntegrationArtifactsModal({ open, onClose, buildJobName, buildJobId }: IntegrationArtifactsModalProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
   const accountId = selectedAccount?.id || "";
@@ -64,12 +68,29 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
 
   const { environments, isLoading: envsLoading } = useEnvironments(accountId, enterpriseId);
   const { packages, loading, error, fetchPackages, reset } = useIntegrationArtifacts();
+  const {
+    selectedArtifacts: savedArtifacts,
+    saving,
+    saveSelections,
+    loading: loadingSaved,
+  } = useSelectedArtifacts(buildJobId);
+
+  // Local selection state (synced from saved on load)
+  const [localSelections, setLocalSelections] = useState<SelectedArtifact[]>([]);
+  const [selectionsInitialized, setSelectionsInitialized] = useState(false);
+
+  // Sync saved artifacts into local state once loaded
+  useMemo(() => {
+    if (!loadingSaved && savedArtifacts.length > 0 && !selectionsInitialized) {
+      setLocalSelections(savedArtifacts);
+      setSelectionsInitialized(true);
+    }
+  }, [loadingSaved, savedArtifacts, selectionsInitialized]);
 
   const [selectedEnvId, setSelectedEnvId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(Object.keys(ARTIFACT_TYPE_META)));
 
-  // Find selected environment and its Cloud Foundry connector
   const selectedEnv = useMemo(
     () => environments.find((e) => e.id === selectedEnvId) || null,
     [environments, selectedEnvId],
@@ -98,6 +119,8 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
     setSelectedEnvId("");
     setSearchQuery("");
     setActiveFilters(new Set(Object.keys(ARTIFACT_TYPE_META)));
+    setLocalSelections([]);
+    setSelectionsInitialized(false);
     onClose();
   }
 
@@ -110,13 +133,117 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
     });
   }
 
-  // Filter packages by search query and active artifact type filters
+  // ── Selection helpers ──────────────────────────────────────────────────────
+  const isArtifactSelected = useCallback(
+    (packageId: string, artifactId: string, artifactType: string) =>
+      localSelections.some(
+        (a) => a.packageId === packageId && a.artifactId === artifactId && a.artifactType === artifactType,
+      ),
+    [localSelections],
+  );
+
+  const toggleArtifact = useCallback(
+    (pkg: IntegrationPackage, artifact: any, artifactType: string) => {
+      setLocalSelections((prev) => {
+        const exists = prev.some(
+          (a) => a.packageId === pkg.Id && a.artifactId === artifact.Id && a.artifactType === artifactType,
+        );
+        if (exists) {
+          return prev.filter(
+            (a) => !(a.packageId === pkg.Id && a.artifactId === artifact.Id && a.artifactType === artifactType),
+          );
+        }
+        return [
+          ...prev,
+          {
+            packageId: pkg.Id,
+            packageName: pkg.Name,
+            packageVersion: pkg.Version,
+            artifactId: artifact.Id,
+            artifactName: artifact.Name,
+            artifactVersion: artifact.Version,
+            artifactType,
+          },
+        ];
+      });
+    },
+    [],
+  );
+
+  const togglePackage = useCallback(
+    (pkg: IntegrationPackage) => {
+      const allArtifacts: { id: string; type: string }[] = [];
+      for (const key of Object.keys(ARTIFACT_TYPE_META)) {
+        const items: any[] = (pkg as any)[key] || [];
+        items.forEach((a) => allArtifacts.push({ id: a.Id, type: key }));
+      }
+      const allSelected = allArtifacts.every((a) =>
+        localSelections.some((s) => s.packageId === pkg.Id && s.artifactId === a.id && s.artifactType === a.type),
+      );
+
+      setLocalSelections((prev) => {
+        if (allSelected) {
+          return prev.filter((s) => s.packageId !== pkg.Id);
+        }
+        const existing = prev.filter((s) => s.packageId !== pkg.Id);
+        const newEntries: SelectedArtifact[] = [];
+        for (const key of Object.keys(ARTIFACT_TYPE_META)) {
+          const items: any[] = (pkg as any)[key] || [];
+          items.forEach((a) =>
+            newEntries.push({
+              packageId: pkg.Id,
+              packageName: pkg.Name,
+              packageVersion: pkg.Version,
+              artifactId: a.Id,
+              artifactName: a.Name,
+              artifactVersion: a.Version,
+              artifactType: key,
+            }),
+          );
+        }
+        return [...existing, ...newEntries];
+      });
+    },
+    [localSelections],
+  );
+
+  const isPackageFullySelected = useCallback(
+    (pkg: IntegrationPackage) => {
+      const allArtifacts: { id: string; type: string }[] = [];
+      for (const key of Object.keys(ARTIFACT_TYPE_META)) {
+        ((pkg as any)[key] || []).forEach((a: any) => allArtifacts.push({ id: a.Id, type: key }));
+      }
+      return (
+        allArtifacts.length > 0 &&
+        allArtifacts.every((a) =>
+          localSelections.some((s) => s.packageId === pkg.Id && s.artifactId === a.id && s.artifactType === a.type),
+        )
+      );
+    },
+    [localSelections],
+  );
+
+  const isPackagePartiallySelected = useCallback(
+    (pkg: IntegrationPackage) => {
+      return (
+        localSelections.some((s) => s.packageId === pkg.Id) && !isPackageFullySelected(pkg)
+      );
+    },
+    [localSelections, isPackageFullySelected],
+  );
+
+  const selectionCount = localSelections.length;
+
+  async function handleSave() {
+    await saveSelections(localSelections);
+  }
+
+  // ── Filter logic ──────────────────────────────────────────────────────────
   const filteredPackages = useMemo(() => {
     if (!packages.length) return [];
     const q = searchQuery.toLowerCase().trim();
     return packages
       .map((pkg) => {
-        // Filter artifact lists by active filters and search
         const filtered: any = { ...pkg };
         let hasMatch = false;
         for (const key of Object.keys(ARTIFACT_TYPE_META)) {
@@ -131,10 +258,8 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
           filtered[key] = matched;
           if (matched.length > 0) hasMatch = true;
         }
-        // Also match on package name
         const pkgNameMatch = !q || pkg.Name?.toLowerCase().includes(q) || pkg.Id?.toLowerCase().includes(q);
         if (pkgNameMatch && !hasMatch) {
-          // If package name matches but no artifacts matched search, restore filtered artifacts
           for (const key of Object.keys(ARTIFACT_TYPE_META)) {
             if (activeFilters.has(key)) filtered[key] = (pkg as any)[key] || [];
             hasMatch = ((pkg as any)[key] || []).length > 0 || hasMatch;
@@ -156,6 +281,11 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
             {buildJobName && (
               <Badge variant="secondary" className="ml-2 text-xs font-normal">
                 {buildJobName}
+              </Badge>
+            )}
+            {selectionCount > 0 && (
+              <Badge variant="default" className="ml-auto text-xs">
+                {selectionCount} selected
               </Badge>
             )}
           </DialogTitle>
@@ -223,7 +353,7 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
           </div>
         )}
 
-        {/* Search & filter bar – only show when we have packages */}
+        {/* Search & filter bar */}
         {packages.length > 0 && !loading && (
           <div className="space-y-2">
             <div className="relative">
@@ -285,7 +415,15 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
                 </p>
                 <Accordion type="multiple" className="space-y-2">
                   {filteredPackages.map((pkg) => (
-                    <PackageCard key={pkg.Id} pkg={pkg} />
+                    <PackageCard
+                      key={pkg.Id}
+                      pkg={pkg}
+                      isArtifactSelected={isArtifactSelected}
+                      toggleArtifact={toggleArtifact}
+                      togglePackage={togglePackage}
+                      isPackageFullySelected={isPackageFullySelected(pkg)}
+                      isPackagePartiallySelected={isPackagePartiallySelected(pkg)}
+                    />
                   ))}
                 </Accordion>
               </motion.div>
@@ -301,62 +439,126 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName }: Integ
             ) : null}
           </AnimatePresence>
         </ScrollArea>
+
+        {/* Save Selection footer */}
+        {(packages.length > 0 || selectionCount > 0) && buildJobId && (
+          <div className="flex items-center justify-between pt-3 border-t">
+            <p className="text-xs text-muted-foreground">
+              {selectionCount} artifact{selectionCount !== 1 ? "s" : ""} selected
+            </p>
+            <Button onClick={handleSave} disabled={saving} className="gap-2" size="sm">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Selection
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function PackageCard({ pkg }: { pkg: IntegrationPackage }) {
+// ── Package Card with checkboxes ─────────────────────────────────────────────
+
+interface PackageCardProps {
+  pkg: IntegrationPackage;
+  isArtifactSelected: (packageId: string, artifactId: string, artifactType: string) => boolean;
+  toggleArtifact: (pkg: IntegrationPackage, artifact: any, artifactType: string) => void;
+  togglePackage: (pkg: IntegrationPackage) => void;
+  isPackageFullySelected: boolean;
+  isPackagePartiallySelected: boolean;
+}
+
+function PackageCard({
+  pkg,
+  isArtifactSelected,
+  toggleArtifact,
+  togglePackage,
+  isPackageFullySelected,
+  isPackagePartiallySelected,
+}: PackageCardProps) {
   const artifactTypes = Object.entries(ARTIFACT_TYPE_META);
   const totalArtifacts = artifactTypes.reduce(
     (sum, [key]) => sum + ((pkg as any)[key]?.length || 0),
     0,
   );
 
+  const selectedCount = artifactTypes.reduce((sum, [key]) => {
+    const items: any[] = (pkg as any)[key] || [];
+    return sum + items.filter((a) => isArtifactSelected(pkg.Id, a.Id, key)).length;
+  }, 0);
+
   return (
     <AccordionItem value={pkg.Id} className="border rounded-lg px-4">
       <AccordionTrigger className="py-3 hover:no-underline">
-        <div className="flex items-center gap-3 text-left">
+        <div className="flex items-center gap-3 text-left w-full">
+          <Checkbox
+            checked={isPackageFullySelected ? true : isPackagePartiallySelected ? "indeterminate" : false}
+            onCheckedChange={() => togglePackage(pkg)}
+            onClick={(e) => e.stopPropagation()}
+            className="shrink-0"
+          />
           <Package className="w-4 h-4 text-primary shrink-0" />
-          <div>
+          <div className="min-w-0">
             <span className="font-medium">{pkg.Name}</span>
             <span className="text-xs text-muted-foreground ml-2">v{pkg.Version}</span>
           </div>
-          <Badge variant="secondary" className="text-[10px] ml-auto mr-2">
-            {totalArtifacts} artifact{totalArtifacts !== 1 ? "s" : ""}
-          </Badge>
+          <div className="ml-auto mr-2 flex items-center gap-1.5 shrink-0">
+            {selectedCount > 0 && (
+              <Badge variant="default" className="text-[10px]">
+                {selectedCount} selected
+              </Badge>
+            )}
+            <Badge variant="secondary" className="text-[10px]">
+              {totalArtifacts} artifact{totalArtifacts !== 1 ? "s" : ""}
+            </Badge>
+          </div>
         </div>
       </AccordionTrigger>
       <AccordionContent className="pb-3">
-        <div className="space-y-3">
-          {artifactTypes.map(([key, meta]) => {
-            const items = (pkg as any)[key] || [];
-            if (items.length === 0) return null;
-            const Icon = meta.icon;
-            return (
-              <div key={key}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Icon className="w-3.5 h-3.5" />
-                  <span className="text-xs font-medium">{meta.label}</span>
-                  <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0", meta.color)}>
-                    {items.length}
-                  </Badge>
+        <ScrollArea className="max-h-[280px]">
+          <div className="space-y-3">
+            {artifactTypes.map(([key, meta]) => {
+              const items = (pkg as any)[key] || [];
+              if (items.length === 0) return null;
+              const Icon = meta.icon;
+              return (
+                <div key={key}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Icon className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">{meta.label}</span>
+                    <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0", meta.color)}>
+                      {items.length}
+                    </Badge>
+                  </div>
+                  <div className="pl-6 space-y-1">
+                    {items.map((artifact: any) => {
+                      const selected = isArtifactSelected(pkg.Id, artifact.Id, key);
+                      return (
+                        <div
+                          key={artifact.Id}
+                          className={cn(
+                            "flex items-center gap-2 text-xs py-1.5 px-2 rounded cursor-pointer transition-colors",
+                            selected ? "bg-primary/10 border border-primary/20" : "bg-muted/50 hover:bg-muted",
+                          )}
+                          onClick={() => toggleArtifact(pkg, artifact, key)}
+                        >
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={() => toggleArtifact(pkg, artifact, key)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0"
+                          />
+                          <span className="flex-1 min-w-0 truncate">{artifact.Name}</span>
+                          <span className="text-muted-foreground shrink-0">v{artifact.Version}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="pl-6 space-y-1">
-                  {items.map((artifact: any) => (
-                    <div
-                      key={artifact.Id}
-                      className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/50"
-                    >
-                      <span>{artifact.Name}</span>
-                      <span className="text-muted-foreground">v{artifact.Version}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </ScrollArea>
       </AccordionContent>
     </AccordionItem>
   );

@@ -212,15 +212,35 @@ export class ConnectorsController {
   }
 
   private async testGitHub(url: string | undefined, creds: Record<string, any>) {
-    const token = creds.token || creds.apiToken || creds.api_token || creds['Personal Access Token'] || creds.password;
-    if (!token) return { success: false, message: 'Missing token' };
-    const apiUrl = url ? `${this.normalizeUrl(url)}/api/v3/user` : 'https://api.github.com/user';
-    const res = await this.fetchWithTimeout(apiUrl, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-    });
-    if (!res.ok) return this.httpError(res);
-    const data = await res.json();
-    return { success: true, message: `Connected as ${data.login}` };
+    const token = creds.token || creds.apiToken || creds.api_token || creds['Personal Access Token'] || creds.password || creds.pat;
+    if (!token) return { success: false, message: 'Missing GitHub Personal Access Token' };
+
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+
+    // 1. Verify token by fetching authenticated user
+    const userRes = await this.fetchWithTimeout('https://api.github.com/user', { headers });
+    if (!userRes.ok) return this.httpError(userRes);
+    const userData = await userRes.json();
+
+    // 2. If a repo URL is provided, verify repo access
+    if (url) {
+      // Parse owner/repo from URLs like https://github.com/owner/repo.git or https://github.com/owner/repo
+      const repoMatch = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+      if (repoMatch) {
+        const [, owner, repo] = repoMatch;
+        const repoRes = await this.fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+        if (!repoRes.ok) {
+          return { success: false, message: `Authenticated as ${userData.login}, but cannot access repo ${owner}/${repo} (HTTP ${repoRes.status})` };
+        }
+        const repoData = await repoRes.json();
+        return {
+          success: true,
+          message: `Connected as ${userData.login} — repo "${repoData.full_name}" accessible (${repoData.private ? 'private' : 'public'})`,
+        };
+      }
+    }
+
+    return { success: true, message: `Connected as ${userData.login}` };
   }
 
   private async testGitLab(url: string | undefined, creds: Record<string, any>) {

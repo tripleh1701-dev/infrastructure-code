@@ -7,9 +7,19 @@ import { StageHandlersService } from './stage-handlers.service';
 import { PipelinesModule } from '../pipelines/pipelines.module';
 import { InboxModule } from '../inbox/inbox.module';
 import { CredentialsModule } from '../credentials/credentials.module';
+import { BuildsModule } from '../builds/builds.module';
+import { ConnectorsModule } from '../connectors/connectors.module';
+import { EnvironmentsModule } from '../environments/environments.module';
 
 @Module({
-  imports: [PipelinesModule, forwardRef(() => InboxModule), CredentialsModule],
+  imports: [
+    PipelinesModule,
+    forwardRef(() => InboxModule),
+    CredentialsModule,
+    BuildsModule,
+    ConnectorsModule,
+    EnvironmentsModule,
+  ],
   controllers: [ExecutionsController],
   providers: [
     ExecutionsService,

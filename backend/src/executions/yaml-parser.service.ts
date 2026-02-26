@@ -111,66 +111,165 @@ export class YamlParserService {
 
   /**
    * Build from React Flow nodes/edges + pipeline_stages_state
+   *
+   * The UI stores:
+   *   - nodes: [{id, type: 'environmentGroup'|'pipeline', parentId, data: {label, category, nodeType}}]
+   *   - edges: [{source, target}]
+   *   - stagesState (flat): {
+   *       selectedConnectors:  { "envId__stageId": connectorId },
+   *       selectedEnvironments: { "envId__stageId": envName },
+   *       selectedBranches:    { "envId__stageId": branch },
+   *       selectedApprovers:   { "envId__stageId": [emails] },
+   *       connectorRepositoryUrls: { "envId__stageId": url },
+   *     }
    */
   parseFromCanvasData(
     nodes: any[],
     edges: any[],
     stagesState?: Record<string, any>,
   ): ParsedPipeline {
+    // 1. Separate environment groups from stage (pipeline) nodes
+    const envGroups = new Map<string, { id: string; name: string; stages: any[] }>();
+    const stageNodes: any[] = [];
+
+    for (const node of nodes) {
+      if (node.type === 'environmentGroup' || node.type === 'group') {
+        envGroups.set(node.id, {
+          id: node.id,
+          name: node.data?.label || node.data?.name || node.id,
+          stages: [],
+        });
+      } else {
+        stageNodes.push(node);
+      }
+    }
+
+    // Default group if none defined
+    if (envGroups.size === 0) {
+      envGroups.set('default', { id: 'default', name: 'Development', stages: [] });
+    }
+
+    // 2. Assign stage nodes to their parent environment group
+    for (const node of stageNodes) {
+      const parentId = node.parentId || node.parentNode || 'default';
+      const group = envGroups.get(parentId) || [...envGroups.values()][0];
+      if (group) {
+        group.stages.push(node);
+      }
+    }
+
+    // 3. Determine environment-level dependency order from edges
+    const envEdges = edges
+      .filter((e) => envGroups.has(e.source) && envGroups.has(e.target))
+      .map((e) => ({ source: e.source, target: e.target }));
+
+    // 4. Build parsed nodes
+    const selectedConnectors = stagesState?.selectedConnectors || {};
+    const selectedEnvironments = stagesState?.selectedEnvironments || {};
+    const selectedBranches = stagesState?.selectedBranches || {};
+    const selectedApprovers = stagesState?.selectedApprovers || {};
+    const connectorRepoUrls = stagesState?.connectorRepositoryUrls || {};
+
     const pipelineNodes: ParsedNode[] = [];
 
-    const executableNodes = nodes.filter(
-      (n) => n.type === 'pipeline' || n.type === 'pipelineNode' || n.data?.label,
-    );
-
-    for (const node of executableNodes) {
-      const nodeId = node.id;
-      const label = node.data?.label || node.data?.name || nodeId;
-      const nodeType = (node.data?.type || 'build').toLowerCase();
-
-      const deps = edges
-        .filter((e) => e.target === nodeId)
+    for (const [envId, group] of envGroups) {
+      const deps = envEdges
+        .filter((e) => e.target === envId)
         .map((e) => e.source);
 
-      const stages: ParsedStage[] = [];
-      const stageConfig = stagesState?.[nodeId];
+      // Sort stages by Y position for correct execution order
+      const sortedStages = group.stages.sort(
+        (a, b) => (a.position?.y || 0) - (b.position?.y || 0),
+      );
 
-      if (stageConfig?.stages) {
-        for (const stage of stageConfig.stages) {
-          const selectedConnectors = stageConfig.selectedConnectors || {};
-          stages.push({
-            id: stage.id || `${nodeId}-${stage.name}`,
-            name: stage.name || 'Unnamed Stage',
-            type: stage.type || nodeType,
-            toolId: stage.tool?.id,
-            toolSelected: stage.tool?.selected !== false,
-            executionEnabled: stage.execution?.enabled !== false,
-            dependsOn: stage.dependsOn || [],
-            config: stage.config,
-            credentialId: selectedConnectors[stage.id] || selectedConnectors[stage.type],
-          });
-        }
-      } else {
-        stages.push({
-          id: `${nodeId}-main`,
+      const stages: ParsedStage[] = sortedStages.map((stageNode) => {
+        const stageId = stageNode.id;
+        const stageKey = `${envId}__${stageId}`;
+        const nodeType = stageNode.data?.nodeType || stageNode.data?.type || stageNode.type || '';
+        const category = stageNode.data?.category || '';
+        const label = stageNode.data?.label || stageNode.data?.name || stageId;
+
+        // Derive stage type and tool ID from nodeType (e.g. plan_jira, code_github, deploy_cloud_foundry)
+        const { stageType, toolId } = this.deriveStageAndTool(nodeType, category);
+
+        return {
+          id: stageId,
           name: label,
-          type: nodeType,
-          executionEnabled: true,
+          type: stageType,
+          toolId,
           toolSelected: true,
+          executionEnabled: true,
           dependsOn: [],
-        });
-      }
+          // Store the connector ID from pipelineStagesState (will be resolved to credential later)
+          credentialId: selectedConnectors[stageKey] || undefined,
+          // Store metadata for later resolution
+          config: {
+            _stageKey: stageKey,
+            _envId: envId,
+            _connectorId: selectedConnectors[stageKey] || undefined,
+            _environmentName: selectedEnvironments[stageKey] || undefined,
+            _branch: selectedBranches[stageKey] || undefined,
+            _approvers: selectedApprovers[stageKey] || undefined,
+            _repoUrl: connectorRepoUrls[stageKey] || undefined,
+          },
+        } as ParsedStage;
+      });
 
       pipelineNodes.push({
-        id: nodeId,
-        name: label,
-        environment: node.data?.environment,
+        id: envId,
+        name: group.name,
         dependsOn: deps,
         stages,
       });
     }
 
     return { name: 'Pipeline Execution', nodes: pipelineNodes };
+  }
+
+  /**
+   * Derive stage type and tool ID from React Flow node type identifiers.
+   * E.g. "plan_jira" → { stageType: "plan", toolId: "JIRA" }
+   *      "deploy_cloud_foundry" → { stageType: "deploy", toolId: "SAP_CPI" }
+   */
+  private deriveStageAndTool(
+    nodeType: string,
+    category: string,
+  ): { stageType: string; toolId: string | undefined } {
+    const lower = (nodeType || '').toLowerCase();
+
+    // Map nodeType → stage type + tool
+    const mappings: Record<string, { stageType: string; toolId: string }> = {
+      plan_jira: { stageType: 'plan', toolId: 'JIRA' },
+      plan_trello: { stageType: 'plan', toolId: 'TRELLO' },
+      plan_asana: { stageType: 'plan', toolId: 'ASANA' },
+      code_github: { stageType: 'code', toolId: 'GITHUB' },
+      code_gitlab: { stageType: 'code', toolId: 'GITLAB' },
+      code_bitbucket: { stageType: 'code', toolId: 'BITBUCKET' },
+      code_azure_repos: { stageType: 'code', toolId: 'AZURE_REPOS' },
+      build_github: { stageType: 'build', toolId: 'GITHUB' },
+      build_jenkins: { stageType: 'build', toolId: 'JENKINS' },
+      deploy_cloud_foundry: { stageType: 'deploy', toolId: 'SAP_CPI' },
+      deploy_sap_cpi: { stageType: 'deploy', toolId: 'SAP_CPI' },
+      approval_manual: { stageType: 'approval', toolId: undefined },
+      release_servicenow: { stageType: 'release', toolId: 'SERVICENOW' },
+      test_selenium: { stageType: 'test', toolId: 'SELENIUM' },
+    };
+
+    const match = mappings[lower];
+    if (match) return match;
+
+    // Fallback: try to parse from category
+    if (category) {
+      return { stageType: category.toLowerCase(), toolId: undefined };
+    }
+
+    // Extract type from prefix (e.g. "plan_unknown" → "plan")
+    const parts = lower.split('_');
+    if (parts.length > 1) {
+      return { stageType: parts[0], toolId: parts.slice(1).join('_').toUpperCase() };
+    }
+
+    return { stageType: lower || 'generic', toolId: undefined };
   }
 
   // ---------------------------------------------------------------------------

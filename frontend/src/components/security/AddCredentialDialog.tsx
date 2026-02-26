@@ -212,11 +212,15 @@ const CONNECTOR_AUTH_CONFIG: Record<string, {
   },
   GitHub: {
     authTypes: [
+      { value: "personal_access_token", label: "Personal Access Token" },
       { value: "username_token", label: "Username and Token" },
       { value: "github_app", label: "GitHub App" },
       { value: "oauth", label: "OAuth" },
     ],
     fields: {
+      personal_access_token: [
+        { label: "Personal Access Token", type: "password", placeholder: "Enter your GitHub Personal Access Token (ghp_...)" },
+      ],
       username_token: [
         { label: "Username", type: "text", placeholder: "Enter your GitHub username" },
         { label: "Personal Access Token", type: "password", placeholder: "Enter your Personal Access Token" },
