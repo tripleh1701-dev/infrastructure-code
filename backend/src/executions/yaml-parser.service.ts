@@ -238,7 +238,7 @@ export class YamlParserService {
     const lower = (nodeType || '').toLowerCase();
 
     // Map nodeType → stage type + tool
-    const mappings: Record<string, { stageType: string; toolId: string }> = {
+    const mappings: Record<string, { stageType: string; toolId: string | undefined }> = {
       plan_jira: { stageType: 'plan', toolId: 'JIRA' },
       plan_trello: { stageType: 'plan', toolId: 'TRELLO' },
       plan_asana: { stageType: 'plan', toolId: 'ASANA' },

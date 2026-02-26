@@ -712,7 +712,7 @@ export class StageHandlersService {
         'Content-Type': 'application/zip',
         Accept: 'application/json',
       },
-      body: binary,
+      body: binary as unknown as BodyInit,
     }, log, 'CF Upload');
 
     if (!uploadRes.ok) {
