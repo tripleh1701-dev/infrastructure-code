@@ -35,6 +35,8 @@ import {
   RotateCw,
   GitBranch,
   Timer,
+  Copy,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NODE_LABELS } from "@/constants/pipeline";
@@ -135,6 +137,12 @@ function parsePipelineStructure(nodes: any[], edges: any[]): EnvironmentNode[] {
       tool: getToolFromType(nodeType),
       status: node.data?.status as string,
     };
+
+    // If only one environment exists, ALL stages belong to it — no General bucket
+    if (envNodes.length === 1) {
+      envStagesMap.get(envNodes[0].id)!.push(stage);
+      return;
+    }
 
     const parentId = nodeParentMap.get(node.id);
     if (parentId && envStagesMap.has(parentId)) {
@@ -369,14 +377,19 @@ interface NodeConfigPanelProps {
   stagesState: Record<string, Record<string, string>>;
   onFieldChange: (stageKey: string, field: string, value: string) => void;
   onClose: () => void;
+  /** Real-time execution logs filtered for this node */
+  nodeLogs?: string[];
+  /** Real-time stage state from backend */
+  nodeStageState?: { status?: string; startedAt?: string; completedAt?: string; message?: string };
 }
 
 function NodeConfigPanel({
-  stage, envId, connectors, connectorsLoading, stagesState, onFieldChange, onClose,
+  stage, envId, connectors, connectorsLoading, stagesState, onFieldChange, onClose, nodeLogs, nodeStageState,
 }: NodeConfigPanelProps) {
   const stageKey = `${envId}__${stage.id}`;
   const isDeploy = stage.category === "deploy";
   const isCode = stage.category === "code";
+  const isJira = stage.type === "plan_jira";
   const status = stage.status || "pending";
   const statusCfg = STATUS_CONFIG[status] || DEFAULT_STATUS;
   const NodeIcon = PIPELINE_NODE_ICONS[stage.type];
@@ -386,6 +399,9 @@ function NodeConfigPanel({
   );
 
   const fields = stagesState[stageKey] || {};
+  const connectorName = fields.connector
+    ? connectors.find((c) => c.id === fields.connector)?.name || connectors.find((c) => c.name === fields.connector)?.name || fields.connector
+    : undefined;
 
   return (
     <motion.div
@@ -453,6 +469,10 @@ function NodeConfigPanel({
                 { label: "Tool", value: stage.tool.replace(/_/g, " ") },
                 { label: "Status", value: statusCfg.label, color: statusCfg.color },
                 { label: "Node ID", value: stage.id.slice(0, 8) + "..." },
+                ...(connectorName ? [{ label: "Connector", value: connectorName }] : []),
+                ...(fields.environment ? [{ label: "Environment", value: fields.environment }] : []),
+                ...(fields.branch ? [{ label: "Branch", value: fields.branch }] : []),
+                ...(fields.jiraNumber ? [{ label: "JIRA", value: fields.jiraNumber, color: "#3b82f6" }] : []),
               ].map((row) => (
                 <div key={row.label} className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
                   <span className="text-muted-foreground font-medium">{row.label}</span>
@@ -473,64 +493,162 @@ function NodeConfigPanel({
               <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Configuration</span>
             </div>
             <div className="space-y-3">
-              {isDeploy ? (
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] text-muted-foreground font-medium">Environment</Label>
-                  <Select value={fields.environment || ""} onValueChange={(v) => onFieldChange(stageKey, "environment", v)}>
-                    <SelectTrigger className="h-8 text-xs rounded-lg border-border/50 bg-background">
-                      <SelectValue placeholder="Select environment..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover z-[100]">
-                      <SelectItem value="development">Development</SelectItem>
-                      <SelectItem value="qa">QA</SelectItem>
-                      <SelectItem value="staging">Staging</SelectItem>
-                      <SelectItem value="uat">UAT</SelectItem>
-                      <SelectItem value="production">Production</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
+              {/* Show saved config values as read-only when available */}
+              {fields.connector && (
+                <div className="space-y-1">
                   <Label className="text-[10px] text-muted-foreground font-medium">Connector</Label>
-                  <Select value={fields.connector || ""} onValueChange={(v) => onFieldChange(stageKey, "connector", v)}>
-                    <SelectTrigger className="h-8 text-xs rounded-lg border-border/50 bg-background">
-                      <SelectValue
-                        placeholder={
-                          connectorsLoading ? "Loading..." :
-                          availableConnectors.length === 0 ? "No connectors" :
-                          "Select connector..."
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover z-[100]">
-                      {availableConnectors.length === 0 ? (
-                        <SelectItem value="__none" disabled>No {stage.category} connectors</SelectItem>
-                      ) : (
-                        availableConnectors.map((conn) => (
-                          <SelectItem key={conn.id} value={conn.id}>
-                            <span>{conn.name}</span>
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <div className="h-8 text-xs rounded-lg border border-border/50 bg-muted/30 px-3 flex items-center font-medium text-foreground">
+                    {connectorName}
+                  </div>
                 </div>
               )}
 
-              {isCode && fields.connector && (
-                <>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground font-medium">Repository URL</Label>
-                    <Input className="h-8 text-xs rounded-lg border-border/50" placeholder="https://github.com/org/repo" value={fields.repoUrl || ""} onChange={(e) => onFieldChange(stageKey, "repoUrl", e.target.value)} />
+              {fields.environment && (
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground font-medium">Environment</Label>
+                  <div className="h-8 text-xs rounded-lg border border-border/50 bg-muted/30 px-3 flex items-center font-medium text-foreground capitalize">
+                    {fields.environment}
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] text-muted-foreground font-medium">Branch</Label>
-                    <Input className="h-8 text-xs rounded-lg border-border/50" placeholder="main" value={fields.branch || ""} onChange={(e) => onFieldChange(stageKey, "branch", e.target.value)} />
+                </div>
+              )}
+
+              {fields.repoUrl && (
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground font-medium">Repository URL</Label>
+                  <div className="h-8 text-xs rounded-lg border border-border/50 bg-muted/30 px-3 flex items-center font-medium text-foreground truncate">
+                    {fields.repoUrl}
                   </div>
-                </>
+                </div>
+              )}
+
+              {fields.branch && (
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground font-medium">Branch</Label>
+                  <div className="h-8 text-xs rounded-lg border border-border/50 bg-muted/30 px-3 flex items-center font-medium text-foreground">
+                    <GitBranch className="w-3 h-3 mr-1.5 text-muted-foreground" />
+                    {fields.branch}
+                  </div>
+                </div>
+              )}
+
+              {fields.jiraNumber && (
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground font-medium">JIRA Number</Label>
+                  <div className="h-8 text-xs rounded-lg border border-border/50 bg-muted/30 px-3 flex items-center font-medium text-foreground">
+                    {fields.jiraNumber}
+                  </div>
+                  <p className="text-[9px] text-primary">✓ Valid JIRA number</p>
+                </div>
+              )}
+
+              {/* Show placeholder if nothing is configured */}
+              {!fields.connector && !fields.environment && !fields.repoUrl && !fields.branch && !fields.jiraNumber && (
+                <div className="text-[10px] text-muted-foreground italic py-2">
+                  No configuration saved. Configure in the Build Config panel.
+                </div>
               )}
             </div>
           </div>
+
+          {/* Execution Status */}
+          {nodeStageState && (
+            <>
+              <Separator className="bg-border/30" />
+              <div>
+                <div className="flex items-center gap-1.5 mb-3">
+                  <div className="w-5 h-5 rounded-md bg-muted/60 flex items-center justify-center">
+                    <Play className="w-3 h-3 text-muted-foreground" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Execution</span>
+                </div>
+                <div className="space-y-1 text-[11px]">
+                  {[
+                    { label: "Status", value: nodeStageState.status || "pending", color: (STATUS_CONFIG[nodeStageState.status?.toLowerCase() || "pending"] || DEFAULT_STATUS).color },
+                    ...(nodeStageState.startedAt ? [{ label: "Started", value: new Date(nodeStageState.startedAt).toLocaleTimeString() }] : []),
+                    ...(nodeStageState.completedAt ? [{ label: "Completed", value: new Date(nodeStageState.completedAt).toLocaleTimeString() }] : []),
+                    ...(nodeStageState.message ? [{ label: "Message", value: nodeStageState.message }] : []),
+                  ].map((row) => (
+                    <div key={row.label} className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
+                      <span className="text-muted-foreground font-medium">{row.label}</span>
+                      <span className="font-semibold capitalize text-right max-w-[180px] truncate" style={row.color ? { color: row.color } : undefined}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Per-Node Logs */}
+          {nodeLogs && nodeLogs.length > 0 && (
+            <>
+              <Separator className="bg-border/30" />
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <div className="w-5 h-5 rounded-md bg-muted/60 flex items-center justify-center">
+                    <RotateCw className="w-3 h-3 text-muted-foreground" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">Logs</span>
+                  <span className="text-[9px] text-muted-foreground ml-1">{nodeLogs.length} lines</span>
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                      title="Copy logs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(nodeLogs.join("\n"));
+                        import("sonner").then(({ toast }) => toast.success("Node logs copied"));
+                      }}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                      title="Download logs"
+                      onClick={() => {
+                        const blob = new Blob([nodeLogs.join("\n")], { type: "text/plain" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `${stage.label}-logs.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        import("sonner").then(({ toast }) => toast.success("Node logs downloaded"));
+                      }}
+                    >
+                      <Download className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-950 border border-slate-800 overflow-hidden">
+                  <div className="max-h-[200px] overflow-y-auto p-2 font-mono text-[10px] leading-[18px] space-y-px">
+                    {nodeLogs.map((line, i) => {
+                      const isError = /FAILED|ERROR|❌/i.test(line);
+                      const isSuccess = /SUCCESS|✓|✅|passed|complete|deployed|verified|approved/i.test(line);
+                      const isSystem = /^▸|^▶|^═|🚀|Starting|Node completed/i.test(line);
+                      return (
+                        <div
+                          key={i}
+                          className={cn(
+                            "py-0.5 rounded-sm px-1",
+                            isError && "text-red-400 bg-red-500/5",
+                            isSuccess && "text-emerald-400",
+                            isSystem && "text-cyan-300 font-semibold",
+                            !isError && !isSuccess && !isSystem && "text-slate-300"
+                          )}
+                        >
+                          <span className="text-slate-600 select-none mr-2 inline-block w-4 text-right text-[9px]">{i + 1}</span>
+                          {line}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </motion.div>
@@ -547,9 +665,13 @@ interface PipelineFlowPreviewProps {
   stageStates?: Record<string, { status?: string; startedAt?: string; completedAt?: string; message?: string }>;
   /** Currently executing node ID from backend */
   currentNode?: string;
+  /** Saved pipeline stages state from build job */
+  pipelineStagesState?: Record<string, any>;
+  /** Real-time execution logs from backend */
+  executionLogs?: string[];
 }
 
-export function PipelineFlowPreview({ pipelineName, executionStatus, activeStageIndex, stageStates, currentNode }: PipelineFlowPreviewProps) {
+export function PipelineFlowPreview({ pipelineName, executionStatus, activeStageIndex, stageStates, currentNode, pipelineStagesState, executionLogs }: PipelineFlowPreviewProps) {
   const { pipelines, isLoading } = usePipelines();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
@@ -559,7 +681,32 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
   );
 
   const [selectedStage, setSelectedStage] = useState<{ stage: ParsedStage; envId: string } | null>(null);
+
   const [configState, setConfigState] = useState<Record<string, Record<string, string>>>({});
+
+  // Sync config state whenever pipelineStagesState prop changes (async load)
+  useEffect(() => {
+    if (!pipelineStagesState) return;
+    const result: Record<string, Record<string, string>> = {};
+    const connMap = pipelineStagesState.selectedConnectors || {};
+    const envMap = pipelineStagesState.selectedEnvironments || {};
+    const repoMap = pipelineStagesState.connectorRepositoryUrls || {};
+    const branchMap = pipelineStagesState.selectedBranches || {};
+    const jiraMap = pipelineStagesState.jiraNumbers || {};
+    const allKeys = new Set([
+      ...Object.keys(connMap), ...Object.keys(envMap),
+      ...Object.keys(repoMap), ...Object.keys(branchMap), ...Object.keys(jiraMap),
+    ]);
+    allKeys.forEach((key) => {
+      result[key] = {};
+      if (connMap[key]) result[key].connector = connMap[key];
+      if (envMap[key]) result[key].environment = envMap[key];
+      if (repoMap[key]) result[key].repoUrl = repoMap[key];
+      if (branchMap[key]) result[key].branch = branchMap[key];
+      if (jiraMap[key]) result[key].jiraNumber = jiraMap[key];
+    });
+    setConfigState(result);
+  }, [pipelineStagesState]);
 
   const pipeline = useMemo(() => {
     if (!pipelineName) return null;
@@ -636,7 +783,7 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
   const isStageConfigured = (envId: string, stageId: string) => {
     const key = `${envId}__${stageId}`;
     const fields = configState[key];
-    return !!(fields?.connector || fields?.environment);
+    return !!(fields?.connector || fields?.environment || fields?.jiraNumber);
   };
 
   if (!pipelineName) {
@@ -748,6 +895,12 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
             stagesState={configState}
             onFieldChange={handleFieldChange}
             onClose={() => setSelectedStage(null)}
+            nodeLogs={executionLogs?.filter((line) => {
+              const nodeId = selectedStage.stage.id;
+              const label = selectedStage.stage.label;
+              return line.includes(nodeId) || line.includes(`Node: ${label}`) || line.includes(`Stage: ${label}`);
+            })}
+            nodeStageState={stageStates?.[selectedStage.stage.id]}
           />
         )}
       </AnimatePresence>

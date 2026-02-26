@@ -155,6 +155,7 @@ export class PipelineConfigsService {
         connectorRepositoryUrls: pipelineStagesState.connectorRepositoryUrls || {},
         selectedBranches: pipelineStagesState.selectedBranches || {},
         selectedApprovers: pipelineStagesState.selectedApprovers || {},
+        jiraNumbers: pipelineStagesState.jiraNumbers || {},
         // Don't store raw credential IDs — they're resolved + encrypted
       },
       status,

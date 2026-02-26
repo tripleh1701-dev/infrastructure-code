@@ -506,18 +506,56 @@ function PipelineCanvasContent() {
         return updatedNodes;
       });
     } else {
-      // Regular workflow node
-      const position = getNextNodePosition();
+      // Regular workflow node — auto-parent into the first env group if one exists
+      const envGroups = nodes.filter((n) => n.type === "environmentGroup");
+      const parentGroup = envGroups.length > 0 ? envGroups[envGroups.length - 1] : null;
+
+      let childPosition: { x: number; y: number };
+      const nodeProps: Partial<Node> = {};
+
+      if (parentGroup) {
+        const existingChildren = nodes.filter((n) => n.parentId === parentGroup.id);
+        const CHILD_TOP = 55;
+        const CHILD_H = 55;
+        const CHILD_GAP = 20;
+        const CHILD_LEFT = 40;
+        const CHILD_W = 170;
+        const nextY = CHILD_TOP + existingChildren.length * (CHILD_H + CHILD_GAP);
+        childPosition = { x: CHILD_LEFT, y: nextY };
+        nodeProps.parentId = parentGroup.id;
+        nodeProps.extent = "parent" as const;
+        (nodeProps as any).expandParent = true;
+
+        // Auto-resize parent
+        const childCount = existingChildren.length + 1;
+        const reqH = CHILD_TOP + childCount * (CHILD_H + CHILD_GAP) + 24;
+        const reqW = CHILD_LEFT + CHILD_W + 40;
+        const curW = (parentGroup.style?.width as number) || ENV_GROUP_WIDTH;
+        const curH = (parentGroup.style?.height as number) || ENV_GROUP_HEIGHT;
+        if (reqH > curH || reqW > curW) {
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === parentGroup.id
+                ? { ...n, style: { ...n.style, width: Math.max(curW, reqW), height: Math.max(curH, reqH) } }
+                : n
+            )
+          );
+        }
+      } else {
+        childPosition = getNextNodePosition();
+      }
+
       const newNode: Node = {
         id: `${nodeType}-${Date.now()}`,
         type: "pipeline",
-        position,
+        position: childPosition,
         data: {
           label,
           nodeType,
           category,
           isCustomEnvironment: isCustomEnv,
         },
+        ...nodeProps,
       };
 
       setNodes((nds) => nds.concat(newNode));
@@ -799,15 +837,55 @@ function PipelineCanvasContent() {
           }
         }
 
+        let childPosition: { x: number; y: number };
+        if (parentGroup) {
+          // Auto-position: stack vertically below existing children
+          const existingChildren = nodes.filter((n) => n.parentId === parentGroup!.id);
+          const CHILD_TOP_OFFSET = 55;
+          const CHILD_NODE_HEIGHT = 55;
+          const CHILD_VERTICAL_GAP = 20;
+          const CHILD_LEFT_PADDING = 40;
+          const nextY = CHILD_TOP_OFFSET + existingChildren.length * (CHILD_NODE_HEIGHT + CHILD_VERTICAL_GAP);
+          childPosition = { x: CHILD_LEFT_PADDING, y: nextY };
+        } else {
+          childPosition = position;
+        }
+
         const newNode: Node = {
           id: `${type}-${Date.now()}`,
           type: "pipeline",
-          position: parentGroup
-            ? { x: position.x - parentGroup.position.x, y: position.y - parentGroup.position.y }
-            : position,
+          position: childPosition,
           data: { label, nodeType: type, category, isCustomEnvironment: isCustomEnv },
           ...(parentGroup ? { parentId: parentGroup.id, extent: "parent" as const, expandParent: true } : {}),
         };
+
+        // Auto-resize parent group to fit new child
+        if (parentGroup) {
+          const existingChildren = nodes.filter((n) => n.parentId === parentGroup!.id);
+          const childCount = existingChildren.length + 1;
+          const CHILD_TOP_OFFSET = 55;
+          const CHILD_NODE_HEIGHT = 55;
+          const CHILD_VERTICAL_GAP = 20;
+          const CHILD_LEFT_PADDING = 40;
+          const CHILD_NODE_WIDTH = 170;
+          const requiredHeight = CHILD_TOP_OFFSET + childCount * (CHILD_NODE_HEIGHT + CHILD_VERTICAL_GAP) + 24;
+          const requiredWidth = CHILD_LEFT_PADDING + CHILD_NODE_WIDTH + 40;
+          const currentWidth = (parentGroup.style?.width as number) || ENV_GROUP_WIDTH;
+          const currentHeight = (parentGroup.style?.height as number) || ENV_GROUP_HEIGHT;
+          if (requiredHeight > currentHeight || requiredWidth > currentWidth) {
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === parentGroup!.id
+                  ? { ...n, style: { ...n.style, width: Math.max(currentWidth, requiredWidth), height: Math.max(currentHeight, requiredHeight) } }
+                  : n
+              ).concat(newNode)
+            );
+            suggestConnection(newNode);
+            setHasUnsavedChanges(true);
+            toast.success(`Added ${label} node`);
+            return;
+          }
+        }
 
         setNodes((nds) => nds.concat(newNode));
         suggestConnection(newNode);
@@ -854,22 +932,42 @@ function PipelineCanvasContent() {
     const currentParent = draggedNode.parentId as string | undefined;
 
     if (targetGroup && currentParent !== targetGroup.id) {
-      // Reparent to new group — expandParent ensures the group grows to fit
+      // Auto-position: stack below existing children in target group
+      const existingChildren = nodes.filter((n) => n.parentId === targetGroup!.id && n.id !== draggedNode.id);
+      const CHILD_TOP_OFFSET = 55;
+      const CHILD_NODE_HEIGHT = 55;
+      const CHILD_VERTICAL_GAP = 20;
+      const CHILD_LEFT_PADDING = 40;
+      const CHILD_NODE_WIDTH = 170;
+      const nextY = CHILD_TOP_OFFSET + existingChildren.length * (CHILD_NODE_HEIGHT + CHILD_VERTICAL_GAP);
+      const childCount = existingChildren.length + 1;
+      const requiredHeight = CHILD_TOP_OFFSET + childCount * (CHILD_NODE_HEIGHT + CHILD_VERTICAL_GAP) + 24;
+      const requiredWidth = CHILD_LEFT_PADDING + CHILD_NODE_WIDTH + 40;
+
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === draggedNode.id
-            ? {
+        nds.map((n) => {
+          if (n.id === draggedNode.id) {
+            return {
                 ...n,
                 parentId: targetGroup!.id,
                 extent: "parent" as const,
                 expandParent: true,
                 position: {
-                  x: absX - targetGroup!.position.x,
-                  y: absY - targetGroup!.position.y,
+                  x: CHILD_LEFT_PADDING,
+                  y: nextY,
                 },
-              }
-            : n
-        )
+            };
+          }
+          if (n.id === targetGroup!.id) {
+            const curW = (n.style?.width as number) || ENV_GROUP_WIDTH;
+            const curH = (n.style?.height as number) || ENV_GROUP_HEIGHT;
+            return {
+              ...n,
+              style: { ...n.style, width: Math.max(curW, requiredWidth), height: Math.max(curH, requiredHeight) },
+            };
+          }
+          return n;
+        })
       );
       setHasUnsavedChanges(true);
     } else if (!targetGroup && currentParent) {

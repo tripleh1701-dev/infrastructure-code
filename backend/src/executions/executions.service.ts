@@ -93,10 +93,23 @@ export class ExecutionsService {
     branch?: string,
     approverEmails?: string[],
   ): Promise<{ executionId: string }> {
-    const pipeline = await this.pipelinesService.findOne(accountId, pipelineId);
+    // Try finding pipeline by ID first; if that fails, resolve by name
+    let pipeline: any;
+    try {
+      pipeline = await this.pipelinesService.findOne(accountId, pipelineId);
+    } catch {
+      // pipelineId might be a name — resolve from the full list
+      this.logger.warn(`Pipeline not found by ID "${pipelineId}", attempting name lookup...`);
+      const allPipelines = await this.pipelinesService.findAll(accountId);
+      pipeline = allPipelines.find(
+        (p) => p.name?.toLowerCase() === pipelineId.toLowerCase(),
+      );
+    }
     if (!pipeline) {
       throw new NotFoundException(`Pipeline ${pipelineId} not found`);
     }
+    // Use the resolved pipeline ID from here on
+    const resolvedPipelineId = pipeline.id;
 
     // Fetch build job to get selectedArtifacts and pipelineStagesState
     let buildJob: any = null;
@@ -144,12 +157,12 @@ export class ExecutionsService {
       SK: `EXEC#${executionId}`,
       GSI1PK: 'ENTITY#EXECUTION',
       GSI1SK: `EXEC#${executionId}`,
-      GSI2PK: `PIPELINE#${pipelineId}`,
+      GSI2PK: `PIPELINE#${resolvedPipelineId}`,
       GSI2SK: `EXEC#${executionId}`,
       entityType: 'EXECUTION',
       id: executionId,
       executionId,
-      pipelineId,
+      pipelineId: resolvedPipelineId,
       buildJobId: buildJobId || null,
       accountId,
       userId,
@@ -171,14 +184,14 @@ export class ExecutionsService {
       await this.dynamoDb.put({ Item: executionItem });
     }
 
-    this.logger.log(`[EXECUTION:${executionId}] Pipeline execution started for ${pipelineId}`);
+    this.logger.log(`[EXECUTION:${executionId}] Pipeline execution started for ${resolvedPipelineId} (input: ${pipelineId})`);
 
     // Invoke the pipeline-executor Lambda asynchronously
     try {
       const payload = {
         executionId,
         accountId,
-        pipelineId,
+        pipelineId: resolvedPipelineId,
         buildJobId: buildJobId || null,
         userId,
         userEmail: userEmail || null,
@@ -395,6 +408,12 @@ export class ExecutionsService {
         url: connector.url || '',
         authentication: auth,
       };
+      // Inject JIRA key from pipeline stages state
+      const jiraKey = stage.config?._jiraKey;
+      if (jiraKey) {
+        if (!stage.toolConfig.inputs) stage.toolConfig.inputs = {};
+        stage.toolConfig.inputs.jiraKey = jiraKey;
+      }
     } else if (upperTool === 'GITHUB' || upperTool.includes('GITHUB')) {
       stage.toolConfig.type = 'GITHUB';
       stage.toolConfig.connector = {

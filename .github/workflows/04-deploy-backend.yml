@@ -234,3 +234,19 @@ jobs:
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Function | \`${FUNCTION_NAME}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`${LATEST_VERSION}\` |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify Lambda Configuration
+        env:
+          FUNCTION_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment || 'dev' }}-backend
+        run: |
+          set -euo pipefail
+          echo "🔍 Verifying Lambda configuration..."
+          CONFIG=$(aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Handler: Handler, Runtime: Runtime, MemorySize: MemorySize, Timeout: Timeout, CodeSize: CodeSize, LastModified: LastModified}' --output json)
+          echo "${CONFIG}" | jq .
+
+          HANDLER=$(echo "${CONFIG}" | jq -r '.Handler')
+          if [ "${HANDLER}" != "dist/main.handler" ]; then
+            echo "::error::Handler mismatch: expected 'dist/main.handler', got '${HANDLER}'"
+            exit 1
+          fi
+          echo "✅ Handler verified: ${HANDLER}"

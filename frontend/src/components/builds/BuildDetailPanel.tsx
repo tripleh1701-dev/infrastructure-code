@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BuildJob, BuildExecution, useBuilds } from "@/hooks/useBuilds";
 import { useBuildExecution } from "@/hooks/useBuildExecution";
+import { usePipelines } from "@/hooks/usePipelines";
 import { isExternalApi } from "@/lib/api/config";
 import { usePermissions } from "@/contexts/PermissionContext";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
   const { fetchExecutions, createExecution } = useBuilds();
   const { currentUserRoleName } = usePermissions();
   const buildExecution = useBuildExecution();
+  const { pipelines } = usePipelines();
   const [executions, setExecutions] = useState<BuildExecution[]>([]);
   const [loadingExecs, setLoadingExecs] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
@@ -147,7 +149,13 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
         setActiveTab("logs");
         setRunStatus("running");
         setActiveStageIndex(0);
-        await buildExecution.runExecution(buildJob.pipeline!, buildJob.id, "main", approvers);
+        // Resolve pipeline UUID from name
+        const pipelineName = buildJob.pipeline!;
+        const matchedPipeline = pipelines.find(
+          (p) => p.name.toLowerCase() === pipelineName.toLowerCase()
+        );
+        const pipelineId = matchedPipeline?.id || pipelineName;
+        await buildExecution.runExecution(pipelineId, buildJob.id, "main", approvers);
         toast.success(`Build ${buildNumber} started`);
       } catch {
         toast.error("Failed to start build");
@@ -546,6 +554,8 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               activeStageIndex={runStatus !== "idle" ? activeStageIndex : undefined}
               stageStates={buildExecution.stageStates}
               currentNode={buildExecution.currentNode}
+              pipelineStagesState={buildJob.pipeline_stages_state as Record<string, any> | undefined}
+              executionLogs={buildExecution.logs}
             />
           </div>
         </div>

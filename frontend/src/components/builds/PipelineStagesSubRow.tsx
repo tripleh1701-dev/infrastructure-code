@@ -63,6 +63,7 @@ interface StagesState {
   connectorRepositoryUrls: Record<string, string>;
   selectedBranches: Record<string, string>;
   selectedApprovers: Record<string, string[]>;
+  jiraNumbers: Record<string, string>;
   [key: string]: any;
 }
 
@@ -150,6 +151,12 @@ function parsePipelineStructure(nodes: any[], edges: any[]): EnvironmentNode[] {
       status: node.data?.status as string,
     };
 
+    // If only one environment exists, ALL stages belong to it — no General bucket
+    if (envNodes.length === 1) {
+      envStagesMap.get(envNodes[0].id)!.push(stage);
+      return;
+    }
+
     const parentId = nodeParentMap.get(node.id);
     if (parentId && envStagesMap.has(parentId)) {
       envStagesMap.get(parentId)!.push(stage);
@@ -235,18 +242,21 @@ interface StageConfigRowProps {
   onRepoUrlChange: (key: string, val: string) => void;
   onBranchChange: (key: string, val: string) => void;
   onApproverChange: (key: string, emails: string[]) => void;
+  onJiraNumberChange: (key: string, val: string) => void;
 }
 
 function StageConfigRow({
   stage, envId, stagesState, connectors, connectorsLoading,
   accountUsers, accountUsersLoading, environments, environmentsLoading,
-  onConnectorChange, onEnvironmentChange, onRepoUrlChange, onBranchChange, onApproverChange,
+  onConnectorChange, onEnvironmentChange, onRepoUrlChange, onBranchChange, onApproverChange, onJiraNumberChange,
 }: StageConfigRowProps) {
   const stageKey = `${envId}__${stage.id}`;
   const isDeploy = stage.category === "deploy";
   const isCode = stage.category === "code";
   const isApproval = stage.category === "approval";
+  const isJira = stage.type === "plan_jira";
   const NodeIcon = PIPELINE_NODE_ICONS[stage.type];
+  const JIRA_REGEX = /^[A-Z][A-Z0-9]+-\d+$/;
 
   const availableConnectors = connectors.filter(
     (c) => c.category?.toLowerCase() === stage.category
@@ -257,7 +267,9 @@ function StageConfigRow({
   const repoUrl = stagesState.connectorRepositoryUrls[stageKey] || "";
   const branch = stagesState.selectedBranches[stageKey] || "";
   const selectedApproverEmails = stagesState.selectedApprovers?.[stageKey] || [];
-  const isConfigured = !!(selectedConnectorId || selectedEnv || (isApproval && selectedApproverEmails.length > 0));
+  const jiraNumber = stagesState.jiraNumbers?.[stageKey] || "";
+  const jiraValid = jiraNumber === "" || JIRA_REGEX.test(jiraNumber);
+  const isConfigured = !!(selectedConnectorId || selectedEnv || (isApproval && selectedApproverEmails.length > 0) || (isJira && jiraNumber && jiraValid));
 
   return (
     <div className="flex items-start gap-4 p-3 rounded-lg border border-border/40 bg-card/50 hover:bg-card/80 transition-colors">
@@ -432,6 +444,24 @@ function StageConfigRow({
             </div>
           </>
         )}
+
+        {isJira && (
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground">JIRA Number</Label>
+            <Input
+              className={cn("h-7 text-xs", !jiraValid && "border-destructive focus-visible:ring-destructive")}
+              placeholder="e.g. PROJ-123"
+              value={jiraNumber}
+              onChange={(e) => onJiraNumberChange(stageKey, e.target.value.toUpperCase())}
+            />
+            {!jiraValid && (
+              <p className="text-[9px] text-destructive">Invalid format. Use PROJ-123 (e.g. DEV-42, PIPE-100)</p>
+            )}
+            {jiraNumber && jiraValid && (
+              <p className="text-[9px] text-primary">✓ Valid JIRA number</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -476,6 +506,7 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
           connectorRepositoryUrls: existing.connectorRepositoryUrls || {},
           selectedBranches: existing.selectedBranches || {},
           selectedApprovers: existing.selectedApprovers || {},
+          jiraNumbers: existing.jiraNumbers || {},
         }
       : {
           selectedConnectors: {},
@@ -483,6 +514,7 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
           connectorRepositoryUrls: {},
           selectedBranches: {},
           selectedApprovers: {},
+          jiraNumbers: {},
         };
   });
 
@@ -536,6 +568,14 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
     setStagesState((prev) => ({
       ...prev,
       selectedApprovers: { ...prev.selectedApprovers, [stageKey]: emails },
+    }));
+    setIsDirty(true);
+  };
+
+  const handleJiraNumberChange = (stageKey: string, value: string) => {
+    setStagesState((prev) => ({
+      ...prev,
+      jiraNumbers: { ...prev.jiraNumbers, [stageKey]: value },
     }));
     setIsDirty(true);
   };
@@ -658,6 +698,7 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
                         onRepoUrlChange={handleRepoUrlChange}
                         onBranchChange={handleBranchChange}
                         onApproverChange={handleApproverChange}
+                        onJiraNumberChange={handleJiraNumberChange}
                       />
                     </motion.div>
                   ))}

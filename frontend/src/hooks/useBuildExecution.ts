@@ -78,8 +78,8 @@ export function useBuildExecution() {
           setPendingApprovalStage(response.data.currentStage || null);
         }
 
-        // Stop polling when execution is complete
-        if (response.data.status !== "RUNNING") {
+        // Stop polling only when execution is fully complete (not waiting)
+        if (response.data.status === "SUCCESS" || response.data.status === "FAILED") {
           stopPolling();
         }
       }

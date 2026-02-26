@@ -80,7 +80,13 @@ jobs:
             --function-name "${FUNCTION_NAME}" \
             --zip-file fileb://backend/lambda-package.zip \
             --publish
-          
+
+          # Ensure handler points to compiled entry point
+          aws lambda update-function-configuration \
+            --function-name "${FUNCTION_NAME}" \
+            --handler "dist/pipeline-executor.handler.handler" \
+            --runtime "nodejs20.x"
+
           # Wait for update to complete
           aws lambda wait function-updated-v2 \
             --function-name "${FUNCTION_NAME}"
@@ -98,3 +104,19 @@ jobs:
             --function-version "${LATEST_VERSION}"
           
           echo "✅ Pipeline executor deployed: version ${LATEST_VERSION}"
+
+      - name: Verify Lambda Configuration
+        env:
+          FUNCTION_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment || 'dev' }}-pipeline-executor
+        run: |
+          set -euo pipefail
+          echo "🔍 Verifying Lambda configuration..."
+          CONFIG=$(aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Handler: Handler, Runtime: Runtime, MemorySize: MemorySize, Timeout: Timeout, CodeSize: CodeSize, LastModified: LastModified}' --output json)
+          echo "${CONFIG}" | jq .
+          
+          HANDLER=$(echo "${CONFIG}" | jq -r '.Handler')
+          if [ "${HANDLER}" != "dist/pipeline-executor.handler.handler" ]; then
+            echo "::error::Handler mismatch: expected 'dist/pipeline-executor.handler.handler', got '${HANDLER}'"
+            exit 1
+          fi
+          echo "✅ Handler verified: ${HANDLER}"

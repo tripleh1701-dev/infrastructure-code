@@ -169,6 +169,7 @@ export class YamlParserService {
     const selectedBranches = stagesState?.selectedBranches || {};
     const selectedApprovers = stagesState?.selectedApprovers || {};
     const connectorRepoUrls = stagesState?.connectorRepositoryUrls || {};
+    const jiraNumbers = stagesState?.jiraNumbers || {};
 
     const pipelineNodes: ParsedNode[] = [];
 
@@ -211,6 +212,7 @@ export class YamlParserService {
             _branch: selectedBranches[stageKey] || undefined,
             _approvers: selectedApprovers[stageKey] || undefined,
             _repoUrl: connectorRepoUrls[stageKey] || undefined,
+            _jiraKey: jiraNumbers[stageKey] || undefined,
           },
         } as ParsedStage;
       });
