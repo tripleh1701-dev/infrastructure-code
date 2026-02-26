@@ -311,8 +311,8 @@ describe("useBuildExecution – approval gates", () => {
 
     expect(result.current.status).toBe("WAITING_APPROVAL");
     expect(result.current.pendingApprovalStage).toBe("approval-stage");
-    // WAITING_APPROVAL is not RUNNING, so polling stops
-    expect(result.current.isPolling).toBe(false);
+    // WAITING_APPROVAL keeps polling so we can detect when it resumes
+    expect(result.current.isPolling).toBe(true);
   });
 
   it("approveStage posts to API and resumes polling", async () => {

@@ -81,13 +81,17 @@ jobs:
             --zip-file fileb://backend/lambda-package.zip \
             --publish
 
+          # Wait for code update to stabilise before changing configuration
+          aws lambda wait function-updated-v2 \
+            --function-name "${FUNCTION_NAME}"
+
           # Ensure handler points to compiled entry point
           aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
             --handler "dist/pipeline-executor.handler.handler" \
             --runtime "nodejs20.x"
 
-          # Wait for update to complete
+          # Wait for configuration update to complete
           aws lambda wait function-updated-v2 \
             --function-name "${FUNCTION_NAME}"
           
