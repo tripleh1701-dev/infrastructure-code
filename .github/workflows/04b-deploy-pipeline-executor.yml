@@ -149,8 +149,7 @@ jobs:
           RESPONSE=$(aws lambda invoke \
             --function-name "${FUNCTION_NAME}" \
             --qualifier live \
-            --payload "$(printf '{"smokeTest":true}' | base64)" \
-            --cli-binary-format raw-in-base64-out \
+            --payload '{"smokeTest":true}' \
             --log-type Tail \
             --query '{StatusCode: StatusCode, FunctionError: FunctionError, LogResult: LogResult}' \
             --output json \
