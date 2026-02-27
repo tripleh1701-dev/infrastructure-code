@@ -121,18 +121,42 @@ export class ExecutionsService {
       }
     }
 
+    // ── Debug: log raw pipeline data before parsing ──
+    this.logger.log(`[runPipeline] Pipeline ${resolvedPipelineId} raw data — ` +
+      `hasYaml=${!!pipeline.yamlContent}, ` +
+      `nodesCount=${(pipeline.nodes || []).length}, ` +
+      `edgesCount=${(pipeline.edges || []).length}`);
+    if (pipeline.yamlContent) {
+      this.logger.debug(`[runPipeline] yamlContent (first 500 chars): ${pipeline.yamlContent.substring(0, 500)}`);
+    } else {
+      this.logger.debug(`[runPipeline] nodes: ${JSON.stringify(
+        (pipeline.nodes || []).map((n: any) => ({ id: n.id, type: n.type, parentId: n.parentId || n.parentNode, nodeType: n.data?.nodeType })),
+      )}`);
+      this.logger.debug(`[runPipeline] edges: ${JSON.stringify(pipeline.edges || [])}`);
+    }
+    if (buildJob) {
+      this.logger.debug(`[runPipeline] buildJob.pipelineStagesState keys: ${JSON.stringify(Object.keys(buildJob.pipelineStagesState || {}))}`);
+    }
+
     let parsedPipeline: ParsedPipeline;
+    const stagesState = buildJob?.pipelineStagesState || {};
+    const canvasNodes = pipeline.nodes || [];
+    const canvasEdges = pipeline.edges || [];
+
     if (pipeline.yamlContent) {
       parsedPipeline = this.yamlParser.parse(pipeline.yamlContent);
+
+      // Fallback: if YAML produced zero nodes but canvas data exists, use canvas
+      if (parsedPipeline.nodes.length === 0 && canvasNodes.length > 0) {
+        this.logger.warn(`[runPipeline] YAML produced 0 nodes — falling back to canvas data (${canvasNodes.length} nodes)`);
+        parsedPipeline = this.yamlParser.parseFromCanvasData(canvasNodes, canvasEdges, stagesState);
+      }
     } else {
-      // Parse from canvas data, enriched with build job's stages state
-      const stagesState = buildJob?.pipelineStagesState || {};
-      parsedPipeline = this.yamlParser.parseFromCanvasData(
-        pipeline.nodes || [],
-        pipeline.edges || [],
-        stagesState,
-      );
+      parsedPipeline = this.yamlParser.parseFromCanvasData(canvasNodes, canvasEdges, stagesState);
     }
+
+    this.logger.log(`[runPipeline] Parsed pipeline — nodesCount=${parsedPipeline.nodes.length}, ` +
+      `stages=${parsedPipeline.nodes.map(n => `${n.id}(${n.stages.length})`).join(', ')}`);
 
     // Resolve credentials, connector URLs, and environment configs from DynamoDB
     await this.resolveStageCredentials(parsedPipeline, accountId, buildJob);

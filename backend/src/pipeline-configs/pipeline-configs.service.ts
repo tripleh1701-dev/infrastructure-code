@@ -9,6 +9,8 @@ import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.servic
 import { PipelinesService } from '../pipelines/pipelines.service';
 import { BuildsService } from '../builds/builds.service';
 import { CredentialsService, Credential } from '../credentials/credentials.service';
+import { EnvironmentsService, Environment } from '../environments/environments.service';
+import { ConnectorsService, Connector } from '../connectors/connectors.service';
 import { GenerateBuildYamlDto } from './dto/generate-build-yaml.dto';
 import { CognitoUser } from '../auth/interfaces/cognito-user.interface';
 import { KMSClient, EncryptCommand } from '@aws-sdk/client-kms';
@@ -39,6 +41,8 @@ export class PipelineConfigsService {
     private readonly pipelinesService: PipelinesService,
     private readonly buildsService: BuildsService,
     private readonly credentialsService: CredentialsService,
+    private readonly environmentsService: EnvironmentsService,
+    private readonly connectorsService: ConnectorsService,
   ) {
     const region = this.configService.get('AWS_REGION', 'us-east-1');
     const credentials = resolveAwsCredentials(
@@ -102,6 +106,50 @@ export class PipelineConfigsService {
       }
     }
 
+    // 3b. Resolve environments for deploy stages
+    const resolvedEnvironments: Record<string, ResolvedEnvironment> = {};
+    const selectedEnvIds = pipelineStagesState.selectedEnvironments || {};
+
+    for (const [stageKey, envId] of Object.entries(selectedEnvIds)) {
+      if (envId) {
+        try {
+          const env = await this.environmentsService.findOne(envId as string, accountId);
+          resolvedEnvironments[stageKey] = this.mapEnvironment(env);
+        } catch (err) {
+          this.logger.warn(`Environment ${envId} for stage ${stageKey} not found: ${err.message}`);
+        }
+      }
+    }
+
+    // 3c. Resolve connectors (for repo URLs, etc.)
+    const resolvedConnectorDetails: Record<string, Connector> = {};
+    const connectorRepoUrls = pipelineStagesState.connectorRepositoryUrls || {};
+
+    for (const [stageKey, connId] of Object.entries(selectedConnectors)) {
+      if (connId && !resolvedCredentials[stageKey]) {
+        // If it's a connector ID rather than a credential ID, try fetching as connector
+        try {
+          const connector = await this.connectorsService.findOne(connId as string, accountId);
+          resolvedConnectorDetails[stageKey] = connector;
+          // Also resolve the connector's credential if available
+          if (connector.credentialId) {
+            try {
+              const cred = await this.credentialsService.findOne(connector.credentialId, accountId);
+              resolvedCredentials[stageKey] = this.mapCredential(cred);
+              // Inherit URL from connector if credential doesn't have one
+              if (!resolvedCredentials[stageKey].url && connector.url) {
+                resolvedCredentials[stageKey].url = connector.url;
+              }
+            } catch {}
+          }
+        } catch {
+          // Already resolved as credential above
+        }
+      }
+    }
+
+    this.logger.log(`Resolved ${Object.keys(resolvedCredentials).length} credentials, ${Object.keys(resolvedEnvironments).length} environments for build YAML`);
+
     // 4. Construct build YAML
     const buildYaml = this.constructBuildYaml(
       pipeline,
@@ -109,6 +157,7 @@ export class PipelineConfigsService {
       buildVersion,
       pipelineStagesState,
       resolvedCredentials,
+      resolvedEnvironments,
     );
 
     // 5. Encrypt sensitive data for storage
@@ -151,12 +200,12 @@ export class PipelineConfigsService {
       encryptedCredentials,
       kmsKeyId,
       stagesState: {
+        selectedConnectors: pipelineStagesState.selectedConnectors || {},
         selectedEnvironments: pipelineStagesState.selectedEnvironments || {},
         connectorRepositoryUrls: pipelineStagesState.connectorRepositoryUrls || {},
         selectedBranches: pipelineStagesState.selectedBranches || {},
         selectedApprovers: pipelineStagesState.selectedApprovers || {},
         jiraNumbers: pipelineStagesState.jiraNumbers || {},
-        // Don't store raw credential IDs — they're resolved + encrypted
       },
       status,
       createdAt: now,
@@ -281,6 +330,7 @@ export class PipelineConfigsService {
     buildVersion: string,
     stagesState: any,
     resolvedCredentials: Record<string, ResolvedCredential>,
+    resolvedEnvironments: Record<string, ResolvedEnvironment>,
   ): string {
     const pipelineName = pipeline.name || buildJob.connectorName || buildJob.connector_name;
     const nodes = pipeline.nodes || [];
@@ -288,23 +338,18 @@ export class PipelineConfigsService {
     const repoUrls = stagesState.connectorRepositoryUrls || {};
     const branches = stagesState.selectedBranches || {};
     const approvers = stagesState.selectedApprovers || {};
+    const jiraNumbers = stagesState.jiraNumbers || {};
 
     // Collect selected artifacts from the build job for embedding in YAML
     const selectedArtifacts: any[] = buildJob.selectedArtifacts || [];
 
-    let yaml = `pipeline:\n`;
-    yaml += `  name: "${this.esc(pipelineName)}"\n`;
-    yaml += `  buildVersion: "${this.esc(buildVersion)}"\n`;
-    yaml += `  execution:\n`;
-    yaml += `    entryPoint: execute_pipeline\n`;
-    yaml += `    logging:\n`;
-    yaml += `      successMessage: "🎉 Pipeline execution completed successfully"\n`;
-    yaml += `      errorBehavior: "exit_on_failure"\n`;
-    yaml += `      failureExitCode: 1\n`;
+    let yaml = `pipelineName: "${this.esc(pipelineName)}"\n`;
+    yaml += `buildVersion: "${this.esc(buildVersion)}"\n`;
+    yaml += `\n`;
 
     // ── Selected artifacts section ──────────────────────────────────────────
     if (selectedArtifacts.length > 0) {
-      yaml += `  selectedArtifacts:\n`;
+      yaml += `selectedArtifacts:\n`;
 
       // Group by package for readable YAML
       const byPackage = new Map<string, any[]>();
@@ -317,69 +362,129 @@ export class PipelineConfigsService {
       for (const [pkgId, arts] of byPackage) {
         const pkgName = arts[0]?.packageName || pkgId;
         const pkgVersion = arts[0]?.packageVersion || 'latest';
-        yaml += `    - package:\n`;
-        yaml += `        id: "${this.esc(pkgId)}"\n`;
-        yaml += `        name: "${this.esc(pkgName)}"\n`;
-        yaml += `        version: "${this.esc(pkgVersion)}"\n`;
-        yaml += `      artifacts:\n`;
+        yaml += `  - package:\n`;
+        yaml += `      id: "${this.esc(pkgId)}"\n`;
+        yaml += `      name: "${this.esc(pkgName)}"\n`;
+        yaml += `      version: "${this.esc(pkgVersion)}"\n`;
+        yaml += `    artifacts:\n`;
         for (const a of arts) {
-          yaml += `        - id: "${this.esc(a.artifactId || '')}"\n`;
-          yaml += `          name: "${this.esc(a.artifactName || '')}"\n`;
-          yaml += `          version: "${this.esc(a.artifactVersion || 'Active')}"\n`;
-          yaml += `          type: "${this.esc(a.artifactType || '')}"\n`;
+          yaml += `      - id: "${this.esc(a.artifactId || '')}"\n`;
+          yaml += `        name: "${this.esc(a.artifactName || '')}"\n`;
+          yaml += `        version: "${this.esc(a.artifactVersion || 'Active')}"\n`;
+          yaml += `        type: "${this.esc(a.artifactType || '')}"\n`;
         }
       }
+      yaml += `\n`;
     }
 
-    yaml += `  nodes:\n`;
+    yaml += `nodes:\n`;
 
     // Parse nodes from pipeline canvas data
     const envNodes = this.extractEnvironmentNodes(nodes);
 
+    this.logger.debug(`[constructBuildYaml] envNodes: ${JSON.stringify(envNodes.map(e => ({ id: e.id, label: e.label, stages: e.stages.map(s => ({ id: s.id, label: s.label, tool: s.tool })) })))}`);
+    this.logger.debug(`[constructBuildYaml] stagesState keys — connectors: ${JSON.stringify(Object.keys(stagesState.selectedConnectors || {}))}, envs: ${JSON.stringify(Object.keys(selectedEnvs))}, jira: ${JSON.stringify(Object.keys(jiraNumbers))}`);
+
     for (const envNode of envNodes) {
       const envName = envNode.label || envNode.id;
-      yaml += `    - name: "${this.esc(envName)}"\n`;
-
-      if (selectedEnvs[envNode.id]) {
-        yaml += `      environment: "${this.esc(selectedEnvs[envNode.id])}"\n`;
-      }
-
-      yaml += `      stages:\n`;
+      yaml += `  - name: ${envName}\n`;
+      yaml += `    stages:\n`;
 
       for (const stage of envNode.stages) {
-        const stageKey = `${envNode.id}::${stage.id}`;
-        const cred = resolvedCredentials[stageKey];
-        const repoUrl = repoUrls[stageKey] || '';
-        const branch = branches[stageKey] || 'main';
-        const stageApprovers = approvers[stageKey] || [];
+        // Frontend uses double underscore separator: envId__stageId
+        const stageKeyUnderscore = `${envNode.id}__${stage.id}`;
+        // Also try double-colon for backward compat
+        const stageKeyColon = `${envNode.id}::${stage.id}`;
+        // Also try just the stage ID (for flat pipelines)
+        const stageKeyDirect = stage.id;
 
-        yaml += `        - name: "${this.esc(stage.label || stage.type)}"\n`;
-        yaml += `          type: "${this.esc(stage.type)}"\n`;
+        const cred = resolvedCredentials[stageKeyUnderscore] || resolvedCredentials[stageKeyColon] || resolvedCredentials[stageKeyDirect];
+        const resolvedEnv = resolvedEnvironments[stageKeyUnderscore] || resolvedEnvironments[stageKeyColon] || resolvedEnvironments[stageKeyDirect];
+        const repoUrl = repoUrls[stageKeyUnderscore] || repoUrls[stageKeyColon] || repoUrls[stageKeyDirect] || '';
+        const branch = branches[stageKeyUnderscore] || branches[stageKeyColon] || branches[stageKeyDirect] || 'main';
+        const stageApprovers = approvers[stageKeyUnderscore] || approvers[stageKeyColon] || approvers[stageKeyDirect] || [];
+        const jiraKey = jiraNumbers[stageKeyUnderscore] || jiraNumbers[stageKeyColon] || jiraNumbers[stageKeyDirect] || '';
 
-        if (stage.tool) {
-          yaml += `          tool:\n`;
-          yaml += `            type: "${this.esc(stage.tool)}"\n`;
+        // Infer tool type from stage label/tool or name
+        const toolType = this.inferToolType(stage.tool, stage.label, stage.type);
 
-          // For deploy stages, pass selectedArtifacts so they appear in the tool's artifacts section
-          const isDeployTool = stage.tool.toUpperCase().includes('SAP') ||
-            stage.tool.toUpperCase().includes('CPI') ||
-            stage.tool.toUpperCase().includes('CLOUD_FOUNDRY');
+        yaml += `      - name: ${stage.label || stage.type}\n`;
 
-          if (cred) {
-            yaml += this.buildToolYaml(
-              stage.tool,
-              cred,
-              repoUrl,
-              branch,
-              isDeployTool ? selectedArtifacts : [],
-            );
+        if (!toolType) {
+          yaml += `        tool: null\n`;
+        } else {
+          yaml += `        tool:\n`;
+          yaml += `          type: ${toolType}\n`;
+
+          if (toolType === 'JIRA') {
+            if (cred) {
+              yaml += `          connector:\n`;
+              yaml += `            url: ${this.esc(cred.url || '')}\n`;
+              yaml += `            authentication:\n`;
+              yaml += `              type: ${this.esc(cred.authType || 'UsernameAndApiKey')}\n`;
+              if (cred.username) yaml += `              username: ${this.esc(cred.username)}\n`;
+              yaml += `              apiKey: ${this.esc(cred.apiKey || 'ENCRYPTED')}\n`;
+            }
+            if (jiraKey) {
+              yaml += `          inputs:\n`;
+              yaml += `            jiraKey: ${this.esc(jiraKey)}\n`;
+            }
+          } else if (toolType === 'GitHub' || toolType === 'GitLab') {
+            yaml += `          connector:\n`;
+            yaml += `            repoUrl: ${this.esc(repoUrl || cred?.url || '')}\n`;
+            yaml += `            branch: ${branch}\n`;
+            if (cred) {
+              yaml += `            authentication:\n`;
+              yaml += `              type: PersonalAccessToken\n`;
+              yaml += `              token: ${this.esc(cred.token || 'ENCRYPTED')}\n`;
+            }
+          } else if (toolType === 'SAP_CPI' || toolType === 'CloudFoundry') {
+            // Use resolved environment details
+            if (resolvedEnv) {
+              yaml += `          environment:\n`;
+              yaml += `            apiUrl: ${this.esc(resolvedEnv.apiUrl)}\n`;
+              yaml += `            authentication:\n`;
+              yaml += `              clientId: ${this.esc(resolvedEnv.clientId || 'ENCRYPTED')}\n`;
+              yaml += `              clientSecret: ${this.esc(resolvedEnv.clientSecret || 'ENCRYPTED')}\n`;
+              if (resolvedEnv.tokenUrl) yaml += `              tokenUrl: ${this.esc(resolvedEnv.tokenUrl)}\n`;
+            } else if (cred) {
+              yaml += `          environment:\n`;
+              yaml += `            apiUrl: ${this.esc(cred.url || '')}\n`;
+              yaml += `            authentication:\n`;
+              yaml += `              clientId: ${this.esc(cred.clientId || 'ENCRYPTED')}\n`;
+              yaml += `              clientSecret: ${this.esc(cred.clientSecret || 'ENCRYPTED')}\n`;
+              if (cred.tokenUrl) yaml += `              tokenUrl: ${this.esc(cred.tokenUrl)}\n`;
+            }
+
+            // Embed artifacts
+            const allArtifacts = [...(cred?.artifacts || [])];
+            for (const sa of selectedArtifacts) {
+              const artName = sa.artifactId || sa.artifactName || sa.name || '';
+              const artType = this.mapArtifactTypeForYaml(sa.artifactType || sa.type || '');
+              if (artName) allArtifacts.push({ name: artName, type: artType });
+            }
+            if (allArtifacts.length > 0) {
+              yaml += `          artifacts:\n`;
+              for (const art of allArtifacts) {
+                yaml += `            - name: ${this.esc(art.name)}\n`;
+                yaml += `              type: ${this.esc(art.type)}\n`;
+              }
+            }
+          } else {
+            // Generic tool — include whatever credential data is available
+            if (cred) {
+              yaml += `          connector:\n`;
+              if (cred.url) yaml += `            url: ${this.esc(cred.url)}\n`;
+              yaml += `            authentication:\n`;
+              yaml += `              type: ${this.esc(cred.authType)}\n`;
+            }
           }
         }
 
         if (stageApprovers.length > 0) {
-          yaml += `          approvers:\n`;
+          yaml += `        approvers:\n`;
           for (const approver of stageApprovers) {
-            yaml += `            - "${this.esc(approver)}"\n`;
+            yaml += `          - ${this.esc(approver)}\n`;
           }
         }
       }
@@ -388,67 +493,37 @@ export class PipelineConfigsService {
     return yaml;
   }
 
-  private buildToolYaml(
-    toolType: string,
-    cred: ResolvedCredential,
-    repoUrl: string,
-    branch: string,
-    selectedArtifacts: any[] = [],
-  ): string {
-    const upper = toolType.toUpperCase();
-    let yaml = '';
-
-    if (upper === 'JIRA' || upper.includes('JIRA')) {
-      yaml += `            connector:\n`;
-      yaml += `              url: "${this.esc(cred.url || '')}"\n`;
-      yaml += `              authentication:\n`;
-      yaml += `                type: "${this.esc(cred.authType)}"\n`;
-      if (cred.username) yaml += `                username: "${this.esc(cred.username)}"\n`;
-      yaml += `                apiKey: "ENCRYPTED"\n`;
-    } else if (upper === 'GITHUB' || upper.includes('GITHUB')) {
-      yaml += `            connector:\n`;
-      yaml += `              repoUrl: "${this.esc(repoUrl || cred.url || '')}"\n`;
-      yaml += `              branch: "${this.esc(branch)}"\n`;
-      yaml += `              authentication:\n`;
-      yaml += `                type: PersonalAccessToken\n`;
-      yaml += `                token: "ENCRYPTED"\n`;
-    } else if (upper.includes('SAP') || upper.includes('CPI') || upper.includes('CLOUD_FOUNDRY')) {
-      yaml += `            environment:\n`;
-      yaml += `              apiUrl: "${this.esc(cred.url || '')}"\n`;
-      yaml += `              authentication:\n`;
-      yaml += `                clientId: "ENCRYPTED"\n`;
-      yaml += `                clientSecret: "ENCRYPTED"\n`;
-      if (cred.tokenUrl) yaml += `                tokenUrl: "${this.esc(cred.tokenUrl)}"\n`;
-
-      // Embed selectedArtifacts from build job into the deploy tool's artifacts section
-      const allArtifacts = [...(cred.artifacts || [])];
-
-      // Add selectedArtifacts (mapped to name/type format)
-      for (const sa of selectedArtifacts) {
-        const artName = sa.artifactId || sa.artifactName || sa.name || '';
-        const artType = this.mapArtifactTypeForYaml(sa.artifactType || sa.type || '');
-        if (artName) {
-          allArtifacts.push({ name: artName, type: artType });
-        }
-      }
-
-      if (allArtifacts.length > 0) {
-        yaml += `            artifacts:\n`;
-        for (const art of allArtifacts) {
-          yaml += `              - name: "${this.esc(art.name)}"\n`;
-          yaml += `                type: "${this.esc(art.type)}"\n`;
-        }
-      }
-    } else {
-      // Generic tool
-      yaml += `            connector:\n`;
-      if (cred.url) yaml += `              url: "${this.esc(cred.url)}"\n`;
-      yaml += `              authentication:\n`;
-      yaml += `                type: "${this.esc(cred.authType)}"\n`;
+  /**
+   * Infer the tool type from the stage's tool field, label, or type.
+   */
+  private inferToolType(tool: string, label: string, stageType: string): string | null {
+    // If tool is explicitly set, normalize it
+    if (tool) {
+      const upper = tool.toUpperCase();
+      if (upper.includes('JIRA')) return 'JIRA';
+      if (upper.includes('GITHUB')) return 'GitHub';
+      if (upper.includes('GITLAB')) return 'GitLab';
+      if (upper.includes('SAP') || upper.includes('CPI')) return 'SAP_CPI';
+      if (upper.includes('CLOUD') && upper.includes('FOUNDRY')) return 'CloudFoundry';
+      if (upper.includes('JENKINS')) return 'Jenkins';
+      return tool;
     }
 
-    return yaml;
+    // Infer from stage label/name
+    const name = (label || stageType || '').toUpperCase();
+    if (name.includes('JIRA') || name.includes('PLAN')) return 'JIRA';
+    if (name.includes('GITHUB') || name.includes('CODE')) return 'GitHub';
+    if (name.includes('GITLAB')) return 'GitLab';
+    if (name.includes('DEPLOY') || name.includes('SAP') || name.includes('CPI') || name.includes('CLOUD FOUNDRY')) return 'SAP_CPI';
+    if (name.includes('JENKINS')) return 'Jenkins';
+
+    // Build and Test stages typically have no tool
+    if (name.includes('BUILD') || name.includes('TEST') || name.includes('RELEASE')) return null;
+
+    return null;
   }
+
+  // buildToolYaml removed — tool YAML is now generated inline in constructBuildYaml
 
   private mapArtifactTypeForYaml(type: string): string {
     const typeMap: Record<string, string> = {
@@ -519,6 +594,28 @@ export class PipelineConfigsService {
       tokenUrl: c.tokenUrl || c.token_url || c['Token URL'] || '',
       password: c.password || c.Password || '',
       artifacts: [],
+    };
+  }
+
+  private mapEnvironment(env: Environment): ResolvedEnvironment {
+    // Extract deploy connector details from the environment's connectors array
+    const deployConnector = (env.connectors || []).find(
+      (c) => c.category === 'deploy' || c.connector?.toLowerCase().includes('sap') || c.connector?.toLowerCase().includes('cloud foundry'),
+    );
+    const apiConnector = (env.connectors || []).find(
+      (c) => c.category === 'deploy' || c.apiUrl,
+    );
+
+    return {
+      id: env.id,
+      name: env.name,
+      apiUrl: deployConnector?.apiUrl || apiConnector?.apiUrl || '',
+      clientId: deployConnector?.oauth2ClientId || apiConnector?.oauth2ClientId || '',
+      clientSecret: deployConnector?.oauth2ClientSecret || apiConnector?.oauth2ClientSecret || '',
+      tokenUrl: deployConnector?.oauth2TokenUrl || apiConnector?.oauth2TokenUrl || '',
+      hostUrl: deployConnector?.hostUrl || '',
+      iflowUrl: deployConnector?.iflowUrl || '',
+      environmentType: deployConnector?.environmentType || '',
     };
   }
 
@@ -594,6 +691,18 @@ interface ResolvedCredential {
   tokenUrl: string;
   password: string;
   artifacts: { name: string; type: string }[];
+}
+
+interface ResolvedEnvironment {
+  id: string;
+  name: string;
+  apiUrl: string;
+  clientId: string;
+  clientSecret: string;
+  tokenUrl: string;
+  hostUrl: string;
+  iflowUrl: string;
+  environmentType: string;
 }
 
 interface EnvironmentNode {

@@ -25,75 +25,86 @@ function generateBuildYamlContent(buildJob: BuildJob): string {
   const environments = stagesState.selectedEnvironments || {};
   const branches = stagesState.selectedBranches || {};
   const approvers = stagesState.selectedApprovers || {};
+  const jiraNumbers = stagesState.jiraNumbers || {};
+  const repoUrls = stagesState.connectorRepositoryUrls || {};
+
+  const pipelineName = buildJob.pipeline || buildJob.connector_name;
+  const buildVersion = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 
   const lines: string[] = [
-    `pipeline:`,
-    `  name: "${buildJob.pipeline || buildJob.connector_name}"`,
-    `  buildVersion: "${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}"`,
-    `  connector: "${buildJob.connector_name}"`,
-    `  product: "${buildJob.product}"`,
-    `  service: "${buildJob.service}"`,
-    `  status: "${buildJob.status}"`,
-    ``,
-    `  execution:`,
-    `    entryPoint: execute_pipeline`,
-    `    logging:`,
-    `      successMessage: "Pipeline execution completed successfully"`,
-    `      errorBehavior: "exit_on_failure"`,
-    `      failureExitCode: 1`,
+    `pipelineName: "${pipelineName}"`,
+    `buildVersion: "${buildVersion}"`,
     ``,
   ];
 
-  // Connectors section
-  const connectorEntries = Object.entries(connectors);
-  if (connectorEntries.length > 0) {
-    lines.push(`  connectors:`);
-    for (const [stageId, connectorId] of connectorEntries) {
-      lines.push(`    - stageId: "${stageId}"`);
-      lines.push(`      connectorId: "${connectorId}"`);
-      if (branches[stageId]) {
-        lines.push(`      branch: "${branches[stageId]}"`);
+  // Nodes section — group stages by environment
+  lines.push(`nodes:`);
+  lines.push(`  - name: Development`);
+  lines.push(`    stages:`);
+
+  // Derive stages from the connectors/environments keys
+  const allStageKeys = new Set([
+    ...Object.keys(connectors),
+    ...Object.keys(environments),
+  ]);
+
+  for (const stageKey of allStageKeys) {
+    const stageName = stageKey.includes('__')
+      ? stageKey.split('__').pop() || stageKey
+      : stageKey;
+
+    // Infer tool type from stage name
+    const upper = stageName.toUpperCase();
+    let toolType: string | null = null;
+    if (upper.includes('JIRA') || upper.includes('PLAN')) toolType = 'JIRA';
+    else if (upper.includes('GITHUB') || upper.includes('CODE')) toolType = 'GitHub';
+    else if (upper.includes('DEPLOY') || upper.includes('SAP') || upper.includes('CPI')) toolType = 'SAP_CPI';
+    else if (upper.includes('GITLAB')) toolType = 'GitLab';
+
+    lines.push(`      - name: ${stageName}`);
+
+    if (!toolType) {
+      lines.push(`        tool: null`);
+    } else {
+      lines.push(`        tool:`);
+      lines.push(`          type: ${toolType}`);
+
+      // Add JIRA inputs
+      if (toolType === 'JIRA' && jiraNumbers[stageKey]) {
+        lines.push(`          inputs:`);
+        lines.push(`            jiraKey: ${jiraNumbers[stageKey]}`);
       }
-    }
-    lines.push(``);
-  }
 
-  // Environments section
-  const envEntries = Object.entries(environments);
-  if (envEntries.length > 0) {
-    lines.push(`  environments:`);
-    for (const [stageId, envId] of envEntries) {
-      lines.push(`    - stageId: "${stageId}"`);
-      lines.push(`      environmentId: "${envId}"`);
-    }
-    lines.push(``);
-  }
-
-  // Approvers section
-  const approverEntries = Object.entries(approvers);
-  if (approverEntries.length > 0) {
-    lines.push(`  approvers:`);
-    for (const [stageId, emails] of approverEntries) {
-      if (Array.isArray(emails) && emails.length > 0) {
-        lines.push(`    - stageId: "${stageId}"`);
-        lines.push(`      emails:`);
-        for (const email of emails) {
-          lines.push(`        - "${email}"`);
+      // Add GitHub connector
+      if (toolType === 'GitHub') {
+        const repoUrl = repoUrls[stageKey] || '';
+        const branch = branches[stageKey] || 'main';
+        if (repoUrl) {
+          lines.push(`          connector:`);
+          lines.push(`            repoUrl: ${repoUrl}`);
+          lines.push(`            branch: ${branch}`);
         }
       }
     }
-    lines.push(``);
+
+    // Approvers
+    const stageApprovers = approvers[stageKey];
+    if (Array.isArray(stageApprovers) && stageApprovers.length > 0) {
+      lines.push(`        approvers:`);
+      for (const email of stageApprovers) {
+        lines.push(`          - ${email}`);
+      }
+    }
   }
 
   // Workstream / entity
   if (buildJob.entity) {
-    lines.push(`  workstream: "${buildJob.entity}"`);
-  }
-  if (buildJob.scope) {
-    lines.push(`  scope: "${buildJob.scope}"`);
+    lines.push(``);
+    lines.push(`workstream: "${buildJob.entity}"`);
   }
 
-  lines.push(`  generatedAt: "${new Date().toISOString()}"`);
+  lines.push(``);
+  lines.push(`generatedAt: "${new Date().toISOString()}"`);
 
   return lines.join("\n");
 }
