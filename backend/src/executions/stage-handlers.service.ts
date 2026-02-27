@@ -708,6 +708,8 @@ export class StageHandlersService {
       ArtifactContent: binary.toString('base64'),
     });
     log(`  📤 CF Deploy: Uploading artifact content to design-time API`);
+    log(`  📋 CF Upload: PUT ${entityUrl}`);
+    log(`  📋 CF Upload: Content-Type: application/json, payload size: ${updatePayload.length} bytes`);
 
     const uploadRes = await this.fetchWithRetry(entityUrl, {
       method: 'PUT',
@@ -719,6 +721,9 @@ export class StageHandlersService {
       body: updatePayload,
     }, log, 'CF Upload');
 
+    const uploadResBody = await uploadRes.text().catch(() => '');
+    log(`  📋 CF Upload: Response ${uploadRes.status} ${uploadRes.statusText} — body: ${uploadResBody.substring(0, 500)}`);
+
     if (!uploadRes.ok) {
       if (uploadRes.status === 404) {
         log(`  ⚠️ CF Deploy: Artifact not found, attempting to create via POST`);
@@ -729,6 +734,7 @@ export class StageHandlersService {
           Version: 'active',
           ArtifactContent: binary.toString('base64'),
         });
+        log(`  📋 CF Create: POST ${createUrl}`);
         const createRes = await this.fetchWithRetry(createUrl, {
           method: 'POST',
           headers: {
@@ -740,12 +746,12 @@ export class StageHandlersService {
         }, log, 'CF Create');
         if (!createRes.ok) {
           const errBody = await createRes.text().catch(() => '');
+          log(`  📋 CF Create: Response ${createRes.status} — ${errBody.substring(0, 500)}`);
           throw new Error(`CF Deploy: Failed to create artifact ${artifact.name}: HTTP ${createRes.status} — ${errBody.substring(0, 500)}`);
         }
         log(`  ✅ CF Deploy: Artifact created successfully`);
       } else {
-        const errBody = await uploadRes.text().catch(() => '');
-        throw new Error(`CF Deploy: Failed to upload artifact ${artifact.name}: HTTP ${uploadRes.status} — ${errBody.substring(0, 500)}`);
+        throw new Error(`CF Deploy: Failed to upload artifact ${artifact.name}: HTTP ${uploadRes.status} — ${uploadResBody.substring(0, 500)}`);
       }
     } else {
       log(`  ✅ CF Deploy: Artifact content uploaded successfully`);
@@ -754,6 +760,7 @@ export class StageHandlersService {
     // Step 2: Trigger deployment
     const deployUrl = `${baseUrl}/api/v1/DeployIntegrationDesigntimeArtifact?Id='${artifact.name}'&Version='active'`;
     log(`  🔄 CF Deploy: Triggering deployment for ${artifact.name}`);
+    log(`  📋 CF Deploy Trigger: POST ${deployUrl}`);
 
     const deployRes = await this.fetchWithRetry(deployUrl, {
       method: 'POST',
@@ -764,12 +771,14 @@ export class StageHandlersService {
       },
     }, log, 'CF Deploy Trigger');
 
+    const deployResBody = await deployRes.text().catch(() => '');
+    log(`  📋 CF Deploy Trigger: Response ${deployRes.status} ${deployRes.statusText} — body: ${deployResBody.substring(0, 500)}`);
+
     if (!deployRes.ok) {
-      const errBody = await deployRes.text().catch(() => '');
       if (deployRes.status === 409) {
         log(`  ⚠️ CF Deploy: Artifact ${artifact.name} already deployed (HTTP 409), continuing`);
       } else {
-        throw new Error(`CF Deploy: Failed to trigger deployment for ${artifact.name}: HTTP ${deployRes.status} — ${errBody.substring(0, 500)}`);
+        throw new Error(`CF Deploy: Failed to trigger deployment for ${artifact.name}: HTTP ${deployRes.status} — ${deployResBody.substring(0, 500)}`);
       }
     } else {
       log(`  ✅ CF Deploy: Deployment triggered for ${artifact.name}`);
@@ -807,8 +816,10 @@ export class StageHandlersService {
           return;
         }
         if (status === 'ERROR') {
-          const errorInfo = data?.d?.ErrorInformation || '';
-          throw new Error(`CF Deploy: ${artifact.name} deployment failed with ERROR: ${errorInfo}`);
+          const rawError = data?.d?.ErrorInformation || data?.d?.Error || data?.d || '';
+          const errorInfo = typeof rawError === 'object' ? JSON.stringify(rawError) : String(rawError);
+          log(`  ❌ CF Deploy: Error details — ${errorInfo.substring(0, 1000)}`);
+          throw new Error(`CF Deploy: ${artifact.name} deployment failed with ERROR: ${errorInfo.substring(0, 500)}`);
         }
       } catch (err) {
         if (err.message.includes('deployment failed')) throw err;

@@ -474,7 +474,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
       <div className="flex-1 min-h-0 flex border-t border-border/40">
         {/* Left: Pipeline Stages */}
         <div className={cn(
-          "flex flex-col min-h-0 transition-all duration-300",
+          "flex flex-col min-h-0 overflow-hidden transition-all duration-300",
           isExecutionMode ? "w-[42%] border-r border-border/40" : "flex-1"
         )}>
           <div className="px-4 pt-2 pb-1 flex-shrink-0">

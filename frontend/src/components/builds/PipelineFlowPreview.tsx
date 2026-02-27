@@ -903,7 +903,7 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
         }}
       />
       <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.02] via-transparent to-[hsl(var(--brand-cyan))]/[0.02] pointer-events-none" />
-      <div className="relative overflow-x-auto p-4 h-full">
+      <div className="relative overflow-auto p-4 h-full">
         <div className="flex items-start gap-0 min-w-max">
           {/* Environment Stages */}
           {environmentNodes.map((env, idx) => {
