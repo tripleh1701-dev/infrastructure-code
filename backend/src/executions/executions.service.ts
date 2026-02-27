@@ -651,7 +651,25 @@ export class ExecutionsService {
       startedAt: s.startedAt,
       completedAt: s.completedAt,
       message: s.message,
+      durationMs: s.durationMs,
     }));
+
+    // Build stageStates map from queried stage records (keyed by stageId)
+    const stageStatesMap: Record<string, any> = {};
+    for (const sr of stageRecords) {
+      // Use the latest record per stageId (last write wins — completed overwrites running)
+      const existing = stageStatesMap[sr.stageId];
+      if (!existing || (sr.completedAt && !existing.completedAt) || (sr.status !== 'RUNNING')) {
+        stageStatesMap[sr.stageId] = {
+          status: sr.status,
+          startedAt: sr.startedAt,
+          completedAt: sr.completedAt,
+          message: sr.message,
+          durationMs: sr.durationMs,
+          nodeId: sr.nodeId,
+        };
+      }
+    }
 
     // Combine stage summary logs with detailed log entries
     const stageLogs = stageRecords.map(
@@ -669,7 +687,7 @@ export class ExecutionsService {
 
     return {
       status: item.status as ExecutionStatus,
-      stageStates: item.stageStates || {},
+      stageStates: stageStatesMap,
       currentNode: item.currentNode,
       currentStage: item.currentStage,
       startTime: item.startTime,

@@ -18,7 +18,7 @@ export interface SelectedArtifact {
   artifactType: string; // e.g. "IntegrationDesigntimeArtifacts"
 }
 
-export function useSelectedArtifacts(buildJobId: string | undefined) {
+export function useSelectedArtifacts(buildJobId: string | undefined, onAfterSave?: () => void) {
   const [selectedArtifacts, setSelectedArtifacts] = useState<SelectedArtifact[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -73,6 +73,8 @@ export function useSelectedArtifacts(buildJobId: string | undefined) {
       }
       setSelectedArtifacts(artifacts);
       toast.success(`Saved ${artifacts.length} artifact selection(s)`);
+      // Trigger YAML regeneration so artifacts are embedded in the build YAML
+      onAfterSave?.();
     } catch (err: any) {
       toast.error(err?.message || "Failed to save artifact selections");
     } finally {

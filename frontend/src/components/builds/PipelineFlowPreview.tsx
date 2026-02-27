@@ -330,9 +330,15 @@ function StepNode({ stage, theme, stageIdx, cIdx, isSelected, isConfigured, onCl
                 "w-11 h-11 rounded-full border-[3px] flex items-center justify-center",
                 "bg-white shadow-sm transition-all duration-200",
                 "group-hover:shadow-md group-hover:scale-110",
-                isSelected && "ring-2 ring-offset-1"
+                isSelected && "ring-[3px] ring-offset-2 shadow-lg scale-110 animate-[selected-ring-pulse_2s_ease-in-out_infinite]"
               )}
-              style={{ borderColor: statusCfg.color }}
+              style={{
+                borderColor: statusCfg.color,
+                ...(isSelected && {
+                  ["--pulse-color" as any]: statusCfg.color,
+                  boxShadow: `0 0 0 3px ${statusCfg.color}40, 0 0 12px ${statusCfg.color}30`,
+                }),
+              }}
             >
               {NodeIcon ? <NodeIcon className="w-5 h-5" /> : <Server className="w-5 h-5" style={{ color: theme.border }} />}
             </div>
@@ -662,16 +668,20 @@ interface PipelineFlowPreviewProps {
   executionStatus?: string;
   activeStageIndex?: number;
   /** Per-node execution status from backend: { [nodeId]: { status, startedAt, completedAt, message } } */
-  stageStates?: Record<string, { status?: string; startedAt?: string; completedAt?: string; message?: string }>;
+  stageStates?: Record<string, { status?: string; startedAt?: string; completedAt?: string; message?: string; durationMs?: number }>;
   /** Currently executing node ID from backend */
   currentNode?: string;
   /** Saved pipeline stages state from build job */
   pipelineStagesState?: Record<string, any>;
   /** Real-time execution logs from backend */
   executionLogs?: string[];
+  /** Callback when a stage node is clicked for log filtering */
+  onStageSelect?: (stage: { id: string; label: string } | null) => void;
+  /** Currently selected stage ID for log filtering */
+  selectedStageId?: string | null;
 }
 
-export function PipelineFlowPreview({ pipelineName, executionStatus, activeStageIndex, stageStates, currentNode, pipelineStagesState, executionLogs }: PipelineFlowPreviewProps) {
+export function PipelineFlowPreview({ pipelineName, executionStatus, activeStageIndex, stageStates, currentNode, pipelineStagesState, executionLogs, onStageSelect, selectedStageId }: PipelineFlowPreviewProps) {
   const { pipelines, isLoading } = usePipelines();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
@@ -730,6 +740,11 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
           const state = stageStates[stage.id];
           if (state?.status) {
             stage.status = state.status.toLowerCase();
+            // Map durationMs to human-readable duration string
+            if (state.durationMs) {
+              const ms = Number(state.durationMs);
+              stage.duration = ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+            }
           } else if (currentNode === stage.id) {
             stage.status = "running";
           }
@@ -813,8 +828,72 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
     );
   }
 
+  // Compute progress stats
+  const progressStats = useMemo(() => {
+    let total = 0, completed = 0, failed = 0, running = 0;
+    environmentNodes.forEach((env) => {
+      env.stages.forEach((stage) => {
+        total++;
+        if (stage.status === "success") completed++;
+        else if (stage.status === "failed") { completed++; failed++; }
+        else if (stage.status === "running") running++;
+      });
+    });
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { total, completed, failed, running, pct };
+  }, [environmentNodes]);
+
+  const hasExecution = executionStatus && executionStatus !== "pending";
+
   return (
     <div className="relative h-full overflow-hidden">
+      {/* Progress bar — only visible during/after execution */}
+      {hasExecution && progressStats.total > 0 && (
+        <div className="relative z-10 px-4 pt-3 pb-1">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-2 rounded-full bg-muted/60 overflow-hidden">
+              <motion.div
+                className={cn(
+                  "h-full rounded-full",
+                  progressStats.failed > 0
+                    ? "bg-destructive"
+                    : progressStats.pct === 100
+                      ? "bg-emerald-500"
+                      : "bg-primary"
+                )}
+                initial={{ width: 0 }}
+                animate={{ width: `${progressStats.pct}%` }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              />
+            </div>
+            <span className={cn(
+              "text-[11px] font-bold tabular-nums min-w-[42px] text-right",
+              progressStats.failed > 0
+                ? "text-destructive"
+                : progressStats.pct === 100
+                  ? "text-emerald-600"
+                  : "text-primary"
+            )}>
+              {progressStats.pct}%
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {progressStats.completed}/{progressStats.total} stages
+            </span>
+            {progressStats.running > 0 && (
+              <span className="flex items-center gap-1 text-[10px] text-primary">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Running
+              </span>
+            )}
+            {progressStats.failed > 0 && (
+              <span className="flex items-center gap-1 text-[10px] text-destructive">
+                <AlertCircle className="w-3 h-3" />
+                {progressStats.failed} failed
+              </span>
+            )}
+          </div>
+        </div>
+      )}
       {/* Dot grid background */}
       <div
         className="absolute inset-0 opacity-[0.35] pointer-events-none"
@@ -860,11 +939,16 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
                             cIdx={cIdx}
                             isSelected={selectedStage?.stage.id === stage.id}
                             isConfigured={isStageConfigured(env.id, stage.id)}
-                            onClick={() =>
+                            onClick={() => {
                               setSelectedStage((prev) =>
                                 prev?.stage.id === stage.id ? null : { stage, envId: env.id }
-                              )
-                            }
+                              );
+                              // Notify parent for log filtering
+                              if (onStageSelect) {
+                                const isDeselecting = selectedStageId === stage.id;
+                                onStageSelect(isDeselecting ? null : { id: stage.id, label: stage.label });
+                              }
+                            }}
                           />
                         ))}
                       </div>

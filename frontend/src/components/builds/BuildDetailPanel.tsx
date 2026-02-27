@@ -23,8 +23,9 @@ import {
   History,
   Info,
   Package,
-  FileCode,
   Eye,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ import { BuildExecutionTimeline } from "./BuildExecutionTimeline";
 import { BuildLogStream } from "./BuildLogStream";
 import { IntegrationArtifactsModal } from "./IntegrationArtifactsModal";
 import { PipelineConfigDialog } from "./PipelineConfigDialog";
+import { ArtifactsSummary } from "./ArtifactsSummary";
 
 interface BuildDetailPanelProps {
   buildJob: BuildJob | null;
@@ -46,17 +48,16 @@ interface BuildDetailPanelProps {
 const DEFAULT_STAGE_NAMES = ["Source", "Build", "Test", "Package", "Deploy"];
 const STAGE_DURATION_MS = 2000;
 
-const DETAIL_TABS = [
+const SIDEBAR_TABS = [
   { key: "overview", label: "Overview", icon: Info },
   { key: "executions", label: "Executions", icon: History },
   { key: "timeline", label: "Timeline", icon: Activity },
-  { key: "logs", label: "Logs", icon: FileText },
 ] as const;
 
-type DetailTabKey = typeof DETAIL_TABS[number]["key"];
+type SidebarTabKey = typeof SIDEBAR_TABS[number]["key"];
 
 export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isTheaterMode }: BuildDetailPanelProps) {
-  const { fetchExecutions, createExecution } = useBuilds();
+  const { fetchExecutions, createExecution, regenerateBuildYaml } = useBuilds();
   const { currentUserRoleName } = usePermissions();
   const buildExecution = useBuildExecution();
   const { pipelines } = usePipelines();
@@ -67,8 +68,11 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [buildYamlOpen, setBuildYamlOpen] = useState(false);
 
-  // Active bottom tab — null means collapsed (pipeline gets full space)
-  const [activeTab, setActiveTab] = useState<DetailTabKey | null>(null);
+  // Sidebar tab — null means collapsed
+  const [sidebarTab, setSidebarTab] = useState<SidebarTabKey | null>(null);
+  // Logs panel visibility — shown during/after execution
+  const [showLogs, setShowLogs] = useState(false);
+  const [logStageFilter, setLogStageFilter] = useState<{ id: string; label: string } | null>(null);
 
   const [activeStageIndex, setActiveStageIndex] = useState<number>(-1);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "success" | "failed">("idle");
@@ -77,7 +81,8 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
   useEffect(() => {
     if (buildJob) {
       setLoadingExecs(true);
-      setActiveTab(null);
+      setSidebarTab(null);
+      setShowLogs(false);
       setActiveStageIndex(-1);
       setRunStatus("idle");
       fetchExecutions(buildJob.id)
@@ -113,7 +118,6 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
     }
   }, [buildExecution.status]);
 
-  // Extract approver emails from pipeline_stages_state
   const getConfiguredApprovers = (): string[] => {
     const stagesState = buildJob?.pipeline_stages_state as any;
     if (!stagesState?.selectedApprovers) return [];
@@ -123,7 +127,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
         allApprovers.push(...(emails as string[]));
       }
     }
-    return [...new Set(allApprovers)]; // deduplicate
+    return [...new Set(allApprovers)];
   };
 
   const handleRunClick = () => {
@@ -146,10 +150,10 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
         });
         setExecutions((prev) => [newExec, ...prev]);
         setSelectedExecution(newExec);
-        setActiveTab("logs");
+        setShowLogs(true);
+        setSidebarTab(null);
         setRunStatus("running");
         setActiveStageIndex(0);
-        // Resolve pipeline UUID from name
         const pipelineName = buildJob.pipeline!;
         const matchedPipeline = pipelines.find(
           (p) => p.name.toLowerCase() === pipelineName.toLowerCase()
@@ -172,7 +176,8 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
         });
         setExecutions((prev) => [newExec, ...prev]);
         setSelectedExecution(newExec);
-        setActiveTab("logs");
+        setShowLogs(true);
+        setSidebarTab(null);
 
         const totalStages = DEFAULT_STAGE_NAMES.length;
         const willFail = Math.random() < 0.15;
@@ -241,15 +246,18 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
     : runStatus === "failed" ? ((activeStageIndex + 1) / DEFAULT_STAGE_NAMES.length) * 100
     : 0;
 
-  const toggleTab = (key: DetailTabKey) => {
-    setActiveTab((prev) => (prev === key ? null : key));
+  const toggleSidebarTab = (key: SidebarTabKey) => {
+    setSidebarTab((prev) => (prev === key ? null : key));
   };
 
-  const renderTabContent = () => {
-    switch (activeTab) {
+  // Determine if we're in "execution mode" (logs visible)
+  const isExecutionMode = showLogs && selectedExecution;
+
+  const renderSidebarContent = () => {
+    switch (sidebarTab) {
       case "overview":
         return (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-4">
+          <div className="grid grid-cols-2 gap-2 p-4">
             {[
               { label: "Workstream", value: buildJob.entity },
               { label: "Pipeline", value: buildJob.pipeline },
@@ -269,6 +277,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
                 <p className="text-sm text-foreground/80">{buildJob.description}</p>
               </div>
             )}
+            <ArtifactsSummary selectedArtifacts={(buildJob as any).selected_artifacts} />
           </div>
         );
       case "executions":
@@ -293,7 +302,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
                         "flex items-center gap-2 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/50",
                         selectedExecution?.id === exec.id && "border-primary/30 bg-primary/5"
                       )}
-                      onClick={() => { setSelectedExecution(exec); setActiveTab("logs"); }}
+                      onClick={() => { setSelectedExecution(exec); setShowLogs(true); setSidebarTab(null); }}
                       whileHover={{ x: 2 }}
                     >
                       <div className={cn(
@@ -337,54 +346,8 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               <BuildExecutionTimeline
                 executions={executions}
                 selectedId={selectedExecution?.id}
-                onSelect={(exec) => { setSelectedExecution(exec); setActiveTab("logs"); }}
+                onSelect={(exec) => { setSelectedExecution(exec); setShowLogs(true); setSidebarTab(null); }}
               />
-            )}
-          </div>
-        );
-      case "logs":
-        return (
-          <div className="p-4">
-            {selectedExecution ? (
-              <div className="flex flex-col gap-2">
-              <BuildLogStream
-                  logs={
-                    isExternalApi() && buildExecution.logs.length > 0
-                      ? buildExecution.logs.join("\n")
-                      : selectedExecution.logs
-                  }
-                  status={runStatus !== "idle" && selectedExecution.id === executions[0]?.id ? runStatus : selectedExecution.status}
-                  buildNumber={selectedExecution.build_number}
-                  pipelineNodes={DEFAULT_STAGE_NAMES}
-                  activeStageIndex={runStatus !== "idle" && selectedExecution.id === executions[0]?.id ? activeStageIndex : undefined}
-                  currentStage={buildExecution.currentStage}
-                />
-                {buildExecution.pendingApprovalStage && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30"
-                  >
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-amber-400">Manual Approval Required</p>
-                      <p className="text-[10px] text-muted-foreground">Stage: {buildExecution.pendingApprovalStage}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="bg-amber-500 hover:bg-amber-600 text-white text-xs"
-                      onClick={() => buildExecution.approveStage(buildExecution.pendingApprovalStage!)}
-                    >
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Approve
-                    </Button>
-                  </motion.div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
-                <FileText className="w-8 h-8 mb-2 opacity-30" />
-                <p className="text-xs">Select an execution to view logs</p>
-              </div>
             )}
           </div>
         );
@@ -399,7 +362,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
       "flex flex-col h-full overflow-hidden",
       isTheaterMode ? "bg-background" : "bg-card/95 backdrop-blur-sm"
     )}>
-      {/* Compact Header */}
+      {/* ── Header ── */}
       <div className="relative overflow-hidden flex-shrink-0">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-[hsl(var(--brand-cyan))]/5" />
         <div className="relative px-5 py-3">
@@ -433,31 +396,35 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* Admin-only View Build YAML button — visible when role name contains "admin" or when using default admin permissions (null role = super_admin fallback) */}
               {(currentUserRoleName === null || currentUserRoleName?.toLowerCase().includes('admin') || currentUserRoleName?.toLowerCase().includes('super_admin')) && (
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-xs"
-                    onClick={() => setBuildYamlOpen(true)}
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    View YAML
+                  <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setBuildYamlOpen(true)}>
+                    <Eye className="w-3.5 h-3.5" /> View YAML
                   </Button>
                 </motion.div>
               )}
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 text-xs"
-                  onClick={() => setArtifactsOpen(true)}
-                >
-                  <Package className="w-3.5 h-3.5" />
-                  Artifacts
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setArtifactsOpen(true)}>
+                  <Package className="w-3.5 h-3.5" /> Artifacts
                 </Button>
               </motion.div>
+              {/* Logs toggle */}
+              {selectedExecution && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant={showLogs ? "default" : "outline"}
+                      className={cn("gap-1.5 text-xs", showLogs && "bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700")}
+                      onClick={() => setShowLogs(!showLogs)}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Logs
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p className="text-xs">Toggle log panel</p></TooltipContent>
+                </Tooltip>
+              )}
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   size="sm"
@@ -501,53 +468,25 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Stage indicator chips — inline */}
-        <AnimatePresence>
-          {runStatus === "running" && (
-            <motion.div
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -5 }}
-              className="flex items-center gap-1.5 px-5 pb-2 overflow-x-auto"
-            >
-              {DEFAULT_STAGE_NAMES.map((name, i) => (
-                <motion.span
-                  key={name}
-                  className={cn(
-                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium whitespace-nowrap transition-all duration-300",
-                    i < activeStageIndex && "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]",
-                    i === activeStageIndex && "bg-primary/15 text-primary ring-1 ring-primary/30",
-                    i > activeStageIndex && "bg-muted text-muted-foreground"
-                  )}
-                  animate={i === activeStageIndex ? { scale: [1, 1.05, 1] } : {}}
-                  transition={{ duration: 1, repeat: Infinity }}
-                >
-                  {i < activeStageIndex && <CheckCircle className="w-2.5 h-2.5" />}
-                  {i === activeStageIndex && <RotateCw className="w-2.5 h-2.5 animate-spin" />}
-                  {name}
-                </motion.span>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
-      {/* Main content: Pipeline Canvas (left) + Side Panel (right) */}
+      {/* ── Main Content Area ── */}
       <div className="flex-1 min-h-0 flex border-t border-border/40">
-        {/* Pipeline Canvas — left side */}
+        {/* Left: Pipeline Stages */}
         <div className={cn(
-          "flex-1 min-w-0 px-5 py-2 transition-all duration-300",
-          activeTab ? "border-r border-border/40" : ""
+          "flex flex-col min-h-0 transition-all duration-300",
+          isExecutionMode ? "w-[42%] border-r border-border/40" : "flex-1"
         )}>
-          <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">
-            <GitBranch className="w-3 h-3" />
-            Pipeline Stages
-            {runStatus === "running" && (
-              <span className="stats-badge text-[8px] py-0 px-1">LIVE</span>
-            )}
-          </h4>
-          <div className="h-[calc(100%-20px)]">
+          <div className="px-4 pt-2 pb-1 flex-shrink-0">
+            <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <GitBranch className="w-3 h-3" />
+              Pipeline Stages
+              {runStatus === "running" && (
+                <span className="stats-badge text-[8px] py-0 px-1">LIVE</span>
+              )}
+            </h4>
+          </div>
+          <div className="flex-1 min-h-0 overflow-auto">
             <PipelineFlowPreview
               pipelineName={buildJob.pipeline}
               executionStatus={canvasStatus}
@@ -556,201 +495,197 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               currentNode={buildExecution.currentNode}
               pipelineStagesState={buildJob.pipeline_stages_state as Record<string, any> | undefined}
               executionLogs={buildExecution.logs}
+              selectedStageId={logStageFilter?.id ?? null}
+              onStageSelect={(stage) => {
+                setLogStageFilter(stage);
+                if (stage && selectedExecution) {
+                  setShowLogs(true);
+                  setSidebarTab(null);
+                }
+              }}
             />
           </div>
         </div>
 
-        {/* Right Side Panel — Vertical Tab Rail + Content */}
-        <div className="flex h-full flex-shrink-0">
-        {/* Vertical Tab Rail — icon-only with animations & color */}
-          <div className="relative flex flex-col items-center border-l border-border/40 w-14 py-4 gap-2 overflow-hidden">
-            {/* Animated background gradient */}
+        {/* Right: Log Viewer — full height, side by side with stages */}
+        <AnimatePresence>
+          {isExecutionMode && (
             <motion.div
-              className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-[hsl(var(--brand-cyan))]/5"
-              animate={{ opacity: [0.3, 0.7, 0.3] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            />
-
-            {/* Decorative top accent line */}
-            <div className="w-6 h-[2px] rounded-full bg-gradient-to-r from-primary/40 to-[hsl(var(--brand-cyan))]/40 mb-1 flex-shrink-0" />
-
-            {DETAIL_TABS.map((tab, index) => {
-              const isTabActive = activeTab === tab.key;
-              const TabIcon = tab.icon;
-
-              const tabColors = {
-                overview: {
-                  gradient: "from-[hsl(var(--brand-blue))] to-[hsl(var(--brand-cyan))]",
-                  text: "text-primary",
-                  bg: "bg-primary/10",
-                  glow: "shadow-[0_0_12px_hsl(var(--brand-blue)/0.4)]",
-                  ring: "ring-primary/30",
-                },
-                executions: {
-                  gradient: "from-[hsl(var(--success))] to-[hsl(142,71%,35%)]",
-                  text: "text-[hsl(var(--success))]",
-                  bg: "bg-[hsl(var(--success))]/10",
-                  glow: "shadow-[0_0_12px_hsl(142,71%,45%,0.4)]",
-                  ring: "ring-[hsl(var(--success))]/30",
-                },
-                timeline: {
-                  gradient: "from-violet-500 to-purple-600",
-                  text: "text-violet-500",
-                  bg: "bg-violet-500/10",
-                  glow: "shadow-[0_0_12px_rgba(139,92,246,0.4)]",
-                  ring: "ring-violet-500/30",
-                },
-                logs: {
-                  gradient: "from-[hsl(var(--warning))] to-[hsl(28,90%,45%)]",
-                  text: "text-[hsl(var(--warning))]",
-                  bg: "bg-[hsl(var(--warning))]/10",
-                  glow: "shadow-[0_0_12px_hsl(38,92%,50%,0.4)]",
-                  ring: "ring-[hsl(var(--warning))]/30",
-                },
-              }[tab.key];
-
-              return (
-                <Tooltip key={tab.key} delayDuration={200}>
-                  <TooltipTrigger asChild>
-                  <div className="relative z-10">
-                  <motion.button
-                    onClick={() => toggleTab(tab.key)}
-                    className={cn(
-                      "relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300",
-                      isTabActive
-                        ? cn("border border-border/60 ring-1", tabColors?.text, tabColors?.ring, tabColors?.bg, tabColors?.glow)
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    whileHover={{ scale: 1.12, y: -1 }}
-                    whileTap={{ scale: 0.9 }}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.08, type: "spring", stiffness: 300, damping: 25 }}
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: "58%", opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+              className="flex flex-col min-h-0 overflow-hidden"
+            >
+              <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
+                <BuildLogStream
+                  logs={
+                    isExternalApi() && buildExecution.logs.length > 0
+                      ? buildExecution.logs.join("\n")
+                      : selectedExecution?.logs ?? null
+                  }
+                  status={runStatus !== "idle" && selectedExecution?.id === executions[0]?.id ? runStatus : selectedExecution?.status ?? "idle"}
+                  buildNumber={selectedExecution?.build_number ?? ""}
+                  pipelineNodes={DEFAULT_STAGE_NAMES}
+                  activeStageIndex={runStatus !== "idle" && selectedExecution?.id === executions[0]?.id ? activeStageIndex : undefined}
+                  currentStage={buildExecution.currentStage}
+                  fillHeight
+                  stageFilter={logStageFilter}
+                  onClearStageFilter={() => setLogStageFilter(null)}
+                />
+                {buildExecution.pendingApprovalStage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex-shrink-0"
                   >
-                    {/* Active background glow */}
-                    {isTabActive && (
-                      <motion.div
-                        layoutId="tabGlowBg"
-                        className={cn("absolute inset-0 rounded-xl bg-gradient-to-br opacity-15", tabColors?.gradient)}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      />
-                    )}
-
-                    {/* Side indicator bar */}
-                    {isTabActive && (
-                      <motion.div
-                        layoutId="activeSideTabIndicator"
-                        className={cn("absolute -left-[1px] top-2 bottom-2 w-[3px] rounded-r-full bg-gradient-to-b", tabColors?.gradient)}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      />
-                    )}
-
-                    {/* Hover glow ring */}
-                    {!isTabActive && (
-                      <motion.div
-                        className="absolute inset-0 rounded-xl bg-muted/0 group-hover/tab:bg-muted/40 transition-colors duration-200"
-                      />
-                    )}
-
-                    <TabIcon className={cn(
-                      "w-[18px] h-[18px] relative z-10 transition-all duration-300",
-                      isTabActive && "drop-shadow-md"
-                    )} />
-
-                    {/* Execution count badge */}
-                    {tab.key === "executions" && executions.length > 0 && (
-                      <motion.span
-                        className={cn(
-                          "absolute -top-1 -right-1 text-[7px] min-w-[16px] h-[16px] rounded-full flex items-center justify-center font-bold leading-none border",
-                          isTabActive
-                            ? "bg-[hsl(var(--success))] text-white border-[hsl(var(--success))]/50 shadow-[0_0_8px_hsl(142,71%,45%,0.5)]"
-                            : "bg-muted text-muted-foreground border-border/50"
-                        )}
-                        animate={isTabActive ? { scale: [1, 1.15, 1] } : {}}
-                        transition={{ duration: 2, repeat: Infinity }}
-                      >
-                        {executions.length}
-                      </motion.span>
-                    )}
-
-                    {/* Live pulse dot for logs */}
-                    {tab.key === "logs" && runStatus === "running" && (
-                      <motion.div
-                        className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[hsl(var(--success))]"
-                        animate={{
-                          opacity: [1, 0.3, 1],
-                          scale: [1, 1.5, 1],
-                          boxShadow: [
-                            "0 0 4px hsl(142,71%,45%,0.6)",
-                            "0 0 12px hsl(142,71%,45%,0.8)",
-                            "0 0 4px hsl(142,71%,45%,0.6)",
-                          ],
-                        }}
-                        transition={{ duration: 1.2, repeat: Infinity }}
-                      />
-                    )}
-                  </motion.button>
-                  </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" sideOffset={8}>
-                    <p className="text-xs font-semibold">{tab.label}</p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-
-            {/* Decorative bottom accent line */}
-            <div className="mt-auto w-6 h-[2px] rounded-full bg-gradient-to-r from-[hsl(var(--brand-cyan))]/30 to-primary/30 flex-shrink-0" />
-          </div>
-
-          {/* Side Panel Content */}
-          <AnimatePresence mode="wait">
-            {activeTab && (
-              <motion.div
-                key={activeTab}
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 340, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                className="overflow-hidden bg-gradient-to-b from-card/60 to-card/40 backdrop-blur-sm"
-              >
-                <div className="w-[340px] h-full flex flex-col">
-                  {/* Panel Header */}
-                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const tab = DETAIL_TABS.find((t) => t.key === activeTab);
-                        const TabIcon = tab?.icon || Info;
-                        return <TabIcon className="w-3.5 h-3.5 text-muted-foreground" />;
-                      })()}
-                      <span className="text-xs font-semibold text-foreground capitalize">{activeTab}</span>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-amber-400">Manual Approval Required</p>
+                      <p className="text-[10px] text-muted-foreground">Stage: {buildExecution.pendingApprovalStage}</p>
                     </div>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                      onClick={() => setActiveTab(null)}
+                      size="sm"
+                      className="bg-amber-500 hover:bg-amber-600 text-white text-xs"
+                      onClick={() => buildExecution.approveStage(buildExecution.pendingApprovalStage!)}
                     >
-                      <X className="w-3 h-3" />
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Approve
                     </Button>
-                  </div>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                  {/* Panel Content */}
-                  <ScrollArea className="flex-1">
-                    <motion.div
-                      initial={{ x: 10, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -10, opacity: 0 }}
-                      transition={{ duration: 0.2, delay: 0.05 }}
+        {/* Sidebar Tab Rail — only when logs are NOT shown */}
+        {!isExecutionMode && (
+          <div className="flex h-full flex-shrink-0">
+            <div className="relative flex flex-col items-center border-l border-border/40 w-12 py-3 gap-1.5 overflow-hidden">
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-[hsl(var(--brand-cyan))]/5"
+                animate={{ opacity: [0.3, 0.7, 0.3] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <div className="w-5 h-[2px] rounded-full bg-gradient-to-r from-primary/40 to-[hsl(var(--brand-cyan))]/40 mb-1 flex-shrink-0" />
+
+              {SIDEBAR_TABS.map((tab, index) => {
+                const isTabActive = sidebarTab === tab.key;
+                const TabIcon = tab.icon;
+                return (
+                  <Tooltip key={tab.key} delayDuration={200}>
+                    <TooltipTrigger asChild>
+                      <motion.button
+                        onClick={() => toggleSidebarTab(tab.key)}
+                        className={cn(
+                          "relative flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-300",
+                          isTabActive
+                            ? "bg-primary/10 text-primary ring-1 ring-primary/30 shadow-sm"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                        )}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.06 }}
+                      >
+                        {isTabActive && (
+                          <motion.div
+                            layoutId="sidebarIndicator"
+                            className="absolute -left-[1px] top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary"
+                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                          />
+                        )}
+                        <TabIcon className="w-4 h-4 relative z-10" />
+                        {tab.key === "executions" && executions.length > 0 && (
+                          <span className={cn(
+                            "absolute -top-1 -right-1 text-[7px] min-w-[14px] h-[14px] rounded-full flex items-center justify-center font-bold border",
+                            isTabActive
+                              ? "bg-primary text-white border-primary/50"
+                              : "bg-muted text-muted-foreground border-border/50"
+                          )}>
+                            {executions.length}
+                          </span>
+                        )}
+                      </motion.button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" sideOffset={8}>
+                      <p className="text-xs font-semibold">{tab.label}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+
+              {/* Logs shortcut in sidebar rail */}
+              {selectedExecution && (
+                <Tooltip delayDuration={200}>
+                  <TooltipTrigger asChild>
+                    <motion.button
+                      onClick={() => { setShowLogs(true); setSidebarTab(null); }}
+                      className="relative flex items-center justify-center w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
                     >
-                      {renderTabContent()}
-                    </motion.div>
-                  </ScrollArea>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                      <FileText className="w-4 h-4" />
+                      {runStatus === "running" && (
+                        <motion.div
+                          className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500"
+                          animate={{ opacity: [1, 0.3, 1], scale: [1, 1.4, 1] }}
+                          transition={{ duration: 1.2, repeat: Infinity }}
+                        />
+                      )}
+                    </motion.button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" sideOffset={8}>
+                    <p className="text-xs font-semibold">Logs</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+
+              <div className="mt-auto w-5 h-[2px] rounded-full bg-gradient-to-r from-[hsl(var(--brand-cyan))]/30 to-primary/30 flex-shrink-0" />
+            </div>
+
+            {/* Sidebar content panel */}
+            <AnimatePresence mode="wait">
+              {sidebarTab && (
+                <motion.div
+                  key={sidebarTab}
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 320, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden bg-gradient-to-b from-card/60 to-card/40 backdrop-blur-sm"
+                >
+                  <div className="w-[320px] h-full flex flex-col">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const tab = SIDEBAR_TABS.find((t) => t.key === sidebarTab);
+                          const TabIcon = tab?.icon || Info;
+                          return <TabIcon className="w-3.5 h-3.5 text-muted-foreground" />;
+                        })()}
+                        <span className="text-xs font-semibold text-foreground capitalize">{sidebarTab}</span>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setSidebarTab(null)}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <ScrollArea className="flex-1">
+                      <motion.div
+                        initial={{ x: 10, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -10, opacity: 0 }}
+                        transition={{ duration: 0.2, delay: 0.05 }}
+                      >
+                        {renderSidebarContent()}
+                      </motion.div>
+                    </ScrollArea>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </div>
 
@@ -759,6 +694,9 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
       onClose={() => setArtifactsOpen(false)}
       buildJobName={buildJob.connector_name}
       buildJobId={buildJob.id}
+      onAfterSave={() => {
+        if (buildJob) regenerateBuildYaml(buildJob);
+      }}
     />
     <PipelineConfigDialog
       open={buildYamlOpen}

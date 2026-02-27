@@ -709,7 +709,7 @@ export class StageHandlersService {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/zip',
+        'Content-Type': 'application/octet-stream',
         Accept: 'application/json',
       },
       body: binary as unknown as BodyInit,

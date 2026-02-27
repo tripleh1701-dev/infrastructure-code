@@ -334,14 +334,21 @@ async function resolveCredentialsForPipeline(
 
         // Resolve environment for deploy stages
         if (stageType === 'deploy' && envId) {
-          const envAuth = await resolveEnvironmentAuth(envId, environments, accountId, credentialsService);
-          if (envAuth && stage.toolConfig) {
+          const envResult = await resolveEnvironmentAuth(envId, environments, accountId, credentialsService);
+          if (envResult && stage.toolConfig) {
             if (stage.toolConfig.environment) {
-              stage.toolConfig.environment.authentication = envAuth;
+              stage.toolConfig.environment.authentication = envResult.auth;
+              // Inject apiUrl from environment record if YAML didn't embed one
+              if (!stage.toolConfig.environment.apiUrl && envResult.apiUrl) {
+                stage.toolConfig.environment.apiUrl = envResult.apiUrl;
+              }
             } else {
-              stage.toolConfig.environment = { authentication: envAuth };
+              stage.toolConfig.environment = {
+                apiUrl: envResult.apiUrl,
+                authentication: envResult.auth,
+              };
             }
-            console.log(`[PIPELINE-EXECUTOR] Resolved env auth for deploy stage ${stage.id}: ${envAuth.type}`);
+            console.log(`[PIPELINE-EXECUTOR] Resolved env auth for deploy stage ${stage.id}: ${envResult.auth.type}, apiUrl=${envResult.apiUrl || '(from YAML)'}`);
           }
         }
 
@@ -426,7 +433,7 @@ async function resolveEnvironmentAuth(
   environments: any[],
   accountId: string,
   credentialsService: CredentialsService,
-): Promise<ConnectorAuth | undefined> {
+): Promise<{ auth: ConnectorAuth; apiUrl: string } | undefined> {
   // Find env by ID or name
   const env = environments.find(
     (e) => e.id === envId || e.name?.toLowerCase() === envId.toLowerCase(),
@@ -439,6 +446,9 @@ async function resolveEnvironmentAuth(
   );
 
   if (!deployConnector) return undefined;
+
+  // Extract apiUrl from the deploy connector
+  const apiUrl = deployConnector.apiUrl || deployConnector.hostUrl || deployConnector.url || '';
 
   // Try resolving named credential
   if (deployConnector.apiCredentialName) {
@@ -455,10 +465,13 @@ async function resolveEnvironmentAuth(
       if (cred) {
         const c = cred.credentials || {};
         return {
-          type: cred.authType,
-          clientId: c.clientId || c.client_id || c['Client ID'],
-          clientSecret: c.clientSecret || c.client_secret || c['Client Secret'],
-          tokenUrl: c.tokenUrl || c.token_url || c['Token URL'],
+          auth: {
+            type: cred.authType,
+            clientId: c.clientId || c.client_id || c['Client ID'],
+            clientSecret: c.clientSecret || c.client_secret || c['Client Secret'],
+            tokenUrl: c.tokenUrl || c.token_url || c['Token URL'],
+          },
+          apiUrl,
         };
       }
     } catch {}
@@ -467,10 +480,13 @@ async function resolveEnvironmentAuth(
   // Inline auth from environment connector
   if (deployConnector.oauth2ClientId && deployConnector.oauth2ClientSecret) {
     return {
-      type: 'OAuth2',
-      clientId: deployConnector.oauth2ClientId,
-      clientSecret: deployConnector.oauth2ClientSecret,
-      tokenUrl: deployConnector.oauth2TokenUrl || '',
+      auth: {
+        type: 'OAuth2',
+        clientId: deployConnector.oauth2ClientId,
+        clientSecret: deployConnector.oauth2ClientSecret,
+        tokenUrl: deployConnector.oauth2TokenUrl || '',
+      },
+      apiUrl,
     };
   }
 

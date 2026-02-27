@@ -28,6 +28,9 @@ function generateBuildYamlContent(buildJob: BuildJob): string {
   const jiraNumbers = stagesState.jiraNumbers || {};
   const repoUrls = stagesState.connectorRepositoryUrls || {};
 
+  // Selected artifacts from the build job
+  const selectedArtifacts: any[] = (buildJob as any).selected_artifacts || [];
+
   const pipelineName = buildJob.pipeline || buildJob.connector_name;
   const buildVersion = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 
@@ -36,6 +39,33 @@ function generateBuildYamlContent(buildJob: BuildJob): string {
     `buildVersion: "${buildVersion}"`,
     ``,
   ];
+
+  // ── Selected artifacts section ──
+  if (selectedArtifacts.length > 0) {
+    lines.push(`selectedArtifacts:`);
+    const byPackage = new Map<string, any[]>();
+    for (const art of selectedArtifacts) {
+      const pkgKey = art.packageId || 'unknown';
+      if (!byPackage.has(pkgKey)) byPackage.set(pkgKey, []);
+      byPackage.get(pkgKey)!.push(art);
+    }
+    for (const [pkgId, arts] of byPackage) {
+      const pkgName = arts[0]?.packageName || pkgId;
+      const pkgVersion = arts[0]?.packageVersion || 'latest';
+      lines.push(`  - package:`);
+      lines.push(`      id: "${pkgId}"`);
+      lines.push(`      name: "${pkgName}"`);
+      lines.push(`      version: "${pkgVersion}"`);
+      lines.push(`    artifacts:`);
+      for (const a of arts) {
+        lines.push(`      - id: "${a.artifactId || ''}"`);
+        lines.push(`        name: "${a.artifactName || ''}"`);
+        lines.push(`        version: "${a.artifactVersion || 'Active'}"`);
+        lines.push(`        type: "${a.artifactType || ''}"`);
+      }
+    }
+    lines.push(``);
+  }
 
   // Nodes section — group stages by environment
   lines.push(`nodes:`);
@@ -58,7 +88,7 @@ function generateBuildYamlContent(buildJob: BuildJob): string {
     let toolType: string | null = null;
     if (upper.includes('JIRA') || upper.includes('PLAN')) toolType = 'JIRA';
     else if (upper.includes('GITHUB') || upper.includes('CODE')) toolType = 'GitHub';
-    else if (upper.includes('DEPLOY') || upper.includes('SAP') || upper.includes('CPI')) toolType = 'SAP_CPI';
+    else if (upper.includes('DEPLOY') || upper.includes('SAP') || upper.includes('CPI') || upper.includes('CLOUD') && upper.includes('FOUNDRY')) toolType = 'SAP_CPI';
     else if (upper.includes('GITLAB')) toolType = 'GitLab';
 
     lines.push(`      - name: ${stageName}`);
@@ -85,6 +115,24 @@ function generateBuildYamlContent(buildJob: BuildJob): string {
           lines.push(`            branch: ${branch}`);
         }
       }
+
+      // Add SAP_CPI / Cloud Foundry environment + artifacts
+      if (toolType === 'SAP_CPI') {
+        const envId = environments[stageKey];
+        if (envId) {
+          lines.push(`          environment:`);
+          lines.push(`            envId: "${envId}"`);
+        }
+        // Embed selected artifacts for deploy stages
+        if (selectedArtifacts.length > 0) {
+          lines.push(`          artifacts:`);
+          for (const art of selectedArtifacts) {
+            const artType = mapArtifactTypeForYaml(art.artifactType || '');
+            lines.push(`            - name: ${art.artifactId || art.artifactName || ''}`);
+            lines.push(`              type: ${artType}`);
+          }
+        }
+      }
     }
 
     // Approvers
@@ -107,6 +155,17 @@ function generateBuildYamlContent(buildJob: BuildJob): string {
   lines.push(`generatedAt: "${new Date().toISOString()}"`);
 
   return lines.join("\n");
+}
+
+/** Map design-time artifact types to YAML-friendly names */
+function mapArtifactTypeForYaml(type: string): string {
+  const typeMap: Record<string, string> = {
+    'IntegrationDesigntimeArtifacts': 'IntegrationFlow',
+    'ValueMappingDesigntimeArtifacts': 'ValueMapping',
+    'MessageMappingDesigntimeArtifacts': 'MessageMapping',
+    'ScriptCollectionDesigntimeArtifacts': 'ScriptCollection',
+  };
+  return typeMap[type] || type;
 }
 
 export function useBuilds() {
@@ -137,6 +196,7 @@ export function useBuilds() {
             connectorRepositoryUrls: stagesState.connectorRepositoryUrls || {},
             selectedBranches: stagesState.selectedBranches || {},
             selectedApprovers: stagesState.selectedApprovers || {},
+            jiraNumbers: stagesState.jiraNumbers || {},
           },
           status: "ACTIVE",
         });
@@ -218,6 +278,30 @@ export function useBuilds() {
     },
   });
 
+  // Expose syncBuildYaml so external callers (e.g. artifact save) can trigger YAML regen.
+  // Re-fetches the build job to get the latest selected_artifacts before generating YAML.
+  const regenerateBuildYaml = async (buildJob: BuildJob) => {
+    try {
+      let freshJob = buildJob;
+      if (isExternalApi()) {
+        const jobs = await buildsService.getBuildJobs(accountId!, enterpriseId!);
+        freshJob = jobs.find((j) => j.id === buildJob.id) || buildJob;
+      } else {
+        const { data } = await (supabase
+          .from("build_jobs" as any)
+          .select("*")
+          .eq("id", buildJob.id)
+          .single() as any);
+        if (data) freshJob = data as BuildJob;
+      }
+      await syncBuildYaml(freshJob);
+      queryClient.invalidateQueries({ queryKey: ["build_jobs"] });
+    } catch (err: any) {
+      console.warn("regenerateBuildYaml: failed to refresh build job", err);
+      await syncBuildYaml(buildJob);
+    }
+  };
+
   return {
     buildJobs,
     isLoading,
@@ -227,6 +311,7 @@ export function useBuilds() {
     deleteBuildJob,
     fetchExecutions,
     createExecution,
+    regenerateBuildYaml,
     accountId,
     enterpriseId,
   };

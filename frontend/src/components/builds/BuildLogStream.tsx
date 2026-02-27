@@ -12,6 +12,12 @@ interface BuildLogStreamProps {
   pipelineNodes?: string[];
   activeStageIndex?: number;
   currentStage?: string;
+  /** When true, the component fills its parent height instead of using a fixed height */
+  fillHeight?: boolean;
+  /** Filter logs to a specific stage */
+  stageFilter?: { id: string; label: string } | null;
+  /** Callback to clear the stage filter */
+  onClearStageFilter?: () => void;
 }
 
 interface LogEntry {
@@ -109,7 +115,7 @@ const LEVEL_LINE_STYLES: Record<string, string> = {
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
-export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activeStageIndex, currentStage }: BuildLogStreamProps) {
+export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activeStageIndex, currentStage, fillHeight, stageFilter, onClearStageFilter }: BuildLogStreamProps) {
   const [streamedEntries, setStreamedEntries] = useState<LogEntry[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -212,6 +218,17 @@ export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activ
   /* ---------- Filtered + searched entries ---------- */
   const filteredEntries = useMemo(() => {
     let entries = streamedEntries;
+    // Stage-level filter
+    if (stageFilter) {
+      entries = entries.filter((e) => {
+        const text = e.text;
+        return text.includes(stageFilter.id) ||
+          text.includes(`Node: ${stageFilter.label}`) ||
+          text.includes(`Stage: ${stageFilter.label}`) ||
+          text.includes(`[STAGE:${stageFilter.label}]`) ||
+          (e.stage && e.stage === stageFilter.label);
+      });
+    }
     if (activeFilter !== "all") {
       entries = entries.filter((e) => e.level === activeFilter);
     }
@@ -220,7 +237,7 @@ export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activ
       entries = entries.filter((e) => e.text.toLowerCase().includes(q));
     }
     return entries;
-  }, [streamedEntries, activeFilter, searchQuery]);
+  }, [streamedEntries, activeFilter, searchQuery, stageFilter]);
 
   /* ---------- Level counts ---------- */
   const levelCounts = useMemo(() => {
@@ -276,7 +293,7 @@ export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activ
   return (
     <div className={cn(
       "flex flex-col rounded-lg overflow-hidden border border-slate-800",
-      isExpanded ? "h-[480px]" : "h-64"
+      fillHeight ? "h-full" : isExpanded ? "h-[480px]" : "h-64"
     )}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800">
@@ -298,8 +315,18 @@ export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activ
               transition={{ duration: 1, repeat: Infinity }}
             />
           )}
-          {currentStage && (
+          {currentStage && !stageFilter && (
             <span className="text-[10px] text-cyan-400 ml-1">● {currentStage}</span>
+          )}
+          {stageFilter && (
+            <button
+              onClick={onClearStageFilter}
+              className="flex items-center gap-1 text-[10px] bg-primary/15 text-primary px-2 py-0.5 rounded-full border border-primary/30 hover:bg-primary/25 transition-colors ml-1"
+            >
+              <Filter className="w-2.5 h-2.5" />
+              {stageFilter.label}
+              <X className="w-2.5 h-2.5 ml-0.5" />
+            </button>
           )}
         </div>
         <div className="flex items-center gap-1">

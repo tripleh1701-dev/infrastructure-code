@@ -160,6 +160,18 @@
   }
 }
 
+@keyframes selected-ring-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  50% {
+    opacity: 0.82;
+    transform: scale(1.15);
+  }
+}
+
+
 @layer base {
   * {
     @apply border-border;

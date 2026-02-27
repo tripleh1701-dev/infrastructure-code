@@ -50,6 +50,8 @@ interface IntegrationArtifactsModalProps {
   onClose: () => void;
   buildJobName?: string;
   buildJobId?: string;
+  /** Called after artifacts are saved so the build YAML can be regenerated */
+  onAfterSave?: () => void;
 }
 
 const ARTIFACT_TYPE_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
@@ -60,7 +62,7 @@ const ARTIFACT_TYPE_META: Record<string, { label: string; icon: React.ComponentT
   MessageResourcesDesigntimeArtifacts: { label: "Message Resources", icon: FileText, color: "bg-rose-100 text-rose-700" },
 };
 
-export function IntegrationArtifactsModal({ open, onClose, buildJobName, buildJobId }: IntegrationArtifactsModalProps) {
+export function IntegrationArtifactsModal({ open, onClose, buildJobName, buildJobId, onAfterSave }: IntegrationArtifactsModalProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
   const accountId = selectedAccount?.id || "";
@@ -73,7 +75,7 @@ export function IntegrationArtifactsModal({ open, onClose, buildJobName, buildJo
     saving,
     saveSelections,
     loading: loadingSaved,
-  } = useSelectedArtifacts(buildJobId);
+  } = useSelectedArtifacts(buildJobId, onAfterSave);
 
   // Local selection state (synced from saved on load)
   const [localSelections, setLocalSelections] = useState<SelectedArtifact[]>([]);
