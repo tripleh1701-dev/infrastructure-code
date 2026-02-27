@@ -962,9 +962,11 @@ export class StageHandlersService {
       runtimeData?.ErrorInformation?.uri;
 
     if (deferredUri) {
-      const resolvedUrl = deferredUri.startsWith('http')
+      // SAP CPI OData requires /$value to get actual error content from deferred URIs
+      const rawUrl = deferredUri.startsWith('http')
         ? deferredUri
         : `${baseUrl}${deferredUri.startsWith('/') ? '' : '/'}${deferredUri}`;
+      const resolvedUrl = rawUrl.endsWith('/$value') ? rawUrl : `${rawUrl}/$value`;
 
       const headers = {
         Authorization: `Bearer ${token}`,
@@ -990,6 +992,11 @@ export class StageHandlersService {
         log(`  📋 CF ErrorDetails: Response ${detailsRes.status} ${detailsRes.statusText} — body: ${detailsBody.substring(0, 1500)}`);
 
         if (!detailsRes.ok) {
+          // A 404 means ErrorInformation hasn't propagated yet — return empty so polling continues
+          if (detailsRes.status === 404) {
+            log(`  ⚠️ CF ErrorDetails: ErrorInformation not available yet (404) — will retry poll`);
+            return '';
+          }
           return `HTTP ${detailsRes.status} ${detailsRes.statusText} while fetching ErrorInformation: ${detailsBody.substring(0, 500)}`;
         }
 
