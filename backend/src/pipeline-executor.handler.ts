@@ -130,7 +130,7 @@ async function handleDynamoDbReference(event: any) {
     // 1. Fetch the build YAML from customer DynamoDB
     console.log(`[PIPELINE-EXECUTOR] Fetching build YAML: customer=${customerId}, pipeline=${pipelineName}, version=${buildVersion}`);
 
-    const result = await dynamoBreaker.execute(() =>
+    const result: any = await dynamoBreaker.execute(() =>
       retryWithBackoff(
         () => dynamoDbRouter.get(customerId, {
           Key: {
@@ -164,7 +164,7 @@ async function handleDynamoDbReference(event: any) {
       return { statusCode: 400, body: 'Parsed YAML has no executable nodes' };
     }
 
-    console.log(`[PIPELINE-EXECUTOR] Parsed ${parsedPipeline.nodes.length} nodes with ${parsedPipeline.nodes.reduce((sum, n) => sum + n.stages.length, 0)} total stages`);
+    console.log(`[PIPELINE-EXECUTOR] Parsed ${parsedPipeline.nodes.length} nodes with ${parsedPipeline.nodes.reduce((sum: number, n: any) => sum + n.stages.length, 0)} total stages`);
 
     // 3. Re-resolve real credentials from DynamoDB for each stage
     //    The YAML has 'ENCRYPTED' placeholders — we need real auth data
@@ -380,7 +380,7 @@ async function resolveConnectorAuth(
     if (connector?.credentialId) {
       const credential = await credentialsBreaker.execute(() =>
         retryWithBackoff(
-          () => credentialsService.findOne(connector.credentialId, accountId),
+          () => credentialsService.findOne(connector.credentialId!, accountId),
           { maxAttempts: 3, label: 'ResolveConnectorCred', retryIf: isTransientAwsError },
         ),
       );
