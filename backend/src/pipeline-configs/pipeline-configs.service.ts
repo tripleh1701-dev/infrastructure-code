@@ -461,13 +461,15 @@ export class PipelineConfigsService {
             for (const sa of selectedArtifacts) {
               const artName = sa.artifactId || sa.artifactName || sa.name || '';
               const artType = this.mapArtifactTypeForYaml(sa.artifactType || sa.type || '');
-              if (artName) allArtifacts.push({ name: artName, type: artType });
+              const artPkgId = sa.packageId || '';
+              if (artName) allArtifacts.push({ name: artName, type: artType, packageId: artPkgId });
             }
             if (allArtifacts.length > 0) {
               yaml += `          artifacts:\n`;
               for (const art of allArtifacts) {
                 yaml += `            - name: ${this.esc(art.name)}\n`;
                 yaml += `              type: ${this.esc(art.type)}\n`;
+                if (art.packageId) yaml += `              packageId: ${this.esc(art.packageId)}\n`;
               }
             }
           } else {

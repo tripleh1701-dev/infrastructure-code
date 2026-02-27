@@ -270,10 +270,11 @@ export class ExecutionsService {
     pipeline: ParsedPipeline,
     selectedArtifacts: any[],
   ): void {
-    // Map selectedArtifacts to ArtifactDescriptor format
+    // Map selectedArtifacts to ArtifactDescriptor format (including packageId)
     const artifacts = selectedArtifacts.map((a) => ({
       name: a.artifactId || a.artifactName || a.name || '',
       type: this.mapArtifactType(a.artifactType || a.type || ''),
+      packageId: a.packageId || undefined,
     }));
 
     if (artifacts.length === 0) return;

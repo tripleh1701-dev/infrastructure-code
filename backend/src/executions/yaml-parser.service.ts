@@ -31,6 +31,7 @@ export interface ConnectorConfig {
 export interface ArtifactDescriptor {
   name: string;
   type: string; // IntegrationFlow | ValueMapping | ScriptCollection | MessageMapping
+  packageId?: string; // SAP CPI package ID for pre-deploy validation
 }
 
 /**
@@ -353,6 +354,7 @@ export class YamlParserService {
             artifacts: tool.artifacts?.map((a: any) => ({
               name: a.name,
               type: a.type,
+              packageId: a.packageId || undefined,
             })),
           };
         }

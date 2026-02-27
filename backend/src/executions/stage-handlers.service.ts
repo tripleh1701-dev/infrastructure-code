@@ -683,6 +683,83 @@ export class StageHandlersService {
   }
 
   // ---------------------------------------------------------------------------
+  // Pre-deploy validation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Validates that the artifact exists in CPI design-time before attempting
+   * upload & deploy.  Catches typos, wrong package/artifact combos, and
+   * unsupported types early — before wasting time on upload + poll cycles.
+   */
+  private async validateArtifactExists(
+    baseUrl: string,
+    token: string,
+    artifact: ArtifactDescriptor,
+    collection: string,
+    log: (msg: string) => void,
+  ): Promise<void> {
+    const metadataUrl = `${baseUrl}/api/v1/${collection}(Id='${artifact.name}',Version='active')`;
+    log(`  🔍 CF Pre-Check: Validating artifact metadata at ${metadataUrl}`);
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+
+      const res = await fetch(metadataUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      const body = await res.text().catch(() => '');
+
+      if (res.status === 404) {
+        log(`  ⚠️ CF Pre-Check: Artifact '${artifact.name}' (type: ${artifact.type}) not found in design-time (HTTP 404)`);
+        log(`  📋 CF Pre-Check: This means the artifact ID is wrong, the package doesn't contain this artifact, or it hasn't been created yet`);
+        log(`  📋 CF Pre-Check: Collection queried: ${collection}, response: ${body.substring(0, 500)}`);
+        // Don't throw — let the upload step handle creation via POST fallback
+        return;
+      }
+
+      if (!res.ok) {
+        log(`  ⚠️ CF Pre-Check: Unexpected HTTP ${res.status} from metadata endpoint — ${body.substring(0, 500)}`);
+        log(`  📋 CF Pre-Check: Proceeding with deploy anyway (validation non-blocking for non-404 errors)`);
+        return;
+      }
+
+      // Parse and validate metadata
+      const parsed = this.parseJsonSafely(body);
+      const d = parsed?.d || parsed;
+      const artifactId = d?.Id || d?.id || '';
+      const artifactName = d?.Name || d?.name || '';
+      const version = d?.Version || d?.version || '';
+      const packageId = d?.PackageId || d?.packageId || '';
+      const artifactType = d?.Type || d?.type || artifact.type;
+
+      log(`  ✅ CF Pre-Check: Artifact validated — Id: ${artifactId}, Name: ${artifactName}, Version: ${version}, Package: ${packageId || 'N/A'}, Type: ${artifactType}`);
+
+      // Warn on type mismatch
+      if (artifactType && artifact.type && artifactType.toLowerCase() !== artifact.type.toLowerCase()) {
+        log(`  ⚠️ CF Pre-Check: Type mismatch — YAML says '${artifact.type}' but CPI reports '${artifactType}'. Deploy may fail.`);
+      }
+
+      // Warn if packageId is present and differs from what we expect
+      if (artifact.packageId && packageId && packageId !== artifact.packageId) {
+        log(`  ⚠️ CF Pre-Check: Package mismatch — expected '${artifact.packageId}' but CPI reports '${packageId}'. Verify artifact belongs to the correct package.`);
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        log(`  ⚠️ CF Pre-Check: Metadata request timed out after 20s — proceeding with deploy`);
+      } else {
+        log(`  ⚠️ CF Pre-Check: Validation failed (${err.message}) — proceeding with deploy anyway`);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Cloud Foundry / SAP CPI Deployment
   // ---------------------------------------------------------------------------
 
@@ -701,6 +778,9 @@ export class StageHandlersService {
 
     log(`  🚀 CF Deploy: Deploying ${artifact.type}/${artifact.name} to ${baseUrl}`);
 
+    // Step 0: Pre-deploy validation — verify artifact exists in design-time
+    await this.validateArtifactExists(baseUrl, token, artifact, collection, log);
+
     // Step 1: Try to update existing artifact via PUT with base64 JSON body
     const entityUrl = `${baseUrl}/api/v1/${collection}(Id='${artifact.name}',Version='active')`;
     const updatePayload = JSON.stringify({
@@ -711,18 +791,21 @@ export class StageHandlersService {
     log(`  📋 CF Upload: PUT ${entityUrl}`);
     log(`  📋 CF Upload: Content-Type: application/json, payload size: ${updatePayload.length} bytes`);
 
+    const uploadHeaders = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    log(`  📋 CF Upload: Request headers: ${JSON.stringify({ ...uploadHeaders, Authorization: 'Bearer ***' })}`);
+
     const uploadRes = await this.fetchWithRetry(entityUrl, {
       method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers: uploadHeaders,
       body: updatePayload,
     }, log, 'CF Upload');
 
     const uploadResBody = await uploadRes.text().catch(() => '');
-    log(`  📋 CF Upload: Response ${uploadRes.status} ${uploadRes.statusText} — body: ${uploadResBody.substring(0, 500)}`);
+    log(`  📋 CF Upload: Response ${uploadRes.status} ${uploadRes.statusText} — body: ${uploadResBody.substring(0, 1500)}`);
 
     if (!uploadRes.ok) {
       if (uploadRes.status === 404) {
@@ -734,21 +817,28 @@ export class StageHandlersService {
           Version: 'active',
           ArtifactContent: binary.toString('base64'),
         });
+        const createHeaders = {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        };
+
         log(`  📋 CF Create: POST ${createUrl}`);
+        log(`  📋 CF Create: Request headers: ${JSON.stringify({ ...createHeaders, Authorization: 'Bearer ***' })}`);
+
         const createRes = await this.fetchWithRetry(createUrl, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
+          headers: createHeaders,
           body: createPayload,
         }, log, 'CF Create');
+
+        const createResBody = await createRes.text().catch(() => '');
+        log(`  📋 CF Create: Response ${createRes.status} ${createRes.statusText} — body: ${createResBody.substring(0, 1500)}`);
+
         if (!createRes.ok) {
-          const errBody = await createRes.text().catch(() => '');
-          log(`  📋 CF Create: Response ${createRes.status} — ${errBody.substring(0, 500)}`);
-          throw new Error(`CF Deploy: Failed to create artifact ${artifact.name}: HTTP ${createRes.status} — ${errBody.substring(0, 500)}`);
+          throw new Error(`CF Deploy: Failed to create artifact ${artifact.name}: HTTP ${createRes.status} — ${createResBody.substring(0, 500)}`);
         }
+
         log(`  ✅ CF Deploy: Artifact created successfully`);
       } else {
         throw new Error(`CF Deploy: Failed to upload artifact ${artifact.name}: HTTP ${uploadRes.status} — ${uploadResBody.substring(0, 500)}`);
@@ -762,17 +852,20 @@ export class StageHandlersService {
     log(`  🔄 CF Deploy: Triggering deployment for ${artifact.name}`);
     log(`  📋 CF Deploy Trigger: POST ${deployUrl}`);
 
+    const deployHeaders = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    };
+    log(`  📋 CF Deploy Trigger: Request headers: ${JSON.stringify({ ...deployHeaders, Authorization: 'Bearer ***' })}`);
+
     const deployRes = await this.fetchWithRetry(deployUrl, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
+      headers: deployHeaders,
     }, log, 'CF Deploy Trigger');
 
     const deployResBody = await deployRes.text().catch(() => '');
-    log(`  📋 CF Deploy Trigger: Response ${deployRes.status} ${deployRes.statusText} — body: ${deployResBody.substring(0, 500)}`);
+    log(`  📋 CF Deploy Trigger: Response ${deployRes.status} ${deployRes.statusText} — body: ${deployResBody.substring(0, 1500)}`);
 
     if (!deployRes.ok) {
       if (deployRes.status === 409) {
@@ -785,7 +878,8 @@ export class StageHandlersService {
     }
 
     // Step 3: Poll deployment status
-    await this.pollDeploymentStatus(baseUrl, token, artifact, log);
+    const deployOperationId = deployResBody.trim();
+    await this.pollDeploymentStatus(baseUrl, token, artifact, log, deployOperationId);
   }
 
   private async pollDeploymentStatus(
@@ -793,12 +887,16 @@ export class StageHandlersService {
     token: string,
     artifact: ArtifactDescriptor,
     log: (msg: string) => void,
+    deployOperationId?: string,
   ): Promise<void> {
     const statusUrl = `${baseUrl}/api/v1/IntegrationRuntimeArtifacts('${artifact.name}')`;
     const maxAttempts = 12;
     const pollIntervalMs = 10000;
 
     log(`  ⏳ CF Deploy: Polling status for ${artifact.name} (max ${maxAttempts * pollIntervalMs / 1000}s)`);
+    if (deployOperationId) {
+      log(`  🧾 CF Deploy: Operation ID: ${deployOperationId}`);
+    }
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       await new Promise((r) => setTimeout(r, pollIntervalMs));
@@ -807,19 +905,31 @@ export class StageHandlersService {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
           timeout: 15000,
         });
-        const data = await res.json();
+
+        const responseBody = await res.text().catch(() => '');
+        const data = this.parseJsonSafely(responseBody) ?? {};
         const status = data?.d?.Status || data?.Status || 'UNKNOWN';
+
         log(`  ⏳ CF Deploy: [${attempt}/${maxAttempts}] ${artifact.name} — Status: ${status}`);
 
         if (status === 'STARTED') {
           log(`  🎉 CF Deploy: ${artifact.name} deployed and STARTED successfully`);
           return;
         }
+
         if (status === 'ERROR') {
-          const rawError = data?.d?.ErrorInformation || data?.d?.Error || data?.d || '';
-          const errorInfo = typeof rawError === 'object' ? JSON.stringify(rawError) : String(rawError);
-          log(`  ❌ CF Deploy: Error details — ${errorInfo.substring(0, 1000)}`);
-          throw new Error(`CF Deploy: ${artifact.name} deployment failed with ERROR: ${errorInfo.substring(0, 500)}`);
+          const errorInfo = await this.resolveCfErrorInformation(baseUrl, token, data, log);
+          const isConcreteError = Boolean(errorInfo) && !errorInfo.includes('"__deferred"');
+
+          log(`  ❌ CF Deploy: Error details — ${(errorInfo || 'No error details returned').substring(0, 1500)}`);
+
+          // Some tenants briefly report ERROR before final STARTED and may return deferred placeholders.
+          if (!isConcreteError && attempt < maxAttempts) {
+            log(`  ⚠️ CF Deploy: ERROR reported without concrete details; retrying poll to avoid false negative`);
+            continue;
+          }
+
+          throw new Error(`CF Deploy: ${artifact.name} deployment failed with ERROR: ${(errorInfo || 'No details').substring(0, 500)}`);
         }
       } catch (err) {
         if (err.message.includes('deployment failed')) throw err;
@@ -828,6 +938,108 @@ export class StageHandlersService {
     }
 
     log(`  ⚠️ CF Deploy: ${artifact.name} — status polling timed out (may still be deploying)`);
+  }
+
+  private parseJsonSafely(raw: string): any {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveCfErrorInformation(
+    baseUrl: string,
+    token: string,
+    runtimeData: any,
+    log: (msg: string) => void,
+  ): Promise<string> {
+    const deferredUri =
+      runtimeData?.d?.ErrorInformation?.__deferred?.uri ||
+      runtimeData?.ErrorInformation?.__deferred?.uri ||
+      runtimeData?.d?.ErrorInformation?.uri ||
+      runtimeData?.ErrorInformation?.uri;
+
+    if (deferredUri) {
+      const resolvedUrl = deferredUri.startsWith('http')
+        ? deferredUri
+        : `${baseUrl}${deferredUri.startsWith('/') ? '' : '/'}${deferredUri}`;
+
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      };
+
+      log(`  📋 CF ErrorDetails: GET ${resolvedUrl}`);
+      log(`  📋 CF ErrorDetails: Request headers: ${JSON.stringify({ ...headers, Authorization: 'Bearer ***' })}`);
+
+      try {
+        const detailsRes = await this.fetchWithRetry(
+          resolvedUrl,
+          {
+            method: 'GET',
+            headers,
+          },
+          log,
+          'CF ErrorDetails',
+          1,
+        );
+
+        const detailsBody = await detailsRes.text().catch(() => '');
+        log(`  📋 CF ErrorDetails: Response ${detailsRes.status} ${detailsRes.statusText} — body: ${detailsBody.substring(0, 1500)}`);
+
+        if (!detailsRes.ok) {
+          return `HTTP ${detailsRes.status} ${detailsRes.statusText} while fetching ErrorInformation: ${detailsBody.substring(0, 500)}`;
+        }
+
+        const parsedDetails = this.parseJsonSafely(detailsBody);
+        return this.stringifyCfError(parsedDetails ?? detailsBody);
+      } catch (err) {
+        log(`  ⚠️ CF ErrorDetails: Failed to resolve deferred error URI: ${err.message}`);
+      }
+    }
+
+    const inlineError =
+      runtimeData?.d?.ErrorInformation ||
+      runtimeData?.ErrorInformation ||
+      runtimeData?.d?.Error ||
+      runtimeData?.Error ||
+      runtimeData;
+
+    return this.stringifyCfError(inlineError);
+  }
+
+  private stringifyCfError(value: unknown): string {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.stringifyCfError(entry)).filter(Boolean).join(' | ');
+    }
+
+    if (typeof value === 'object') {
+      const obj = value as any;
+      const extracted =
+        obj?.d?.ErrorInformation?.ErrorMessage ||
+        obj?.d?.ErrorInformation?.errorMessage ||
+        obj?.d?.ErrorInformation?.message ||
+        obj?.d?.ErrorInformation?.value ||
+        obj?.d?.Message ||
+        obj?.error?.message?.value ||
+        obj?.message ||
+        obj?.Message;
+
+      if (extracted) return String(extracted);
+
+      try {
+        return JSON.stringify(obj);
+      } catch {
+        return String(obj);
+      }
+    }
+
+    return String(value);
   }
 
   // ---------------------------------------------------------------------------
