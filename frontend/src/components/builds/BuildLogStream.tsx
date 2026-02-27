@@ -217,7 +217,7 @@ export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activ
 
   /* ---------- Filtered + searched entries ---------- */
   const filteredEntries = useMemo(() => {
-    let entries = streamedEntries;
+    let entries = streamedEntries.filter(Boolean);
     // Stage-level filter
     if (stageFilter) {
       entries = entries.filter((e) => {
@@ -243,6 +243,7 @@ export function BuildLogStream({ logs, status, buildNumber, pipelineNodes, activ
   const levelCounts = useMemo(() => {
     const counts: Record<string, number> = { all: 0, info: 0, warn: 0, error: 0, success: 0, system: 0 };
     for (const e of streamedEntries) {
+      if (!e) continue;
       counts[e.level] = (counts[e.level] || 0) + 1;
       counts.all++;
     }
