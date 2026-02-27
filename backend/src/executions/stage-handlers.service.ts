@@ -781,14 +781,29 @@ export class StageHandlersService {
     // Step 0: Pre-deploy validation — verify artifact exists in design-time
     await this.validateArtifactExists(baseUrl, token, artifact, collection, log);
 
-    // Step 1: Try to update existing artifact via PUT with base64 JSON body
+    // Step 1: Upload artifact content
+    // ValueMapping artifacts require POST to the collection endpoint; others use PUT on the entity.
+    const POST_ONLY_TYPES = new Set(['ValueMapping']);
+    const usePost = POST_ONLY_TYPES.has(artifact.type);
+
     const entityUrl = `${baseUrl}/api/v1/${collection}(Id='${artifact.name}',Version='active')`;
-    const updatePayload = JSON.stringify({
+    const collectionUrl = `${baseUrl}/api/v1/${collection}`;
+
+    const uploadUrl = usePost ? collectionUrl : entityUrl;
+    const uploadMethod = usePost ? 'POST' : 'PUT';
+
+    const payloadObj: Record<string, string> = {
       Name: artifact.name,
       ArtifactContent: binary.toString('base64'),
-    });
+    };
+    if (usePost) {
+      payloadObj.Id = artifact.name;
+      payloadObj.Version = 'active';
+    }
+    const updatePayload = JSON.stringify(payloadObj);
+
     log(`  📤 CF Deploy: Uploading artifact content to design-time API`);
-    log(`  📋 CF Upload: PUT ${entityUrl}`);
+    log(`  📋 CF Upload: ${uploadMethod} ${uploadUrl}`);
     log(`  📋 CF Upload: Content-Type: application/json, payload size: ${updatePayload.length} bytes`);
 
     const uploadHeaders = {
@@ -798,8 +813,8 @@ export class StageHandlersService {
     };
     log(`  📋 CF Upload: Request headers: ${JSON.stringify({ ...uploadHeaders, Authorization: 'Bearer ***' })}`);
 
-    const uploadRes = await this.fetchWithRetry(entityUrl, {
-      method: 'PUT',
+    const uploadRes = await this.fetchWithRetry(uploadUrl, {
+      method: uploadMethod,
       headers: uploadHeaders,
       body: updatePayload,
     }, log, 'CF Upload');
