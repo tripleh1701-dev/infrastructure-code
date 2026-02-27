@@ -702,7 +702,7 @@ export class StageHandlersService {
     log(`  🚀 CF Deploy: Deploying ${artifact.type}/${artifact.name} to ${baseUrl}`);
 
     // Step 1: Upload artifact content via PUT
-    const uploadUrl = `${baseUrl}/api/v1/${collection}(Id='${artifact.name}',Version='active')`;
+    const uploadUrl = `${baseUrl}/api/v1/${collection}(Id='${artifact.name}',Version='active')/$value`;
     log(`  📤 CF Deploy: Uploading artifact content to design-time API`);
 
     const uploadRes = await this.fetchWithRetry(uploadUrl, {
