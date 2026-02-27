@@ -457,7 +457,7 @@ export class PipelineConfigsService {
             }
 
             // Embed artifacts
-            const allArtifacts = [...(cred?.artifacts || [])];
+            const allArtifacts: { name: string; type: string; packageId?: string }[] = [...(cred?.artifacts || [])].map(a => ({ name: a.name, type: a.type, packageId: (a as any).packageId }));
             for (const sa of selectedArtifacts) {
               const artName = sa.artifactId || sa.artifactName || sa.name || '';
               const artType = this.mapArtifactTypeForYaml(sa.artifactType || sa.type || '');
