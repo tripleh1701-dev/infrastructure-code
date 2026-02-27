@@ -1,0 +1,24 @@
+project_name  = "license-portal"
+environment   = "dev"
+aws_region    = "us-east-1"
+
+# Cognito
+enable_mfa               = false
+enable_advanced_security = false
+cognito_callback_urls    = ["http://localhost:3000/callback"]
+cognito_logout_urls      = ["http://localhost:3000"]
+enable_cognito_auth      = true
+
+# Lambda
+lambda_runtime      = "nodejs20.x"
+lambda_memory_size  = 512
+lambda_timeout      = 30
+lambda_package_path = "lambda-placeholder.zip"
+
+# Data Plane (set after data-plane bootstrap)
+data_plane_role_arn      = ""
+data_plane_dynamodb_name = ""
+data_plane_region        = "us-east-1"
+
+# Monitoring
+alarm_email = ""

@@ -1,0 +1,757 @@
+{
+  "info": {
+    "name": "Platform RBAC E2E Tests",
+    "description": "Complete CRUD endpoint tests with Cognito JWT authentication and role-based access control verification.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://your-api.example.com/api", "type": "string" },
+    { "key": "cognitoUrl", "value": "https://cognito-idp.us-east-1.amazonaws.com", "type": "string" },
+    { "key": "cognitoClientId", "value": "YOUR_COGNITO_CLIENT_ID", "type": "string" },
+    { "key": "adminEmail", "value": "admin@example.com", "type": "string" },
+    { "key": "adminPassword", "value": "AdminPass123!", "type": "string" },
+    { "key": "viewerEmail", "value": "viewer@example.com", "type": "string" },
+    { "key": "viewerPassword", "value": "ViewerPass123!", "type": "string" },
+    { "key": "userEmail", "value": "user@example.com", "type": "string" },
+    { "key": "userPassword", "value": "UserPass123!", "type": "string" },
+    { "key": "managerEmail", "value": "manager@example.com", "type": "string" },
+    { "key": "managerPassword", "value": "ManagerPass123!", "type": "string" },
+    { "key": "superAdminEmail", "value": "superadmin@example.com", "type": "string" },
+    { "key": "superAdminPassword", "value": "SuperPass123!", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "viewerToken", "value": "", "type": "string" },
+    { "key": "userToken", "value": "", "type": "string" },
+    { "key": "managerToken", "value": "", "type": "string" },
+    { "key": "superAdminToken", "value": "", "type": "string" },
+    { "key": "testAccountId", "value": "", "type": "string" },
+    { "key": "testEnterpriseId", "value": "", "type": "string" },
+    { "key": "testUserId", "value": "", "type": "string" },
+    { "key": "testWorkstreamId", "value": "", "type": "string" },
+    { "key": "testRoleId", "value": "", "type": "string" },
+    { "key": "testGroupId", "value": "", "type": "string" },
+    { "key": "testLicenseId", "value": "", "type": "string" },
+    { "key": "testBuildJobId", "value": "", "type": "string" },
+    { "key": "testConnectorId", "value": "", "type": "string" },
+    { "key": "testCredentialId", "value": "", "type": "string" },
+    { "key": "testEnvironmentId", "value": "", "type": "string" },
+    { "key": "testProductId", "value": "", "type": "string" },
+    { "key": "testServiceId", "value": "", "type": "string" },
+    { "key": "testPipelineId", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "description": "Cognito token retrieval for each role",
+      "item": [
+        {
+          "name": "Login - Super Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.AuthenticationResult) {",
+                  "  pm.collectionVariables.set('superAdminToken', res.AuthenticationResult.IdToken);",
+                  "  pm.test('Super Admin token obtained', () => pm.expect(res.AuthenticationResult.IdToken).to.be.a('string'));",
+                  "} else {",
+                  "  pm.test('Login failed', () => pm.expect.fail(JSON.stringify(res)));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-amz-json-1.1" },
+              { "key": "X-Amz-Target", "value": "AWSCognitoIdentityProviderService.InitiateAuth" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognitoClientId}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{superAdminEmail}}\",\n    \"PASSWORD\": \"{{superAdminPassword}}\"\n  }\n}"
+            },
+            "url": { "raw": "{{cognitoUrl}}", "host": ["{{cognitoUrl}}"] }
+          }
+        },
+        {
+          "name": "Login - Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.AuthenticationResult) {",
+                  "  pm.collectionVariables.set('adminToken', res.AuthenticationResult.IdToken);",
+                  "  pm.test('Admin token obtained', () => pm.expect(res.AuthenticationResult.IdToken).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-amz-json-1.1" },
+              { "key": "X-Amz-Target", "value": "AWSCognitoIdentityProviderService.InitiateAuth" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognitoClientId}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{adminEmail}}\",\n    \"PASSWORD\": \"{{adminPassword}}\"\n  }\n}"
+            },
+            "url": { "raw": "{{cognitoUrl}}", "host": ["{{cognitoUrl}}"] }
+          }
+        },
+        {
+          "name": "Login - Manager",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.AuthenticationResult) {",
+                  "  pm.collectionVariables.set('managerToken', res.AuthenticationResult.IdToken);",
+                  "  pm.test('Manager token obtained', () => pm.expect(res.AuthenticationResult.IdToken).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-amz-json-1.1" },
+              { "key": "X-Amz-Target", "value": "AWSCognitoIdentityProviderService.InitiateAuth" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognitoClientId}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{managerEmail}}\",\n    \"PASSWORD\": \"{{managerPassword}}\"\n  }\n}"
+            },
+            "url": { "raw": "{{cognitoUrl}}", "host": ["{{cognitoUrl}}"] }
+          }
+        },
+        {
+          "name": "Login - User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.AuthenticationResult) {",
+                  "  pm.collectionVariables.set('userToken', res.AuthenticationResult.IdToken);",
+                  "  pm.test('User token obtained', () => pm.expect(res.AuthenticationResult.IdToken).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-amz-json-1.1" },
+              { "key": "X-Amz-Target", "value": "AWSCognitoIdentityProviderService.InitiateAuth" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognitoClientId}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{userEmail}}\",\n    \"PASSWORD\": \"{{userPassword}}\"\n  }\n}"
+            },
+            "url": { "raw": "{{cognitoUrl}}", "host": ["{{cognitoUrl}}"] }
+          }
+        },
+        {
+          "name": "Login - Viewer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.AuthenticationResult) {",
+                  "  pm.collectionVariables.set('viewerToken', res.AuthenticationResult.IdToken);",
+                  "  pm.test('Viewer token obtained', () => pm.expect(res.AuthenticationResult.IdToken).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-amz-json-1.1" },
+              { "key": "X-Amz-Target", "value": "AWSCognitoIdentityProviderService.InitiateAuth" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{cognitoClientId}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{viewerEmail}}\",\n    \"PASSWORD\": \"{{viewerPassword}}\"\n  }\n}"
+            },
+            "url": { "raw": "{{cognitoUrl}}", "host": ["{{cognitoUrl}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 Accounts",
+      "item": [
+        {
+          "name": "GET /accounts (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "const res = pm.response.json();",
+            "if (res.data && res.data.length > 0) { pm.collectionVariables.set('testAccountId', res.data[0].id); }"
+          ]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/accounts", "host": ["{{baseUrl}}"], "path": ["accounts"] }
+          }
+        },
+        {
+          "name": "GET /accounts (Viewer ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/accounts", "host": ["{{baseUrl}}"], "path": ["accounts"] }
+          }
+        },
+        {
+          "name": "POST /accounts (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "const res = pm.response.json();",
+            "if (res.data) { pm.collectionVariables.set('testAccountId', res.data.id); }"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Account\",\n  \"masterAccountName\": \"Master\",\n  \"cloudType\": \"public\",\n  \"status\": \"active\"\n}" },
+            "url": { "raw": "{{baseUrl}}/accounts", "host": ["{{baseUrl}}"], "path": ["accounts"] }
+          }
+        },
+        {
+          "name": "POST /accounts (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Should Fail\",\n  \"masterAccountName\": \"Master\",\n  \"cloudType\": \"public\"\n}" },
+            "url": { "raw": "{{baseUrl}}/accounts", "host": ["{{baseUrl}}"], "path": ["accounts"] }
+          }
+        },
+        {
+          "name": "POST /accounts (User ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Should Fail\",\n  \"masterAccountName\": \"Master\",\n  \"cloudType\": \"public\"\n}" },
+            "url": { "raw": "{{baseUrl}}/accounts", "host": ["{{baseUrl}}"], "path": ["accounts"] }
+          }
+        },
+        {
+          "name": "PUT /accounts/:id (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Account\"\n}" },
+            "url": { "raw": "{{baseUrl}}/accounts/{{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["accounts", "{{testAccountId}}"] }
+          }
+        },
+        {
+          "name": "DELETE /accounts/:id (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/accounts/{{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["accounts", "{{testAccountId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏢 Enterprises",
+      "item": [
+        {
+          "name": "GET /enterprises (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "const res = pm.response.json();",
+            "if (res.data && res.data.length > 0) { pm.collectionVariables.set('testEnterpriseId', res.data[0].id); }"
+          ]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/enterprises", "host": ["{{baseUrl}}"], "path": ["enterprises"] }
+          }
+        },
+        {
+          "name": "POST /enterprises (Super Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Enterprise\"\n}" },
+            "url": { "raw": "{{baseUrl}}/enterprises", "host": ["{{baseUrl}}"], "path": ["enterprises"] }
+          }
+        },
+        {
+          "name": "POST /enterprises (Admin ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Should Fail\"\n}" },
+            "url": { "raw": "{{baseUrl}}/enterprises", "host": ["{{baseUrl}}"], "path": ["enterprises"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 Users",
+      "item": [
+        {
+          "name": "GET /users (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "const res = pm.response.json();",
+            "if (res.data && res.data.length > 0) { pm.collectionVariables.set('testUserId', res.data[0].id); }"
+          ]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/users?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["users"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "GET /users/me/access (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/users/me/access", "host": ["{{baseUrl}}"], "path": ["users", "me", "access"] }
+          }
+        },
+        {
+          "name": "POST /users (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "const res = pm.response.json();",
+            "if (res.data) { pm.collectionVariables.set('testUserId', res.data.id); }"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"email\": \"testuser@example.com\",\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\",\n  \"assignedRole\": \"viewer\",\n  \"assignedGroup\": \"Default\",\n  \"startDate\": \"2025-01-01\",\n  \"status\": \"active\"\n}" },
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+          }
+        },
+        {
+          "name": "POST /users (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"firstName\": \"Fail\",\n  \"lastName\": \"User\",\n  \"email\": \"fail@example.com\",\n  \"accountId\": \"{{testAccountId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+          }
+        },
+        {
+          "name": "DELETE /users/:id (Manager ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{managerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/users/{{testUserId}}", "host": ["{{baseUrl}}"], "path": ["users", "{{testUserId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔧 Workstreams",
+      "item": [
+        {
+          "name": "GET /workstreams (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "const res = pm.response.json();",
+            "if (res.data && res.data.length > 0) { pm.collectionVariables.set('testWorkstreamId', res.data[0].id); }"
+          ]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/workstreams?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["workstreams"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "POST /workstreams (User ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Workstream\",\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/workstreams", "host": ["{{baseUrl}}"], "path": ["workstreams"] }
+          }
+        },
+        {
+          "name": "POST /workstreams (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Should Fail\",\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/workstreams", "host": ["{{baseUrl}}"], "path": ["workstreams"] }
+          }
+        },
+        {
+          "name": "DELETE /workstreams/:id (User ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": { "raw": "{{baseUrl}}/workstreams/{{testWorkstreamId}}", "host": ["{{baseUrl}}"], "path": ["workstreams", "{{testWorkstreamId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛡️ Roles",
+      "item": [
+        {
+          "name": "GET /roles (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "const res = pm.response.json();",
+            "if (res.data && res.data.length > 0) { pm.collectionVariables.set('testRoleId', res.data[0].id); }"
+          ]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/roles?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["roles"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "POST /roles (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Role\",\n  \"description\": \"Test role for E2E\",\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\",\n  \"permissions\": 7\n}" },
+            "url": { "raw": "{{baseUrl}}/roles", "host": ["{{baseUrl}}"], "path": ["roles"] }
+          }
+        },
+        {
+          "name": "POST /roles (User ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Should Fail\",\n  \"accountId\": \"{{testAccountId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/roles", "host": ["{{baseUrl}}"], "path": ["roles"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Groups",
+      "item": [
+        {
+          "name": "GET /groups (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "const res = pm.response.json();",
+            "if (res.data && res.data.length > 0) { pm.collectionVariables.set('testGroupId', res.data[0].id); }"
+          ]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/groups?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["groups"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "POST /groups (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Group\",\n  \"description\": \"Test group for E2E\",\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/groups", "host": ["{{baseUrl}}"], "path": ["groups"] }
+          }
+        },
+        {
+          "name": "DELETE /groups/:id (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/groups/{{testGroupId}}", "host": ["{{baseUrl}}"], "path": ["groups", "{{testGroupId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📜 Licenses",
+      "item": [
+        {
+          "name": "GET /licenses (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/licenses?accountId={{testAccountId}}&enterpriseId={{testEnterpriseId}}", "host": ["{{baseUrl}}"], "path": ["licenses"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }, { "key": "enterpriseId", "value": "{{testEnterpriseId}}" }] }
+          }
+        },
+        {
+          "name": "POST /licenses (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/licenses", "host": ["{{baseUrl}}"], "path": ["licenses"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔨 Builds",
+      "item": [
+        {
+          "name": "GET /builds/jobs (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Status 200', () => pm.response.to.have.status(200));",
+            "const res = pm.response.json();",
+            "if (res.data && res.data.length > 0) { pm.collectionVariables.set('testBuildJobId', res.data[0].id); }"
+          ]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/builds/jobs?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["builds", "jobs"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "POST /builds/jobs (User ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"connectorName\": \"TestConnector\",\n  \"product\": \"TestProduct\",\n  \"service\": \"TestService\",\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\",\n  \"status\": \"active\"\n}" },
+            "url": { "raw": "{{baseUrl}}/builds/jobs", "host": ["{{baseUrl}}"], "path": ["builds", "jobs"] }
+          }
+        },
+        {
+          "name": "POST /builds/jobs (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"connectorName\": \"Fail\",\n  \"product\": \"Fail\",\n  \"service\": \"Fail\",\n  \"accountId\": \"{{testAccountId}}\",\n  \"enterpriseId\": \"{{testEnterpriseId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/builds/jobs", "host": ["{{baseUrl}}"], "path": ["builds", "jobs"] }
+          }
+        },
+        {
+          "name": "DELETE /builds/jobs/:id (User ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": { "raw": "{{baseUrl}}/builds/jobs/{{testBuildJobId}}", "host": ["{{baseUrl}}"], "path": ["builds", "jobs", "{{testBuildJobId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔌 Connectors",
+      "item": [
+        {
+          "name": "GET /connectors (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/connectors?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["connectors"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "POST /connectors (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Fail Connector\",\n  \"accountId\": \"{{testAccountId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/connectors", "host": ["{{baseUrl}}"], "path": ["connectors"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔑 Credentials",
+      "item": [
+        {
+          "name": "GET /credentials (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/credentials?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["credentials"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "DELETE /credentials/:id (User ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": { "raw": "{{baseUrl}}/credentials/{{testCredentialId}}", "host": ["{{baseUrl}}"], "path": ["credentials", "{{testCredentialId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🌐 Environments",
+      "item": [
+        {
+          "name": "GET /environments (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/environments?accountId={{testAccountId}}", "host": ["{{baseUrl}}"], "path": ["environments"], "query": [{ "key": "accountId", "value": "{{testAccountId}}" }] }
+          }
+        },
+        {
+          "name": "POST /environments (Viewer ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Fail Env\",\n  \"accountId\": \"{{testAccountId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/environments", "host": ["{{baseUrl}}"], "path": ["environments"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 Products & Services",
+      "item": [
+        {
+          "name": "GET /products (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "POST /products (Super Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Product\",\n  \"description\": \"E2E test product\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "POST /products (Admin ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Should Fail\"\n}" },
+            "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] }
+          }
+        },
+        {
+          "name": "GET /services (Any ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/services", "host": ["{{baseUrl}}"], "path": ["services"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚀 Provisioning",
+      "item": [
+        {
+          "name": "GET /provisioning (Admin ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/provisioning", "host": ["{{baseUrl}}"], "path": ["provisioning"] }
+          }
+        },
+        {
+          "name": "GET /provisioning (Viewer ✅)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{viewerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/provisioning", "host": ["{{baseUrl}}"], "path": ["provisioning"] }
+          }
+        },
+        {
+          "name": "POST /provisioning (User ❌ 403)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"] }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"accountId\": \"{{testAccountId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/provisioning", "host": ["{{baseUrl}}"], "path": ["provisioning"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚫 No Auth (401 Tests)",
+      "item": [
+        {
+          "name": "GET /accounts (No Token ❌ 401)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"] }}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/accounts", "host": ["{{baseUrl}}"], "path": ["accounts"] }
+          }
+        },
+        {
+          "name": "GET /users (No Token ❌ 401)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"] }}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+          }
+        },
+        {
+          "name": "POST /builds/jobs (No Token ❌ 401)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"] }}],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/builds/jobs", "host": ["{{baseUrl}}"], "path": ["builds", "jobs"] }
+          }
+        }
+      ]
+    }
+  ]
+}

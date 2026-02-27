@@ -1,0 +1,1 @@
+ALTER TABLE public.build_jobs ADD COLUMN IF NOT EXISTS selected_artifacts jsonb DEFAULT '[]'::jsonb;
