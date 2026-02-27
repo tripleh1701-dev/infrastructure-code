@@ -48,7 +48,17 @@ jobs:
             echo "::error::dist/pipeline-executor.handler.js not found — nest build may not have compiled it"
             exit 1
           fi
-          echo "✅ pipeline-executor.handler.js present in dist/"
+
+          # Lambda splits handler by the last dot (<module>.<export>), so a source file
+          # named "pipeline-executor.handler.js" can be misresolved. Create a shim file
+          # with a dot-free module name and point Lambda to that.
+          cat > dist/pipeline-executor.js <<'EOF'
+          'use strict';
+          const mod = require('./pipeline-executor.handler');
+          exports.handler = mod.handler;
+          EOF
+
+          echo "✅ pipeline-executor.handler.js present and dist/pipeline-executor.js shim created"
 
       - name: Package Lambda Artifact
         working-directory: backend
@@ -96,10 +106,10 @@ jobs:
           aws lambda wait function-updated-v2 \
             --function-name "${FUNCTION_NAME}"
 
-          # Ensure handler points to compiled entry point on $LATEST
+          # Ensure handler points to Lambda-safe shim entry point on $LATEST
           aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
-            --handler "dist/pipeline-executor.handler.handler" \
+            --handler "dist/pipeline-executor.handler" \
             --runtime "nodejs20.x"
 
           # Wait for configuration update to complete
@@ -131,8 +141,8 @@ jobs:
           
           HANDLER=$(echo "${CONFIG}" | jq -r '.Handler')
           VERSION=$(echo "${CONFIG}" | jq -r '.Version')
-          if [ "${HANDLER}" != "dist/pipeline-executor.handler.handler" ]; then
-            echo "::error::Handler mismatch on alias 'live': expected 'dist/pipeline-executor.handler.handler', got '${HANDLER}' (version ${VERSION})"
+          if [ "${HANDLER}" != "dist/pipeline-executor.handler" ]; then
+            echo "::error::Handler mismatch on alias 'live': expected 'dist/pipeline-executor.handler', got '${HANDLER}' (version ${VERSION})"
             exit 1
           fi
           echo "✅ Alias 'live' verified at version ${VERSION} with handler: ${HANDLER}"
