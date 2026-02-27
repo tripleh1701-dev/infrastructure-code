@@ -170,6 +170,15 @@ resource "aws_lambda_function" "executor" {
   filename         = var.package_path
   source_code_hash = fileexists(var.package_path) ? filebase64sha256(var.package_path) : null
 
+  # Code is deployed by workflow 04b; Terraform should manage infra/config only.
+  # Without this, infra syncs (workflow 04) can overwrite executor code with placeholder artifacts.
+  lifecycle {
+    ignore_changes = [
+      filename,
+      source_code_hash,
+    ]
+  }
+
   environment {
     variables = merge(var.environment_variables, {
       CONTROL_PLANE_TABLE_NAME = var.dynamodb_table_name
