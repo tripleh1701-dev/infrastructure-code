@@ -67,6 +67,18 @@ jobs:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
+      - name: Pre-flight - Verify Lambda Exists
+        env:
+          FUNCTION_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment || 'dev' }}-pipeline-executor
+        run: |
+          set -euo pipefail
+          echo "🔍 Checking if Lambda function '${FUNCTION_NAME}' exists..."
+          if ! aws lambda get-function --function-name "${FUNCTION_NAME}" > /dev/null 2>&1; then
+            echo "::error::Lambda function '${FUNCTION_NAME}' not found. Run the Terraform Apply workflow (02) first to provision infrastructure before deploying code."
+            exit 1
+          fi
+          echo "✅ Lambda function '${FUNCTION_NAME}' exists"
+
       - name: Deploy Pipeline Executor Lambda
         env:
           FUNCTION_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment || 'dev' }}-pipeline-executor
@@ -75,17 +87,16 @@ jobs:
           
           echo "Deploying pipeline executor: ${FUNCTION_NAME}"
           
-          # Update function code
+          # Update function code on $LATEST first (do NOT publish yet)
           aws lambda update-function-code \
             --function-name "${FUNCTION_NAME}" \
-            --zip-file fileb://backend/lambda-package.zip \
-            --publish
+            --zip-file fileb://backend/lambda-package.zip
 
-          # Wait for code update to stabilise before changing configuration
+          # Wait for code update to stabilize before changing configuration
           aws lambda wait function-updated-v2 \
             --function-name "${FUNCTION_NAME}"
 
-          # Ensure handler points to compiled entry point
+          # Ensure handler points to compiled entry point on $LATEST
           aws lambda update-function-configuration \
             --function-name "${FUNCTION_NAME}" \
             --handler "dist/pipeline-executor.handler.handler" \
@@ -94,19 +105,19 @@ jobs:
           # Wait for configuration update to complete
           aws lambda wait function-updated-v2 \
             --function-name "${FUNCTION_NAME}"
-          
-          # Get latest version
-          LATEST_VERSION=$(aws lambda list-versions-by-function \
+
+          # Publish a NEW version after both code + config are correct
+          LATEST_VERSION=$(aws lambda publish-version \
             --function-name "${FUNCTION_NAME}" \
-            --query "Versions[-1].Version" \
+            --query "Version" \
             --output text)
-          
+
           # Update live alias for zero-downtime
           aws lambda update-alias \
             --function-name "${FUNCTION_NAME}" \
             --name live \
             --function-version "${LATEST_VERSION}"
-          
+
           echo "✅ Pipeline executor deployed: version ${LATEST_VERSION}"
 
       - name: Verify Lambda Configuration
@@ -115,12 +126,95 @@ jobs:
         run: |
           set -euo pipefail
           echo "🔍 Verifying Lambda configuration..."
-          CONFIG=$(aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --query '{Handler: Handler, Runtime: Runtime, MemorySize: MemorySize, Timeout: Timeout, CodeSize: CodeSize, LastModified: LastModified}' --output json)
+          CONFIG=$(aws lambda get-function-configuration --function-name "${FUNCTION_NAME}" --qualifier live --query '{Handler: Handler, Runtime: Runtime, MemorySize: MemorySize, Timeout: Timeout, CodeSize: CodeSize, LastModified: LastModified, Version: Version}' --output json)
           echo "${CONFIG}" | jq .
           
           HANDLER=$(echo "${CONFIG}" | jq -r '.Handler')
+          VERSION=$(echo "${CONFIG}" | jq -r '.Version')
           if [ "${HANDLER}" != "dist/pipeline-executor.handler.handler" ]; then
-            echo "::error::Handler mismatch: expected 'dist/pipeline-executor.handler.handler', got '${HANDLER}'"
+            echo "::error::Handler mismatch on alias 'live': expected 'dist/pipeline-executor.handler.handler', got '${HANDLER}' (version ${VERSION})"
             exit 1
           fi
-          echo "✅ Handler verified: ${HANDLER}"
+          echo "✅ Alias 'live' verified at version ${VERSION} with handler: ${HANDLER}"
+
+      - name: Smoke Test - Invoke with minimal event
+        env:
+          FUNCTION_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment || 'dev' }}-pipeline-executor
+        run: |
+          set -euo pipefail
+          echo "🧪 Invoking pipeline-executor with a minimal bad-payload to verify bootstrap..."
+
+          # Send an intentionally incomplete payload — the handler should return 400
+          # (missing required fields) rather than a Runtime.ImportModuleError.
+          RESPONSE=$(aws lambda invoke \
+            --function-name "${FUNCTION_NAME}" \
+            --qualifier live \
+            --payload "$(printf '{"smokeTest":true}' | base64)" \
+            --cli-binary-format raw-in-base64-out \
+            --log-type Tail \
+            --query '{StatusCode: StatusCode, FunctionError: FunctionError, LogResult: LogResult}' \
+            --output json \
+            /tmp/smoke-response.json)
+
+          STATUS_CODE=$(echo "${RESPONSE}" | jq -r '.StatusCode')
+          FUNCTION_ERROR=$(echo "${RESPONSE}" | jq -r '.FunctionError // empty')
+          BODY=$(cat /tmp/smoke-response.json)
+
+          echo "Status code: ${STATUS_CODE}"
+          echo "Function error: ${FUNCTION_ERROR:-none}"
+          echo "Response body: ${BODY}"
+
+          # Decode and print last 4KB of logs
+          LOG_TAIL=$(echo "${RESPONSE}" | jq -r '.LogResult // empty')
+          if [ -n "${LOG_TAIL}" ]; then
+            echo "--- Lambda logs (tail) ---"
+            echo "${LOG_TAIL}" | base64 -d || true
+            echo "--- end logs ---"
+          fi
+
+          # A 400 with "Missing required fields" means the handler loaded fine
+          HTTP_CODE=$(echo "${BODY}" | jq -r '.statusCode // empty')
+          if [ "${HTTP_CODE}" = "400" ]; then
+            echo "✅ Smoke test passed — handler bootstrapped and returned expected 400 for bad payload"
+          elif [ -n "${FUNCTION_ERROR}" ]; then
+            echo "::error::Smoke test FAILED — Lambda returned FunctionError: ${FUNCTION_ERROR}. Check logs above."
+            exit 1
+          else
+            echo "::warning::Smoke test returned unexpected status ${HTTP_CODE} — review logs above"
+          fi
+
+      - name: Deployment Summary
+        if: always()
+        env:
+          FUNCTION_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment || 'dev' }}-pipeline-executor
+          ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+        run: |
+          set -euo pipefail
+          
+          CONFIG=$(aws lambda get-function-configuration \
+            --function-name "${FUNCTION_NAME}" \
+            --qualifier live \
+            --query '{Handler: Handler, Runtime: Runtime, Version: Version, MemorySize: MemorySize, Timeout: Timeout, CodeSize: CodeSize, LastModified: LastModified}' \
+            --output json 2>/dev/null || echo '{}')
+
+          HANDLER=$(echo "${CONFIG}" | jq -r '.Handler // "unknown"')
+          VERSION=$(echo "${CONFIG}" | jq -r '.Version // "unknown"')
+          RUNTIME=$(echo "${CONFIG}" | jq -r '.Runtime // "unknown"')
+          MEMORY=$(echo "${CONFIG}" | jq -r '.MemorySize // "unknown"')
+          TIMEOUT=$(echo "${CONFIG}" | jq -r '.Timeout // "unknown"')
+          CODE_SIZE=$(echo "${CONFIG}" | jq -r '.CodeSize // "unknown"')
+          LAST_MODIFIED=$(echo "${CONFIG}" | jq -r '.LastModified // "unknown"')
+
+          echo "### 🚀 Pipeline Executor Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | \`${ENVIRONMENT}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Function** | \`${FUNCTION_NAME}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Alias** | \`live\` → version \`${VERSION}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Handler** | \`${HANDLER}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Runtime** | \`${RUNTIME}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Memory** | ${MEMORY} MB |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Timeout** | ${TIMEOUT}s |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Code Size** | ${CODE_SIZE} bytes |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Last Modified** | ${LAST_MODIFIED} |" >> $GITHUB_STEP_SUMMARY
