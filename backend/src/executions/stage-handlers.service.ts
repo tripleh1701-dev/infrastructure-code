@@ -701,30 +701,34 @@ export class StageHandlersService {
 
     log(`  🚀 CF Deploy: Deploying ${artifact.type}/${artifact.name} to ${baseUrl}`);
 
-    // Step 1: Upload artifact content via PUT
-    const uploadUrl = `${baseUrl}/api/v1/${collection}(Id='${artifact.name}',Version='active')/$value`;
+    // Step 1: Try to update existing artifact via PUT with base64 JSON body
+    const entityUrl = `${baseUrl}/api/v1/${collection}(Id='${artifact.name}',Version='active')`;
+    const updatePayload = JSON.stringify({
+      Name: artifact.name,
+      ArtifactContent: binary.toString('base64'),
+    });
     log(`  📤 CF Deploy: Uploading artifact content to design-time API`);
 
-    const uploadRes = await this.fetchWithRetry(uploadUrl, {
+    const uploadRes = await this.fetchWithRetry(entityUrl, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/zip',
+        'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: binary as unknown as BodyInit,
+      body: updatePayload,
     }, log, 'CF Upload');
 
     if (!uploadRes.ok) {
       if (uploadRes.status === 404) {
         log(`  ⚠️ CF Deploy: Artifact not found, attempting to create via POST`);
         const createUrl = `${baseUrl}/api/v1/${collection}`;
-        const createPayload = {
+        const createPayload = JSON.stringify({
           Id: artifact.name,
           Name: artifact.name,
           Version: 'active',
           ArtifactContent: binary.toString('base64'),
-        };
+        });
         const createRes = await this.fetchWithRetry(createUrl, {
           method: 'POST',
           headers: {
@@ -732,7 +736,7 @@ export class StageHandlersService {
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },
-          body: JSON.stringify(createPayload),
+          body: createPayload,
         }, log, 'CF Create');
         if (!createRes.ok) {
           const errBody = await createRes.text().catch(() => '');
