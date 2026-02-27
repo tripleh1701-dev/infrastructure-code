@@ -1001,7 +1001,7 @@ export class StageHandlersService {
         }
 
         const parsedDetails = this.parseJsonSafely(detailsBody);
-        return this.stringifyCfError(parsedDetails ?? detailsBody);
+        return this.formatCfErrorSummary(parsedDetails ?? detailsBody);
       } catch (err) {
         log(`  ⚠️ CF ErrorDetails: Failed to resolve deferred error URI: ${err.message}`);
       }
@@ -1014,7 +1014,53 @@ export class StageHandlersService {
       runtimeData?.Error ||
       runtimeData;
 
-    return this.stringifyCfError(inlineError);
+    return this.formatCfErrorSummary(inlineError);
+  }
+
+  /**
+   * Produces a structured, human-readable error summary from SAP CPI error payloads.
+   * Extracts messageId, subsystem, subsystemPart, messageText, and parameter fields.
+   */
+  private formatCfErrorSummary(value: unknown): string {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const obj = value as any;
+
+      // Try to extract the nested `message` object (SAP CPI error shape)
+      const msgObj =
+        obj?.message && typeof obj.message === 'object' ? obj.message : undefined;
+
+      const messageId = msgObj?.messageId || obj?.messageId || '';
+      const subsystem = msgObj?.subsystemName || obj?.subsystemName || '';
+      const subsystemPart = msgObj?.subsytemPartName || obj?.subsytemPartName || '';
+      const messageText = msgObj?.messageText || obj?.messageText || '';
+
+      // parameter is typically an array of detailed error strings
+      const params: string[] = Array.isArray(obj?.parameter)
+        ? obj.parameter
+        : Array.isArray(obj?.parameters)
+          ? obj.parameters
+          : [];
+
+      const paramText = params
+        .map((p) => (typeof p === 'string' ? p.trim() : JSON.stringify(p)))
+        .filter(Boolean)
+        .join('\n  → ');
+
+      const parts: string[] = [];
+      if (messageId) parts.push(`MessageId: ${messageId}`);
+      if (subsystem) parts.push(`Subsystem: ${subsystem}/${subsystemPart || '?'}`);
+      if (messageText) parts.push(`Message: ${messageText}`);
+      if (paramText) parts.push(`Details:\n  → ${paramText}`);
+
+      const structured = parts.join(' | ');
+      if (structured) return structured;
+    }
+
+    // Fallback to generic stringification
+    return this.stringifyCfError(value);
   }
 
   private stringifyCfError(value: unknown): string {
@@ -1027,17 +1073,42 @@ export class StageHandlersService {
 
     if (typeof value === 'object') {
       const obj = value as any;
-      const extracted =
-        obj?.d?.ErrorInformation?.ErrorMessage ||
-        obj?.d?.ErrorInformation?.errorMessage ||
-        obj?.d?.ErrorInformation?.message ||
-        obj?.d?.ErrorInformation?.value ||
-        obj?.d?.Message ||
-        obj?.error?.message?.value ||
-        obj?.message ||
-        obj?.Message;
+      const directString = [
+        obj?.d?.ErrorInformation?.ErrorMessage,
+        obj?.d?.ErrorInformation?.errorMessage,
+        obj?.d?.ErrorInformation?.message,
+        obj?.d?.ErrorInformation?.value,
+        obj?.d?.Message,
+        obj?.error?.message?.value,
+        obj?.error?.message,
+        typeof obj?.message === 'string' ? obj.message : undefined,
+        typeof obj?.Message === 'string' ? obj.Message : undefined,
+      ].find((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
 
-      if (extracted) return String(extracted);
+      if (directString) return directString;
+
+      const messageObj =
+        obj?.message && typeof obj.message === 'object'
+          ? obj.message
+          : obj?.Message && typeof obj.Message === 'object'
+            ? obj.Message
+            : undefined;
+
+      const messageDetails = [
+        messageObj?.messageText,
+        messageObj?.value,
+        messageObj?.text,
+        messageObj?.messageId ? `MessageId: ${messageObj.messageId}` : undefined,
+        messageObj?.subsystemName ? `Subsystem: ${messageObj.subsystemName}` : undefined,
+        messageObj?.subsytemPartName ? `Part: ${messageObj.subsytemPartName}` : undefined,
+      ]
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .join(' | ');
+
+      const parameterDetails = this.stringifyCfError(obj?.parameter ?? obj?.parameters);
+      const combined = [messageDetails, parameterDetails].filter(Boolean).join(' | ');
+
+      if (combined) return combined;
 
       try {
         return JSON.stringify(obj);
