@@ -168,6 +168,29 @@ jobs:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Backfill SSM parameters for DynamoDB routing
+        working-directory: backend
+        env:
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
+          PUBLIC_ACCOUNT_TABLE_NAME: ${{ vars.PUBLIC_ACCOUNT_TABLE_NAME || 'account-admin-public-staging' }}
+          NODE_ENV: ${{ needs.resolve.outputs.environment }}
+        run: |
+          echo "::group::SSM Parameter Backfill"
+          npx ts-node scripts/backfill-ssm-params.ts --json | tee ssm-backfill-report.json
+          echo "::endgroup::"
+
+          if [ -f ssm-backfill-report.json ] && jq -e . ssm-backfill-report.json > /dev/null 2>&1; then
+            CREATED=$(jq '.summary.paramsCreated // 0' ssm-backfill-report.json)
+            EXISTED=$(jq '.summary.paramsExisted // 0' ssm-backfill-report.json)
+            TOTAL_ACCOUNTS=$(jq '.summary.totalAccounts // 0' ssm-backfill-report.json)
+            echo "## SSM Backfill - ${{ needs.resolve.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Accounts scanned | $TOTAL_ACCOUNTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Params created | $CREATED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Params existed | $EXISTED |" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Run bootstrap verification
         id: verify
         working-directory: backend
@@ -219,7 +242,9 @@ jobs:
         if: always()
         with:
           name: bootstrap-verify-${{ needs.resolve.outputs.environment }}-${{ github.run_number }}
-          path: backend/verify-report.json
+          path: |
+            backend/verify-report.json
+            backend/ssm-backfill-report.json
           retention-days: 90
 
   # ===========================================================================

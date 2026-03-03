@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Network } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ import { GroupTableRow } from "@/components/access-control/GroupTableRow";
 import { RoleCard } from "@/components/access-control/RoleCard";
 import { RoleTableRow } from "@/components/access-control/RoleTableRow";
 import { UserGroupRolesDisplay } from "@/components/access-control/UserGroupRolesDisplay";
+import { HierarchyView } from "@/components/access-control/HierarchyView";
 import { format, differenceInDays } from "date-fns";
 import { ViewToggle } from "@/components/ui/view-toggle";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -530,6 +532,7 @@ export default function AccessControlPage() {
                 { value: "users", icon: Users, label: "Users" },
                 { value: "groups", icon: UserPlus, label: "Groups" },
                 { value: "roles", icon: Shield, label: "Roles" },
+                { value: "hierarchy", icon: Network, label: "Hierarchy" },
               ]
                 .filter((tab) => hasTabAccess("access-control", tab.value))
                 .map((tab) => (
@@ -593,11 +596,15 @@ export default function AccessControlPage() {
               )}
               </AnimatePresence>
             </motion.div>
-            <ViewToggle 
-              view={activeTab === "users" ? usersView : activeTab === "roles" ? rolesView : groupsView} 
-              onViewChange={activeTab === "users" ? setUsersView : activeTab === "roles" ? setRolesView : setGroupsView} 
-            />
-            {canCreate("access-control") && (
+            {activeTab !== "hierarchy" && (
+              <>
+                <ViewToggle 
+                  view={activeTab === "users" ? usersView : activeTab === "roles" ? rolesView : groupsView} 
+                  onViewChange={activeTab === "users" ? setUsersView : activeTab === "roles" ? setRolesView : setGroupsView} 
+                />
+              </>
+            )}
+            {canCreate("access-control") && activeTab !== "hierarchy" && (
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <Button 
                   size="sm" 
@@ -1657,6 +1664,16 @@ export default function AccessControlPage() {
               </motion.div>
             )}
           </>
+        )}
+
+        {/* Hierarchy Tab */}
+        {activeTab === "hierarchy" && (
+          <HierarchyView
+            users={users}
+            groups={groups}
+            roles={roles}
+            isLoading={usersLoading || groupsLoading || rolesLoading}
+          />
         )}
       </motion.div>
 

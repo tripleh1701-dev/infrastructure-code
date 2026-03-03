@@ -212,6 +212,7 @@ const STATUS_CONFIG: Record<string, { color: string; label: string; icon: React.
   failed: { color: "#ef4444", label: "Failed", icon: AlertCircle },
   warning: { color: "#f59e0b", label: "Warning", icon: AlertTriangle },
   pending: { color: "#94a3b8", label: "Pending", icon: Clock },
+  waiting_approval: { color: "#f97316", label: "Awaiting Approval", icon: AlertTriangle, pulse: true },
 };
 
 const DEFAULT_STATUS = STATUS_CONFIG.pending;
@@ -292,6 +293,40 @@ function StageDurationDisplay({ status, backendDuration }: { status: string; bac
   );
 }
 
+// ─── Approval Wait Timer ────────────────────────────────────────────────────
+
+function ApprovalWaitTimer() {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const hrs = Math.floor(elapsed / 3600);
+  const mins = Math.floor((elapsed % 3600) / 60);
+  const secs = elapsed % 60;
+  const display = hrs > 0
+    ? `${hrs}h ${mins.toString().padStart(2, "0")}m`
+    : mins > 0
+      ? `${mins}m ${secs.toString().padStart(2, "0")}s`
+      : `${secs}s`;
+
+  return (
+    <motion.span
+      initial={{ opacity: 0, y: 2 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-[9px] font-mono text-orange-500 flex items-center gap-0.5 mt-0.5"
+    >
+      <Timer className="w-2.5 h-2.5 animate-pulse" />
+      {display}
+    </motion.span>
+  );
+}
+
 // ─── Circular Step Node ─────────────────────────────────────────────────────
 
 interface StepNodeProps {
@@ -302,9 +337,10 @@ interface StepNodeProps {
   isSelected: boolean;
   isConfigured: boolean;
   onClick: () => void;
+  approverNames?: string[];
 }
 
-function StepNode({ stage, theme, stageIdx, cIdx, isSelected, isConfigured, onClick }: StepNodeProps) {
+function StepNode({ stage, theme, stageIdx, cIdx, isSelected, isConfigured, onClick, approverNames }: StepNodeProps) {
   const NodeIcon = PIPELINE_NODE_ICONS[stage.type];
   const status = stage.status || "pending";
   const statusCfg = STATUS_CONFIG[status] || DEFAULT_STATUS;
@@ -367,6 +403,26 @@ function StepNode({ stage, theme, stageIdx, cIdx, isSelected, isConfigured, onCl
         </Badge>
         {(status === "running" || status === "success" || status === "failed") && (
           <StageDurationDisplay status={status} backendDuration={stage.duration} />
+        )}
+        {status === "waiting_approval" && (
+          <ApprovalWaitTimer />
+        )}
+        {status === "waiting_approval" && approverNames && approverNames.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-1 flex flex-col items-center gap-0.5 max-w-[110px]"
+          >
+            <span className="text-[8px] text-orange-600 font-semibold uppercase tracking-wide">Pending from</span>
+            {approverNames.slice(0, 3).map((name) => (
+              <span key={name} className="text-[8px] text-orange-500 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 truncate max-w-full leading-none">
+                {name}
+              </span>
+            ))}
+            {approverNames.length > 3 && (
+              <span className="text-[7px] text-orange-400">+{approverNames.length - 3} more</span>
+            )}
+          </motion.div>
         )}
       </div>
     </motion.div>
@@ -679,9 +735,13 @@ interface PipelineFlowPreviewProps {
   onStageSelect?: (stage: { id: string; label: string } | null) => void;
   /** Currently selected stage ID for log filtering */
   selectedStageId?: string | null;
+  /** Stage ID that is currently waiting for approval */
+  pendingApprovalStageId?: string | null;
+  /** Approver email addresses for the pending approval stage */
+  approverEmails?: string[];
 }
 
-export function PipelineFlowPreview({ pipelineName, executionStatus, activeStageIndex, stageStates, currentNode, pipelineStagesState, executionLogs, onStageSelect, selectedStageId }: PipelineFlowPreviewProps) {
+export function PipelineFlowPreview({ pipelineName, executionStatus, activeStageIndex, stageStates, currentNode, pipelineStagesState, executionLogs, onStageSelect, selectedStageId, pendingApprovalStageId, approverEmails }: PipelineFlowPreviewProps) {
   const { pipelines, isLoading } = usePipelines();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
@@ -784,9 +844,20 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
         });
       });
     }
+
+    // Apply waiting_approval status for the pending approval stage
+    if (pendingApprovalStageId) {
+      parsed.forEach((env) => {
+        env.stages.forEach((stage) => {
+          if (stage.id === pendingApprovalStageId) {
+            stage.status = "waiting_approval";
+          }
+        });
+      });
+    }
     
     return parsed;
-  }, [pipeline, stageStates, currentNode, executionStatus, activeStageIndex]);
+  }, [pipeline, stageStates, currentNode, executionStatus, activeStageIndex, pendingApprovalStageId]);
 
   const handleFieldChange = (stageKey: string, field: string, value: string) => {
     setConfigState((prev) => ({
@@ -830,17 +901,18 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
 
   // Compute progress stats
   const progressStats = useMemo(() => {
-    let total = 0, completed = 0, failed = 0, running = 0;
+    let total = 0, completed = 0, failed = 0, running = 0, waitingApproval = 0;
     environmentNodes.forEach((env) => {
       env.stages.forEach((stage) => {
         total++;
         if (stage.status === "success") completed++;
         else if (stage.status === "failed") { completed++; failed++; }
         else if (stage.status === "running") running++;
+        else if (stage.status === "waiting_approval") waitingApproval++;
       });
     });
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { total, completed, failed, running, pct };
+    return { total, completed, failed, running, waitingApproval, pct };
   }, [environmentNodes]);
 
   const hasExecution = executionStatus && executionStatus !== "pending";
@@ -857,9 +929,11 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
                   "h-full rounded-full",
                   progressStats.failed > 0
                     ? "bg-destructive"
-                    : progressStats.pct === 100
-                      ? "bg-emerald-500"
-                      : "bg-primary"
+                    : progressStats.waitingApproval > 0
+                      ? "bg-orange-500"
+                      : progressStats.pct === 100
+                        ? "bg-emerald-500"
+                        : "bg-primary"
                 )}
                 initial={{ width: 0 }}
                 animate={{ width: `${progressStats.pct}%` }}
@@ -883,6 +957,12 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
               <span className="flex items-center gap-1 text-[10px] text-primary">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Running
+              </span>
+            )}
+            {progressStats.waitingApproval > 0 && (
+              <span className="flex items-center gap-1 text-[10px] text-orange-500">
+                <AlertTriangle className="w-3 h-3 animate-pulse" />
+                Awaiting Approval
               </span>
             )}
             {progressStats.failed > 0 && (
@@ -939,6 +1019,7 @@ export function PipelineFlowPreview({ pipelineName, executionStatus, activeStage
                             cIdx={cIdx}
                             isSelected={selectedStage?.stage.id === stage.id}
                             isConfigured={isStageConfigured(env.id, stage.id)}
+                            approverNames={stage.status === "waiting_approval" && stage.id === pendingApprovalStageId ? approverEmails : undefined}
                             onClick={() => {
                               setSelectedStage((prev) =>
                                 prev?.stage.id === stage.id ? null : { stage, envId: env.id }

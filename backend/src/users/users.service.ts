@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
+import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { LicenseEnforcementService, LicenseCapacity } from './license-enforcement.service';
 import { CognitoUserProvisioningService } from '../auth/cognito-user-provisioning.service';
 import { NotificationService } from '../common/notifications/notification.service';
@@ -50,6 +51,7 @@ export class UsersService {
 
   constructor(
     private readonly dynamoDb: DynamoDBService,
+    private readonly dynamoRouter: DynamoDBRouterService,
     private readonly licenseEnforcement: LicenseEnforcementService,
     private readonly cognitoProvisioning: CognitoUserProvisioningService,
     private readonly notificationService: NotificationService,
@@ -205,6 +207,9 @@ export class UsersService {
 
     await this.dynamoDb.transactWrite(operations);
 
+    // ── Step 3: Replicate user to data-plane DynamoDB ───────────────────
+    await this.replicateUserToDataPlane(user, dto.accountId, 'create');
+
     return {
       ...this.mapToUser(user),
       licenseCapacity: {
@@ -278,6 +283,9 @@ export class UsersService {
       );
     }
 
+    // ── Sync to data-plane DynamoDB ──────────────────────────────────────
+    await this.replicateUserToDataPlane(result.Attributes!, existing.accountId, 'update');
+
     return updatedUser;
   }
 
@@ -319,6 +327,74 @@ export class UsersService {
 
     for (let i = 0; i < deleteRequests.length; i += 25) {
       await this.dynamoDb.batchWrite(deleteRequests.slice(i, i + 25));
+    }
+
+    // ── Remove from data-plane DynamoDB ──────────────────────────────────
+    const accountId = metadataItem?.accountId;
+    if (accountId) {
+      await this.replicateUserToDataPlane({ id, PK: `USER#${id}`, SK: 'METADATA' }, accountId, 'delete');
+    }
+  }
+
+  // ─── DATA-PLANE REPLICATION ──────────────────────────────────────────
+
+  /**
+   * Replicate a user record to the data-plane DynamoDB table.
+   * This ensures users created via access control are also visible in the
+   * customer's data-plane table (platform admin / public shared table).
+   *
+   * Non-blocking: failures are logged but do not prevent the primary operation.
+   */
+  private async replicateUserToDataPlane(
+    userItem: Record<string, any>,
+    accountId: string,
+    operation: 'create' | 'update' | 'delete',
+  ): Promise<void> {
+    try {
+      const isCustomer = await this.dynamoRouter.isCustomerAccount(accountId);
+      if (!isCustomer) {
+        this.logger.debug(`Account ${accountId} has no data-plane table — skipping replication`);
+        return;
+      }
+
+      switch (operation) {
+        case 'create': {
+          await this.dynamoRouter.put(accountId, { Item: userItem });
+          this.logger.log(`Replicated user ${userItem.id} to data-plane for account ${accountId}`);
+          break;
+        }
+        case 'update': {
+          // Re-put the full item to the data-plane table (upsert)
+          await this.dynamoRouter.put(accountId, { Item: userItem });
+          this.logger.log(`Replicated user update ${userItem.id} to data-plane for account ${accountId}`);
+          break;
+        }
+        case 'delete': {
+          const userId = userItem.id;
+          // Query all user items from data-plane
+          const dpItems = await this.dynamoRouter.query(accountId, {
+            KeyConditionExpression: 'PK = :pk',
+            ExpressionAttributeValues: { ':pk': `USER#${userId}` },
+          });
+
+          if (dpItems.Items?.length) {
+            const dpDeleteRequests = dpItems.Items.map((item: any) => ({
+              DeleteRequest: { Key: { PK: item.PK, SK: item.SK } },
+            }));
+            for (let i = 0; i < dpDeleteRequests.length; i += 25) {
+              await this.dynamoRouter.batchWrite(accountId, dpDeleteRequests.slice(i, i + 25));
+            }
+          }
+          this.logger.log(`Deleted user ${userId} from data-plane for account ${accountId}`);
+          break;
+        }
+      }
+    } catch (error: any) {
+      // Non-blocking — log and continue. The control-plane is the source of truth.
+      this.logger.error(
+        `Data-plane replication failed (${operation}) for account ${accountId}: ${error.message}`,
+        error.stack,
+      );
     }
   }
 

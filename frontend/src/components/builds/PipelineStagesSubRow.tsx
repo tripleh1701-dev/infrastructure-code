@@ -272,29 +272,30 @@ function StageConfigRow({
   const isConfigured = !!(selectedConnectorId || selectedEnv || (isApproval && selectedApproverEmails.length > 0) || (isJira && jiraNumber && jiraValid));
 
   return (
-    <div className="flex items-start gap-4 p-3 rounded-lg border border-border/40 bg-card/50 hover:bg-card/80 transition-colors">
+    <div className={cn(
+      "flex items-center gap-2.5 px-2.5 py-1.5 rounded-md border transition-all duration-150",
+      isConfigured
+        ? "border-primary/15 bg-primary/[0.02]"
+        : "border-border/15 bg-card/20 hover:bg-card/40"
+    )}>
       {/* Icon + Label */}
-      <div className="flex items-center gap-2.5 min-w-[160px]">
-        <div className="w-8 h-8 rounded-lg border border-border/50 flex items-center justify-center bg-background">
-          {NodeIcon ? <NodeIcon className="w-4 h-4" /> : <Server className="w-4 h-4 text-muted-foreground" />}
+      <div className="flex items-center gap-1.5 min-w-[120px] shrink-0">
+        <div className={cn(
+          "w-5 h-5 rounded flex items-center justify-center shrink-0",
+          isConfigured ? "bg-primary/10" : "bg-muted/40"
+        )}>
+          {NodeIcon ? <NodeIcon className={cn("w-2.5 h-2.5", isConfigured ? "text-primary" : "text-muted-foreground")} /> : <Server className="w-2.5 h-2.5 text-muted-foreground" />}
         </div>
-        <div>
-          <p className="text-xs font-medium text-foreground">{stage.label}</p>
-          <div className="flex items-center gap-1 mt-0.5">
-            <Badge variant="outline" className="text-[9px] capitalize px-1 h-3.5">{stage.category}</Badge>
-            {isConfigured && (
-              <Badge variant="outline" className="text-[9px] px-1 h-3.5 border-primary/40 text-primary">
-                <Link className="w-2 h-2 mr-0.5" /> Linked
-              </Badge>
-            )}
-          </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold text-foreground truncate leading-tight">{stage.label}</p>
+          <span className="text-[8px] capitalize text-muted-foreground">{stage.category}</span>
         </div>
       </div>
 
       {/* Config Fields */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
         {isApproval ? (
-          <div className="space-y-1 col-span-2">
+          <div className="space-y-1 col-span-2 lg:col-span-3">
             <Label className="text-[10px] text-muted-foreground">Approvers (Users & Technical Users)</Label>
             <Select
               value="__multi"
@@ -629,11 +630,10 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
       exit={{ opacity: 0 }}
       className="bg-transparent"
     >
-      {/* Tabbed Environment View */}
-      <div className="p-4 pt-3">
+      <div className="px-3 py-2">
         <Tabs defaultValue={defaultTab}>
-          <div className="flex items-center justify-between mb-3">
-            <TabsList className="bg-muted/40 p-1 rounded-lg h-auto">
+          <div className="flex items-center justify-between mb-1.5">
+            <TabsList className="bg-muted/20 p-0.5 rounded-md h-auto border border-border/15">
               {environmentNodes.map((env) => {
                 const cfg = ENV_TAB_CONFIG[env.type] || ENV_TAB_CONFIG.general;
                 const Icon = cfg.icon;
@@ -646,11 +646,16 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
                   <TabsTrigger
                     key={env.id}
                     value={env.id}
-                    className="gap-1.5 text-[11px] data-[state=active]:bg-card data-[state=active]:shadow-sm px-3 py-1.5 rounded-md"
+                    className="gap-1 text-[9px] font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm px-2 py-1 rounded transition-all"
                   >
-                    <Icon className="w-3 h-3" style={{ color: cfg.color }} />
+                    <Icon className="w-2.5 h-2.5" style={{ color: cfg.color }} />
                     {env.label}
-                    <span className="text-[9px] text-muted-foreground ml-0.5">
+                    <span className={cn(
+                      "text-[8px] px-0.5 rounded font-medium",
+                      configuredCount === env.stages.length && configuredCount > 0
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : "text-muted-foreground"
+                    )}>
                       {configuredCount}/{env.stages.length}
                     </span>
                   </TabsTrigger>
@@ -659,9 +664,9 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
             </TabsList>
 
             {isDirty && (
-              <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}>
-                <Button size="sm" className="gap-1.5 text-xs h-7" onClick={handleSave}>
-                  <Save className="w-3 h-3" />
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
+                <Button size="sm" className="gap-1 text-[9px] h-5 px-2 rounded" onClick={handleSave}>
+                  <Save className="w-2.5 h-2.5" />
                   Save
                 </Button>
               </motion.div>
@@ -671,17 +676,17 @@ export function PipelineStagesSubRow({ build, onUpdateStagesState }: PipelineSta
           {environmentNodes.map((env) => (
             <TabsContent key={env.id} value={env.id} className="mt-0">
               {env.stages.length === 0 ? (
-                <div className="text-center py-6 rounded-lg border border-dashed border-border/40">
-                  <p className="text-xs text-muted-foreground">No workflow steps in this environment.</p>
+                <div className="text-center py-4 rounded-lg border border-dashed border-border/20 bg-muted/5">
+                  <p className="text-[10px] text-muted-foreground">No workflow steps in this environment.</p>
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-0.5">
                   {env.stages.map((stage, idx) => (
                     <motion.div
                       key={stage.id}
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.04 }}
+                      initial={{ opacity: 0, x: -4 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.03, duration: 0.2 }}
                     >
                       <StageConfigRow
                         stage={stage}

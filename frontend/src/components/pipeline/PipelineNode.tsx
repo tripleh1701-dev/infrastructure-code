@@ -23,7 +23,8 @@ export interface PipelineNodeData {
   nodeType: string;
   category: string;
   description?: string;
-  status?: "pending" | "running" | "success" | "failed";
+  status?: "pending" | "running" | "success" | "failed" | "waiting_approval";
+  approverNames?: string[];
   duration?: string;
   continueOnError?: boolean;
   parallel?: boolean;
@@ -47,6 +48,7 @@ const statusColors: Record<string, string> = {
   running: "#f59e0b",
   success: "#10b981",
   failed: "#ef4444",
+  waiting_approval: "#f97316",
 };
 
 function NodeDurationDisplay({ status, backendDuration }: { status: string; backendDuration?: string }) {
@@ -89,6 +91,29 @@ function NodeDurationDisplay({ status, backendDuration }: { status: string; back
   return (
     <span className={`text-[8px] font-mono ${color} flex items-center gap-0.5`}>
       <Timer className="w-2.5 h-2.5" />
+      {display}
+    </span>
+  );
+}
+
+function NodeApprovalTimer() {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const display = mins > 0 ? `${mins}m ${secs.toString().padStart(2, "0")}s` : `${secs}s`;
+
+  return (
+    <span className="text-[7px] font-mono text-orange-500 flex items-center gap-0.5 leading-none">
+      <Timer className="w-2 h-2 animate-pulse" />
       {display}
     </span>
   );
@@ -216,11 +241,17 @@ function PipelineNodeComponent({ id, data, selected }: PipelineNodeComponentProp
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className={cn("w-2 h-2 rounded-full", data.status === "running" && "animate-pulse")}
+              className={cn(
+                "w-2 h-2 rounded-full",
+                (data.status === "running" || data.status === "waiting_approval") && "animate-pulse"
+              )}
               style={{ backgroundColor: statusColors[data.status] }}
             />
             {(data.status === "running" || data.status === "success" || data.status === "failed") && (
               <NodeDurationDisplay status={data.status} backendDuration={data.duration} />
+            )}
+            {data.status === "waiting_approval" && (
+              <NodeApprovalTimer />
             )}
           </div>
         )}

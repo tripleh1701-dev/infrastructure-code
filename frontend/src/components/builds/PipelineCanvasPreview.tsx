@@ -60,6 +60,8 @@ function getEdgeStyle(status?: string): Partial<Edge> {
       return { ...base, style: { stroke: "#10b981", strokeWidth: 2 }, animated: false };
     case "running":
       return { ...base, style: { stroke: "#3b82f6", strokeWidth: 2.5 }, animated: true };
+    case "waiting_approval":
+      return { ...base, style: { stroke: "#f97316", strokeWidth: 2.5 }, animated: true };
     case "pending":
     default:
       return { ...base, style: { stroke: "#cbd5e1", strokeWidth: 1.5 }, animated: false };

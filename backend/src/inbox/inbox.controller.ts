@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Body,
   Param,
   HttpCode,
   HttpStatus,
@@ -125,12 +126,14 @@ export class InboxController {
   async rejectNotification(
     @CurrentUser() user: CognitoUser,
     @Param('notificationId') notificationId: string,
+    @Body() body?: { reason?: string },
   ) {
     const notification = await this.inboxService.rejectNotification(
       user.accountId!,
       notificationId,
       user.sub,
       user.email,
+      body?.reason,
     );
     return {
       message: `Notification ${notificationId} rejected`,

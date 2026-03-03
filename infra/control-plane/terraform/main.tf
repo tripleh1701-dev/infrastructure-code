@@ -250,6 +250,7 @@ module "create_infra_worker" {
     CONTROL_PLANE_TABLE_NAME    = module.control_plane_dynamodb.table_name
     DATA_PLANE_ROLE_ARN         = var.data_plane_role_arn
     DATA_PLANE_TABLE_NAME       = var.data_plane_dynamodb_name
+    PUBLIC_ACCOUNT_TABLE_NAME   = var.data_plane_dynamodb_name
     DATA_PLANE_REGION           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
     SSM_PREFIX                  = local.ssm_prefix
     CFN_TEMPLATE_BUCKET         = module.frontend.bucket_name

@@ -173,10 +173,10 @@ export class AccountProvisionerService {
   private async provisionPublicAccount(config: ProvisioningConfig): Promise<ProvisioningResult> {
     // Use explicit public customer table name — NOT the control plane table.
     // This is the shared DynamoDB table in the customer AWS account for all public accounts.
-    const publicTableName = this.configService.get(
-      'PUBLIC_ACCOUNT_TABLE_NAME',
-      'account-admin-public-staging',
-    );
+    // Falls back to DATA_PLANE_TABLE_NAME (set by Terraform), then to a convention-based default.
+    const publicTableName = this.configService.get('PUBLIC_ACCOUNT_TABLE_NAME')
+      || this.configService.get('DATA_PLANE_TABLE_NAME')
+      || `account-admin-public-${this.environment}`;
 
     try {
       // Store account configuration in SSM for consistency

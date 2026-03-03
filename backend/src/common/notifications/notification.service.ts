@@ -13,6 +13,10 @@ import {
   ApprovalRequestEmailParams,
   renderApprovalRequestEmail,
 } from './templates/approval-request.template';
+import {
+  ApprovalRejectedEmailParams,
+  renderApprovalRejectedEmail,
+} from './templates/approval-rejected.template';
 import { NotificationAuditService } from './notification-audit.service';
 
 /**
@@ -327,6 +331,102 @@ export class NotificationService {
         notificationType: 'approval_request',
         recipientEmail: params.approverEmail,
         recipientFirstName: '',
+        recipientLastName: '',
+        accountId: context?.accountId,
+        deliveryStatus: 'failed',
+        errorMessage: error.message,
+        senderEmail: this.senderEmail,
+        subject,
+      });
+
+      return { sent: false, skipped: false, reason: error.message };
+    }
+  }
+
+  /**
+   * Send rejection notification email to the original build requester via SES.
+   *
+   * Like approval emails, this is always sent when SES is configured.
+   * In local dev without SES, the send is silently skipped.
+   */
+  async sendRejectionEmail(
+    params: Omit<ApprovalRejectedEmailParams, 'loginUrl' | 'platformName' | 'supportEmail'> & {
+      loginUrl?: string;
+      platformName?: string;
+      supportEmail?: string;
+      rejectionReason?: string;
+    },
+    context?: NotificationContext,
+  ): Promise<NotificationResult> {
+    const fullParams: ApprovalRejectedEmailParams = {
+      ...params,
+      loginUrl: params.loginUrl || this.loginUrl,
+      platformName: params.platformName || this.platformName,
+      supportEmail: params.supportEmail || this.supportEmail,
+    };
+
+    const { subject, htmlBody, textBody } = renderApprovalRejectedEmail(fullParams);
+
+    if (!this.client) {
+      this.logger.debug(
+        `Rejection email skipped for ${params.requesterEmail} (SES not configured)`,
+      );
+      return { sent: false, skipped: true, reason: 'SES not configured' };
+    }
+
+    const sesParams: SendEmailCommandInput = {
+      Source: this.senderEmail,
+      Destination: { ToAddresses: [params.requesterEmail] },
+      Message: {
+        Subject: { Data: subject, Charset: 'UTF-8' },
+        Body: {
+          Html: { Data: htmlBody, Charset: 'UTF-8' },
+          Text: { Data: textBody, Charset: 'UTF-8' },
+        },
+      },
+      Tags: [
+        { Name: 'notification-type', Value: 'approval-rejected' },
+        { Name: 'platform', Value: (fullParams.platformName || 'Platform').replace(/\s/g, '-') },
+      ],
+    };
+
+    try {
+      const result = await this.client.send(new SendEmailCommand(sesParams));
+      this.logger.log(
+        `Rejection email sent to ${params.requesterEmail} (messageId: ${result.MessageId})`,
+      );
+
+      await this.auditService.record({
+        notificationType: 'approval_rejected',
+        recipientEmail: params.requesterEmail,
+        recipientFirstName: params.requesterName || '',
+        recipientLastName: '',
+        accountId: context?.accountId,
+        accountName: context?.accountName,
+        userId: context?.userId,
+        deliveryStatus: 'sent',
+        sesMessageId: result.MessageId,
+        senderEmail: this.senderEmail,
+        subject,
+        metadata: {
+          pipelineName: params.pipelineName,
+          stageName: params.stageName,
+          branch: params.branch,
+          rejectorEmail: params.rejectorEmail,
+        },
+      });
+
+      return { sent: true, skipped: false, messageId: result.MessageId };
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send rejection email to ${params.requesterEmail}: ${error.message}`,
+        error.stack,
+      );
+
+      await this.auditService.record({
+        notificationType: 'approval_rejected',
+        recipientEmail: params.requesterEmail,
+        recipientFirstName: params.requesterName || '',
         recipientLastName: '',
         accountId: context?.accountId,
         deliveryStatus: 'failed',

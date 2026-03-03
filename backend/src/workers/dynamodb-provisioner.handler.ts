@@ -53,6 +53,10 @@ export async function handler(event: ProvisionerEvent): Promise<ProvisionerResul
   const projectName = process.env.PROJECT_NAME || 'app';
   const tableName = process.env.CONTROL_PLANE_TABLE_NAME || process.env.DYNAMODB_TABLE_NAME;
   if (!tableName) throw new Error('CONTROL_PLANE_TABLE_NAME or DYNAMODB_TABLE_NAME must be set');
+  // For public accounts, use the data-plane table (shared customer table), NOT the control-plane table
+  const publicTableName = process.env.PUBLIC_ACCOUNT_TABLE_NAME
+    || process.env.DATA_PLANE_TABLE_NAME
+    || `account-admin-public-${environment}`;
   const templateBucket = process.env.CFN_TEMPLATE_BUCKET || `${projectName}-cfn-templates`;
 
   const ssmClient = new SSMClient({ region });
@@ -66,7 +70,7 @@ export async function handler(event: ProvisionerEvent): Promise<ProvisionerResul
     let result: ProvisionerResult;
 
     if (event.action === 'register_public') {
-      result = await registerPublicAccount(ssmClient, event, tableName);
+      result = await registerPublicAccount(ssmClient, event, publicTableName);
     } else {
       result = await provisionPrivateAccount(cfnClient, ssmClient, event, {
         environment,

@@ -782,7 +782,8 @@ export class StageHandlersService {
     await this.validateArtifactExists(baseUrl, token, artifact, collection, log);
 
     // Step 1: Upload artifact content
-    // ValueMapping artifacts require POST to the collection endpoint; others use PUT on the entity.
+    // ValueMapping artifacts require POST to the collection endpoint (SAP returns 501 on PUT).
+    // IntegrationFlow (iFlow) and other types use PUT on the entity URL to update existing content.
     const POST_ONLY_TYPES = new Set(['ValueMapping']);
     const usePost = POST_ONLY_TYPES.has(artifact.type);
 

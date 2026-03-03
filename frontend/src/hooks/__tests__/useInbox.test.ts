@@ -16,7 +16,15 @@ vi.mock("@/lib/api/http-client", () => ({
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: vi.fn() } }));
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    from: vi.fn(),
+    functions: { invoke: vi.fn().mockResolvedValue({ data: null, error: null }) },
+  },
+}));
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { email: "approver@test.com" } }),
+}));
 
 import { httpClient } from "@/lib/api/http-client";
 import { toast } from "sonner";
@@ -99,23 +107,31 @@ describe("useInbox (external API mode)", () => {
     expect(toast.success).toHaveBeenCalledWith("Approval granted successfully");
   });
 
-  it("reject mutation calls POST and shows success toast", async () => {
+  it("reject mutation calls POST, sends rejection email, and shows success toast", async () => {
     vi.mocked(httpClient.get).mockResolvedValue({ data: [pendingNotification], error: null });
     vi.mocked(httpClient.post).mockResolvedValue({
       data: { message: "Rejected", notification: { ...pendingNotification, status: "REJECTED" } },
       error: null,
     });
 
+    const { supabase } = await import("@/integrations/supabase/client");
+
     const { result } = renderHook(() => useInbox(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      result.current.reject.mutate(pendingNotification);
+      result.current.reject.mutate({ notification: pendingNotification, reason: "Not ready" });
     });
 
     await waitFor(() => expect(result.current.reject.isSuccess).toBe(true));
-    expect(httpClient.post).toHaveBeenCalledWith("/inbox/notif-1/reject", {});
-    expect(toast.success).toHaveBeenCalledWith("Request rejected");
+    expect(httpClient.post).toHaveBeenCalledWith("/inbox/notif-1/reject", { reason: "Not ready" });
+    expect(toast.success).toHaveBeenCalledWith("Request rejected — notification email sent to requester");
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("send-rejection-email", expect.objectContaining({
+      body: expect.objectContaining({
+        recipientEmail: "requester@test.com",
+        rejectedByEmail: "approver@test.com",
+      }),
+    }));
   });
 
   it("dismiss mutation calls POST", async () => {

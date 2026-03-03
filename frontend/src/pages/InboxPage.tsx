@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInbox, type InboxNotification } from "@/hooks/useInbox";
 import { PermissionGate } from "@/components/auth/PermissionGate";
@@ -7,6 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -87,6 +96,7 @@ function NotificationCard({
   onDismiss: () => void;
   isApproving: boolean;
   isRejecting: boolean;
+  rejectionReason?: string;
 }) {
   const isPending = notification.status === "PENDING";
   const isApproved = notification.status === "APPROVED";
@@ -265,6 +275,8 @@ export default function InboxPage() {
 
   const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
   const [historyFilter, setHistoryFilter] = useState<"all" | "APPROVED" | "REJECTED" | "STALE">("all");
+  const [rejectTarget, setRejectTarget] = useState<InboxNotification | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   const filteredHistory = historyFilter === "all"
     ? actionedNotifications
@@ -429,15 +441,18 @@ export default function InboxPage() {
                   <div className="space-y-3">
                     <AnimatePresence mode="popLayout">
                       {displayNotifications.map((notification) => (
-                        <NotificationCard
-                          key={notification.notificationId}
-                          notification={notification}
-                          onApprove={() => approve.mutate(notification)}
-                          onReject={() => reject.mutate(notification)}
-                          onDismiss={() => dismiss.mutate(notification.notificationId)}
-                          isApproving={approve.isPending}
-                          isRejecting={reject.isPending}
-                        />
+                          <NotificationCard
+                            key={notification.notificationId}
+                            notification={notification}
+                            onApprove={() => approve.mutate(notification)}
+                            onReject={() => {
+                              setRejectTarget(notification);
+                              setRejectionReason("");
+                            }}
+                            onDismiss={() => dismiss.mutate(notification.notificationId)}
+                            isApproving={approve.isPending}
+                            isRejecting={reject.isPending}
+                          />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -445,6 +460,60 @@ export default function InboxPage() {
               </ScrollArea>
             </motion.div>
           </motion.div>
+
+          {/* Rejection Reason Dialog */}
+          <Dialog open={!!rejectTarget} onOpenChange={(open) => { if (!open) setRejectTarget(null); }}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-destructive">
+                  <XCircle className="w-5 h-5" />
+                  Reject Approval Request
+                </DialogTitle>
+                <DialogDescription>
+                  {rejectTarget?.title && (
+                    <span className="block mt-1 text-sm font-medium text-foreground">{rejectTarget.title}</span>
+                  )}
+                  <span className="block mt-1">Provide a reason so the requester understands why this was rejected.</span>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-2">
+                <Textarea
+                  placeholder="e.g. Missing test coverage for the new API endpoint…"
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  className="min-h-[100px] resize-none text-sm"
+                  maxLength={500}
+                />
+                <p className="text-[10px] text-muted-foreground mt-1 text-right">{rejectionReason.length}/500</p>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" size="sm" onClick={() => setRejectTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1"
+                  disabled={reject.isPending}
+                  onClick={() => {
+                    if (rejectTarget) {
+                      reject.mutate(
+                        { notification: rejectTarget, reason: rejectionReason.trim() || undefined },
+                        { onSettled: () => setRejectTarget(null) }
+                      );
+                    }
+                  }}
+                >
+                  {reject.isPending ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <XCircle className="w-3 h-3" />
+                  )}
+                  Confirm Rejection
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </TooltipProvider>
     </PermissionGate>

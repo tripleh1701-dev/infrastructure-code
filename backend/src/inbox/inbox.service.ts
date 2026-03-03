@@ -163,8 +163,32 @@ export class InboxService {
     }
   }
 
-  async rejectNotification(accountId: string, notificationId: string, userId: string, userEmail: string): Promise<InboxNotification> {
-    return this.updateNotificationStatus(accountId, notificationId, 'REJECTED', userId, userEmail);
+  async rejectNotification(accountId: string, notificationId: string, userId: string, userEmail: string, reason?: string): Promise<InboxNotification> {
+    const notification = await this.updateNotificationStatus(accountId, notificationId, 'REJECTED', userId, userEmail);
+
+    // Send rejection email to the original requester (fire-and-forget)
+    if (notification.senderEmail) {
+      try {
+        await this.notificationService.sendRejectionEmail(
+          {
+            requesterEmail: notification.senderEmail,
+            requesterName: notification.senderUserId || notification.senderEmail.split('@')[0],
+            rejectorEmail: userEmail,
+            rejectorName: userEmail.split('@')[0],
+            pipelineName: notification.context?.pipelineName || 'Unknown Pipeline',
+            stageName: notification.context?.stageName || 'Unknown Stage',
+            buildNumber: notification.context?.buildNumber,
+            branch: notification.context?.branch,
+            rejectionReason: reason,
+          },
+          { accountId },
+        );
+      } catch (emailErr: any) {
+        this.logger.error(`[INBOX] Rejection email failed for ${notification.senderEmail}: ${emailErr.message}`);
+      }
+    }
+
+    return notification;
   }
 
   async dismissNotification(accountId: string, notificationId: string): Promise<void> {

@@ -296,6 +296,7 @@ resource "aws_lambda_function" "main" {
       CONTROL_PLANE_TABLE_NAME     = var.control_plane_dynamodb_name
       DATA_PLANE_ROLE_ARN          = var.data_plane_role_arn
       DATA_PLANE_TABLE_NAME        = var.data_plane_dynamodb_name
+      PUBLIC_ACCOUNT_TABLE_NAME    = var.data_plane_dynamodb_name
       DATA_PLANE_REGION            = var.data_plane_region
       SSM_PREFIX                   = "/${var.project_name}/${var.environment}"
     })

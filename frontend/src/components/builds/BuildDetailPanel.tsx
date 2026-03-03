@@ -496,6 +496,8 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
               pipelineStagesState={buildJob.pipeline_stages_state as Record<string, any> | undefined}
               executionLogs={buildExecution.logs}
               selectedStageId={logStageFilter?.id ?? null}
+              pendingApprovalStageId={buildExecution.pendingApprovalStage}
+              approverEmails={getConfiguredApprovers()}
               onStageSelect={(stage) => {
                 setLogStageFilter(stage);
                 if (stage && selectedExecution) {

@@ -52,6 +52,7 @@ const DEFAULT_ADMIN_PERMISSIONS: MenuPermission[] = [
     { key: "users", label: "Users", isVisible: true },
     { key: "groups", label: "Groups", isVisible: true },
     { key: "roles", label: "Roles", isVisible: true },
+    { key: "hierarchy", label: "Hierarchy", isVisible: true },
   ], canCreate: true, canView: true, canEdit: true, canDelete: true },
   { menuKey: "account-settings", menuLabel: "Account Settings", isVisible: true, tabs: [
     { key: "enterprise", label: "Enterprise", isVisible: true },

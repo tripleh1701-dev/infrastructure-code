@@ -83,12 +83,12 @@ export const inboxService = {
   },
 
   /**
-   * Reject an approval request.
+   * Reject an approval request with an optional reason.
    */
-  async reject(notificationId: string): Promise<{ message: string; notification: InboxNotification }> {
+  async reject(notificationId: string, reason?: string): Promise<{ message: string; notification: InboxNotification }> {
     const { data, error } = await httpClient.post<{ message: string; notification: InboxNotification }>(
       `/inbox/${notificationId}/reject`,
-      {},
+      { reason },
     );
     if (error) throw new Error(error.message);
     return data!;
