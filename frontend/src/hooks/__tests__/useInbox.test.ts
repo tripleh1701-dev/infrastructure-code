@@ -16,6 +16,9 @@ vi.mock("@/lib/api/http-client", () => ({
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/api/config", () => ({
+  isExternalApi: vi.fn(() => true),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: vi.fn(),
@@ -28,6 +31,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 import { httpClient } from "@/lib/api/http-client";
 import { toast } from "sonner";
+import { isExternalApi } from "@/lib/api/config";
 
 const pendingNotification = {
   notificationId: "notif-1",
@@ -108,6 +112,7 @@ describe("useInbox (external API mode)", () => {
   });
 
   it("reject mutation calls POST, sends rejection email, and shows success toast", async () => {
+    vi.mocked(isExternalApi).mockReturnValue(false);
     vi.mocked(httpClient.get).mockResolvedValue({ data: [pendingNotification], error: null });
     vi.mocked(httpClient.post).mockResolvedValue({
       data: { message: "Rejected", notification: { ...pendingNotification, status: "REJECTED" } },
