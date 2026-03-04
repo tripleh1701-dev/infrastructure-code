@@ -41,9 +41,9 @@ const mockConfigService = {
 
 function createService(enabled = true): CloudWatchMetricsService {
   if (!enabled) {
-    mockConfigService.get.mockImplementation((key: string, defaultVal?: string) => {
+    mockConfigService.get.mockImplementation((key: string, defaultVal?: string): string => {
       if (key === 'CLOUDWATCH_METRICS_ENABLED') return 'false';
-      return defaultVal;
+      return defaultVal ?? '';
     });
   }
   return new CloudWatchMetricsService(mockConfigService as any);
