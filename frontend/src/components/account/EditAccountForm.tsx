@@ -49,9 +49,6 @@ import {
   getPasswordRequirementStatus,
 } from "@/lib/validations/account";
 import { LicenseManager } from "@/components/account/LicenseManager";
-import { supabase } from "@/integrations/supabase/client";
-import { isExternalApi } from "@/lib/api/config";
-import { httpClient } from "@/lib/api/http-client";
 import { useGroups } from "@/hooks/useGroups";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
@@ -95,7 +92,7 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
   const [showPassword, setShowPassword] = useState(false);
   const [existingAccounts, setExistingAccounts] = useState<ExistingAccount[]>([]);
   const [accountNameError, setAccountNameError] = useState("");
-  const { updateAccount } = useAccounts();
+  const { updateAccount, accounts } = useAccounts();
 
   // Get current context for filtering
   const { selectedAccount } = useAccountContext();
@@ -107,23 +104,10 @@ export function EditAccountForm({ account, open, onOpenChange, onSuccess }: Edit
   const technicalUser = account.technical_users[0];
 
   useEffect(() => {
-    if (open) {
-      setCurrentStep(1);
-      if (isExternalApi()) {
-        httpClient.get<{ id: string; name: string }[]>('/accounts', { params: {} })
-          .then(({ data }) => {
-            setExistingAccounts(data || []);
-          });
-      } else {
-        supabase
-          .from("accounts")
-          .select("id, name")
-          .then(({ data }) => {
-            setExistingAccounts(data || []);
-          });
-      }
-    }
-  }, [open]);
+    if (!open) return;
+    setCurrentStep(1);
+    setExistingAccounts((accounts || []).map((a) => ({ id: a.id, name: a.name })));
+  }, [open, accounts]);
 
   const defaultValues: AccountFormData = {
     accountName: account.name,

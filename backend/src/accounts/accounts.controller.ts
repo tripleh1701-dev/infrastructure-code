@@ -36,6 +36,18 @@ export class AccountsController {
     return this.accountsService.checkGlobalAccess(id);
   }
 
+  /**
+   * Finalize provisioning for private accounts whose CFN stacks have completed.
+   * Should be called periodically (e.g. every minute via CloudWatch Events).
+   */
+  @Post('finalize-provisioning')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
+  async finalizeProvisioning() {
+    return this.accountsService.finalizeProvisionedAccounts();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.accountsService.findOne(id);

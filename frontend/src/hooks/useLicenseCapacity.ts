@@ -42,19 +42,60 @@ export function useLicenseCapacity(accountId?: string | null) {
         };
       }
 
-      // External API mode: NestJS computes capacity server-side
+      // External API mode: backend computes capacity server-side.
+      // Fallback to client-side aggregate if endpoint is not deployed yet.
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<LicenseCapacity>(`/licenses/capacity`, {
+        const capacityRes = await httpClient.get<LicenseCapacity>(`/licenses/capacity`, {
           params: { accountId },
         });
-        if (error) throw new Error(error.message);
-        return data || {
-          totalAllowed: 0,
-          currentActiveUsers: 0,
-          remaining: 0,
-          isAtCapacity: true,
-          hasLicenses: false,
-          licenses: [],
+
+        if (!capacityRes.error && capacityRes.data) {
+          return capacityRes.data;
+        }
+
+        const shouldFallback = capacityRes.error?.status === 404 || capacityRes.error?.status === 504;
+        if (!shouldFallback) {
+          throw new Error(capacityRes.error?.message || "Failed to fetch license capacity");
+        }
+
+        const [licensesRes, usersRes] = await Promise.all([
+          httpClient.get<any[]>(`/licenses`, { params: { accountId } }),
+          httpClient.get<any[]>(`/users`, { params: { accountId } }),
+        ]);
+
+        if (licensesRes.error) throw new Error(licensesRes.error.message);
+        if (usersRes.error) throw new Error(usersRes.error.message);
+
+        const today = new Date().toISOString().split("T")[0];
+        const activeLicenses = (licensesRes.data || []).filter((lic: any) => {
+          const endDate = lic.endDate || lic.end_date;
+          return typeof endDate === "string" && endDate >= today;
+        });
+
+        const currentActiveUsers = (usersRes.data || []).filter(
+          (u: any) => (u.status || "").toLowerCase() === "active"
+        ).length;
+
+        const totalAllowed = activeLicenses.reduce(
+          (sum: number, lic: any) => sum + Number(lic.numberOfUsers ?? lic.number_of_users ?? 0),
+          0
+        );
+
+        const remaining = Math.max(0, totalAllowed - currentActiveUsers);
+
+        return {
+          totalAllowed,
+          currentActiveUsers,
+          remaining,
+          isAtCapacity: remaining <= 0,
+          hasLicenses: activeLicenses.length > 0,
+          licenses: activeLicenses.map((lic: any) => ({
+            licenseId: lic.id,
+            enterpriseName: lic.enterpriseName || lic.enterprise?.name || "Unknown",
+            productName: lic.productName || lic.product?.name || "Unknown",
+            numberOfUsers: Number(lic.numberOfUsers ?? lic.number_of_users ?? 0),
+            endDate: lic.endDate || lic.end_date,
+          })),
         };
       }
 

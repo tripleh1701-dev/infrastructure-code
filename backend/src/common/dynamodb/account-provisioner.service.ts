@@ -223,9 +223,11 @@ export class AccountProvisionerService {
    */
   private async provisionPrivateAccount(config: ProvisioningConfig): Promise<ProvisioningResult> {
     const stackName = `${this.projectName}-${this.environment}-account-${config.accountId}`;
+    // Derive the expected table name from the CFN template naming convention
+    const expectedTableName = `${this.projectName}-${this.environment}-${config.accountId}`;
 
     try {
-      // Set provisioning status to pending
+      // Set provisioning status to creating
       await this.updateProvisioningStatus(config.accountId, 'creating');
 
       // Upload CloudFormation template to S3 if needed
@@ -265,22 +267,72 @@ export class AccountProvisionerService {
       );
 
       const stackId = createStackResult.StackId;
-      this.logger.log(`CloudFormation stack created: ${stackId}`);
+      this.logger.log(`CloudFormation stack initiated: ${stackId}`);
 
-      // Wait for stack creation to complete
+      // Pre-register SSM table-name so DynamoDB routing works once the table is ready
+      await this.ssmClient.send(new PutParameterCommand({
+        Name: `/accounts/${config.accountId}/cloud-type`,
+        Value: 'private',
+        Type: 'String',
+        Overwrite: true,
+        Description: `Cloud type for account ${config.accountId}`,
+      }));
+
+      await this.ssmClient.send(new PutParameterCommand({
+        Name: `/accounts/${config.accountId}/dynamodb/table-name`,
+        Value: expectedTableName,
+        Type: 'String',
+        Overwrite: true,
+        Description: `DynamoDB table for private account ${config.accountId}`,
+      }));
+
+      // Fire-and-forget: wait for stack completion in background, then finalize
+      this.waitAndFinalizeStack(stackName, config.accountId, expectedTableName)
+        .catch((err) => {
+          this.logger.error(
+            `Background stack finalization failed for ${config.accountId}: ${err.message}`,
+            err.stack,
+          );
+        });
+
+      this.logger.log(
+        `Private account ${config.accountId} provisioning started (async). Expected table: ${expectedTableName}`,
+      );
+
+      return {
+        success: true,
+        tableName: expectedTableName,
+        stackId,
+        cloudType: 'private',
+        message: `Provisioning started. Table will be ready shortly: ${expectedTableName}`,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to initiate private account provisioning: ${error.message}`);
+      await this.updateProvisioningStatus(config.accountId, 'failed', error.message);
+      throw new BadRequestException(`Failed to provision private account: ${error.message}`);
+    }
+  }
+
+  /**
+   * Background task: wait for CFN stack completion and finalize SSM status.
+   */
+  private async waitAndFinalizeStack(
+    stackName: string,
+    accountId: string,
+    expectedTableName: string,
+  ): Promise<void> {
+    try {
       await waitUntilStackCreateComplete(
         { client: this.cfnClient, maxWaitTime: 600 },
         { StackName: stackName },
       );
 
-      // Get the outputs from the stack
+      // Get the outputs from the completed stack
       const describeResult = await this.cfnClient.send(new DescribeStacksCommand({
         StackName: stackName,
       }));
 
-      const stack = describeResult.Stacks?.[0];
-      const outputs = stack?.Outputs || [];
-
+      const outputs = describeResult.Stacks?.[0]?.Outputs || [];
       const tableName = outputs.find((o: any) => o.OutputKey === 'TableName')?.OutputValue;
       const tableArn = outputs.find((o: any) => o.OutputKey === 'TableArn')?.OutputValue;
 
@@ -288,22 +340,30 @@ export class AccountProvisionerService {
         throw new Error('Stack created but table name output not found');
       }
 
-      await this.updateProvisioningStatus(config.accountId, 'active');
+      // Update SSM with actual table name if different from expected
+      if (tableName !== expectedTableName) {
+        await this.ssmClient.send(new PutParameterCommand({
+          Name: `/accounts/${accountId}/dynamodb/table-name`,
+          Value: tableName,
+          Type: 'String',
+          Overwrite: true,
+        }));
+      }
 
-      this.logger.log(`Private account ${config.accountId} provisioned with table: ${tableName}`);
+      if (tableArn) {
+        await this.ssmClient.send(new PutParameterCommand({
+          Name: `/accounts/${accountId}/dynamodb/table-arn`,
+          Value: tableArn,
+          Type: 'String',
+          Overwrite: true,
+        }));
+      }
 
-      return {
-        success: true,
-        tableName,
-        tableArn,
-        stackId,
-        cloudType: 'private',
-        message: `Dedicated table provisioned: ${tableName}`,
-      };
+      await this.updateProvisioningStatus(accountId, 'active');
+      this.logger.log(`Private account ${accountId} stack completed. Table: ${tableName}`);
     } catch (error: any) {
-      this.logger.error(`Failed to provision private account: ${error.message}`);
-      await this.updateProvisioningStatus(config.accountId, 'failed', error.message);
-      throw new BadRequestException(`Failed to provision private account: ${error.message}`);
+      this.logger.error(`Stack creation failed for ${accountId}: ${error.message}`);
+      await this.updateProvisioningStatus(accountId, 'failed', error.message);
     }
   }
 

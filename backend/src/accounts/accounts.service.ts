@@ -200,10 +200,13 @@ export class AccountsService {
   async create(dto: CreateAccountDto): Promise<Account> {
     const id = uuidv4();
     const now = new Date().toISOString();
+    const t0 = Date.now();
+    const stepTimings: Record<string, number> = {};
 
-    this.logger.log(`Creating account ${id} with cloud type: ${dto.cloudType}`);
+    this.logger.log(JSON.stringify({ event: 'AccountCreateStart', accountId: id, cloudType: dto.cloudType }));
 
-    // First, provision the infrastructure based on cloud type
+    // ── Step 1: Infrastructure provisioning ─────────────────────────────
+    let tStep = Date.now();
     const provisioningConfig: ProvisioningConfig = {
       accountId: id,
       accountName: dto.name,
@@ -213,6 +216,7 @@ export class AccountsService {
     };
 
     const provisioningResult = await this.accountProvisioner.provisionAccount(provisioningConfig);
+    stepTimings['provisioning'] = Date.now() - tStep;
 
     if (!provisioningResult.success) {
       throw new BadRequestException(`Failed to provision account: ${provisioningResult.message}`);
@@ -231,7 +235,8 @@ export class AccountsService {
       masterAccountName: dto.masterAccountName,
       cloudType: dto.cloudType,
       tableName: provisioningResult.tableName,
-      status: 'active',
+      status: dto.cloudType === 'private' ? 'provisioning' : 'active',
+      provisioningStatus: dto.cloudType === 'private' ? 'creating' : 'active',
       createdAt: now,
       updatedAt: now,
     };
@@ -279,27 +284,42 @@ export class AccountsService {
       });
     }
 
-    // Write to shared table
+    // ── Step 2: Write metadata to shared table ────────────────────────
+    tStep = Date.now();
     await this.dynamoDb.transactWrite(operations);
+    stepTimings['metadataWrite'] = Date.now() - tStep;
 
-    // For private accounts, also write initial data to the dedicated table
-    if (dto.cloudType === 'private' && provisioningResult.tableName) {
-      await this.initializePrivateAccountData(id, account, dto, now);
+    // For private accounts, store a PENDING_INIT record so the background
+    // finalizer can initialize the dedicated table once CFN completes.
+    if (dto.cloudType === 'private') {
+      tStep = Date.now();
+      const pendingPayload: Record<string, any> = {
+        PK: `ACCOUNT#${id}`,
+        SK: 'PENDING_INIT',
+        accountId: id,
+        accountData: account,
+        addresses: dto.addresses || [],
+        technicalUser: dto.technicalUser || null,
+        createdAt: now,
+      };
+      await this.dynamoDb.put({ Item: pendingPayload });
+      stepTimings['pendingInit'] = Date.now() - tStep;
+      this.logger.log(`Stored PENDING_INIT record for private account ${id}`);
     }
 
-    // Add licenses (after account creation)
+    // ── Step 4: Licenses ────────────────────────────────────────────────
     if (dto.licenses?.length) {
+      tStep = Date.now();
       for (const license of dto.licenses) {
         await this.createLicense(id, license, dto.cloudType, now);
       }
+      stepTimings['licenses'] = Date.now() - tStep;
     }
 
-    // ── Auto-provision Technical Group & Technical Role ──────────────────
-    // Every new customer account receives a default "Technical Group" and
-    // "Technical Role" scoped to the account + first license's enterprise.
-    // The technical user (if present) is automatically assigned to this group.
+    // ── Step 5: RBAC (Technical Group & Role) ───────────────────────────
+    tStep = Date.now();
     const firstEnterpriseId = dto.licenses?.[0]?.enterpriseId;
-    const firstWorkstreamId = undefined; // Will be created separately via workstream API
+    const firstWorkstreamId = undefined;
     const firstProductId = dto.licenses?.[0]?.productId;
     const firstServiceId = dto.licenses?.[0]?.serviceId;
 
@@ -313,54 +333,71 @@ export class AccountsService {
         dto.cloudType,
         now,
       );
+    stepTimings['rbac'] = Date.now() - tStep;
 
-    // Assign technical user to the auto-provisioned Technical Group
-    // and create corresponding Cognito user
+    // ── Step 6: User assignment & Cognito ───────────────────────────────
     if (dto.technicalUser) {
       const techUserId = operations.find(
         (op) => op.Put?.Item?.SK?.startsWith('TECH_USER#'),
       )?.Put?.Item?.id;
 
       if (techUserId) {
+        tStep = Date.now();
         await this.assignUserToGroup(techUserId, techGroupId, dto.cloudType, id, now);
+        stepTimings['userGroupAssignment'] = Date.now() - tStep;
       }
 
-      // ── Create Cognito user matching the technical user ──────────────
-      try {
-        const cognitoResult = await this.cognitoProvisioning.createUser({
-          email: dto.technicalUser.email,
-          firstName: dto.technicalUser.firstName,
-          lastName: dto.technicalUser.lastName,
-          accountId: id,
-          enterpriseId: firstEnterpriseId,
-          role: dto.technicalUser.assignedRole || 'user',
-          groupName: 'TechnicalUsers',
-        });
+      if (dto.cloudType === 'private') {
+        this.logger.log(
+          `Deferred inline Cognito provisioning for private account technical user ${dto.technicalUser.email}`,
+        );
+      } else {
+        tStep = Date.now();
+        try {
+          const cognitoResult = await this.cognitoProvisioning.createUser({
+            email: dto.technicalUser.email,
+            firstName: dto.technicalUser.firstName,
+            lastName: dto.technicalUser.lastName,
+            accountId: id,
+            enterpriseId: firstEnterpriseId,
+            role: dto.technicalUser.assignedRole || 'user',
+            groupName: 'TechnicalUsers',
+          });
 
-        if (cognitoResult.created) {
-          this.logger.log(
-            `Cognito user created for technical user ${dto.technicalUser.email} (sub: ${cognitoResult.cognitoSub})`,
-          );
-        } else if (cognitoResult.updated) {
-          this.logger.log(
-            `Cognito user already existed for ${dto.technicalUser.email}, attributes updated`,
-          );
-        } else if (cognitoResult.skipped) {
-          this.logger.warn(
-            `Cognito user creation skipped for ${dto.technicalUser.email}: ${cognitoResult.reason}`,
+          if (cognitoResult.created) {
+            this.logger.log(
+              `Cognito user created for technical user ${dto.technicalUser.email} (sub: ${cognitoResult.cognitoSub})`,
+            );
+          } else if (cognitoResult.updated) {
+            this.logger.log(
+              `Cognito user already existed for ${dto.technicalUser.email}, attributes updated`,
+            );
+          } else if (cognitoResult.skipped) {
+            this.logger.warn(
+              `Cognito user creation skipped for ${dto.technicalUser.email}: ${cognitoResult.reason}`,
+            );
+          }
+        } catch (cognitoError: any) {
+          this.logger.error(
+            `Failed to create Cognito user for ${dto.technicalUser.email}: ${cognitoError.message}`,
+            cognitoError.stack,
           );
         }
-      } catch (cognitoError: any) {
-        // Log but don't fail account creation if Cognito provisioning fails
-        // The CognitoReconciliationCron can fix this later
-        this.logger.error(
-          `Failed to create Cognito user for ${dto.technicalUser.email}: ${cognitoError.message}`,
-          cognitoError.stack,
-        );
+        stepTimings['cognito'] = Date.now() - tStep;
       }
     }
 
-    this.logger.log(`Account ${id} created successfully with table: ${provisioningResult.tableName}`);
+    // ── Emit structured latency summary ─────────────────────────────────
+    const totalMs = Date.now() - t0;
+    this.logger.log(
+      JSON.stringify({
+        event: 'AccountCreateComplete',
+        accountId: id,
+        cloudType: dto.cloudType,
+        totalMs,
+        stepTimings,
+      }),
+    );
 
     return this.mapToAccount({
       ...account,
@@ -368,64 +405,8 @@ export class AccountsService {
     });
   }
 
-  /**
-   * Initialize data in a private account's dedicated table
-   */
-  private async initializePrivateAccountData(
-    accountId: string,
-    accountData: Record<string, any>,
-    dto: CreateAccountDto,
-    now: string,
-  ): Promise<void> {
-    // Wait for router cache to be invalidated
-    this.dynamoDbRouter.invalidateCache(accountId);
-
-    // Write account metadata to dedicated table
-    await this.dynamoDbRouter.put(accountId, {
-      Item: {
-        ...accountData,
-        PK: 'ACCOUNT#METADATA',
-        SK: 'METADATA',
-      },
-    });
-
-    // Write addresses to dedicated table
-    if (dto.addresses?.length) {
-      for (const addr of dto.addresses) {
-        const addressId = uuidv4();
-        await this.dynamoDbRouter.put(accountId, {
-          Item: {
-            PK: 'ADDRESS#LIST',
-            SK: `ADDRESS#${addressId}`,
-            id: addressId,
-            accountId,
-            ...addr,
-            createdAt: now,
-          },
-        });
-      }
-    }
-
-    // Write technical user to dedicated table
-    if (dto.technicalUser) {
-      const techUserId = uuidv4();
-      await this.dynamoDbRouter.put(accountId, {
-        Item: {
-          PK: 'USER#LIST',
-          SK: `USER#${techUserId}`,
-          GSI1PK: 'ENTITY#USER',
-          GSI1SK: `USER#${techUserId}`,
-          id: techUserId,
-          accountId,
-          ...dto.technicalUser,
-          isTechnicalUser: true,
-          status: 'active',
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-    }
-  }
+  // initializePrivateAccountData has been replaced by
+  // initializeFromPendingRecord in the provisioning finalizer.
 
   /**
    * Create a license record for the account
@@ -467,16 +448,9 @@ export class AccountsService {
     // Write to shared table (for admin visibility)
     await this.dynamoDb.put({ Item: licenseItem });
 
-    // For private accounts, also write to dedicated table
-    if (cloudType === 'private') {
-      await this.dynamoDbRouter.put(accountId, {
-        Item: {
-          ...licenseItem,
-          PK: 'LICENSE#LIST',
-          SK: `LICENSE#${licenseId}`,
-        },
-      });
-    }
+    // For private accounts, the dedicated table write is deferred to the
+    // provisioning finalizer (initializeFromPendingRecord) since the table
+    // may not exist yet during account creation.
   }
 
   /**
@@ -691,29 +665,22 @@ export class AccountsService {
       updatedAt: now,
     };
 
-    await this.dynamoDb.put({ Item: roleItem });
-
-    // ── 2. Create Technical Role Permissions (view-only for all menus) ───
-    for (const menu of AccountsService.MENU_ITEMS) {
-      await this.dynamoDb.put({
-        Item: {
-          PK: `ROLE#${roleId}`,
-          SK: `PERMISSION#${menu.key}`,
-          id: uuidv4(),
-          roleId,
-          menuKey: menu.key,
-          menuLabel: menu.label,
-          isVisible: true,
-          canView: true,
-          canCreate: false,
-          canEdit: false,
-          canDelete: false,
-          tabs: this.getTabsForMenu(menu.key),
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-    }
+    const permissionItems = AccountsService.MENU_ITEMS.map((menu) => ({
+      PK: `ROLE#${roleId}`,
+      SK: `PERMISSION#${menu.key}`,
+      id: uuidv4(),
+      roleId,
+      menuKey: menu.key,
+      menuLabel: menu.label,
+      isVisible: true,
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      tabs: this.getTabsForMenu(menu.key),
+      createdAt: now,
+      updatedAt: now,
+    }));
 
     // ── 3. Create Technical Group ─────────────────────────────────────────
     const groupItem: Record<string, any> = {
@@ -731,59 +698,26 @@ export class AccountsService {
       updatedAt: now,
     };
 
-    await this.dynamoDb.put({ Item: groupItem });
+    const groupRoleJunctionItem = {
+      PK: `GROUP#${groupId}`,
+      SK: `ROLE#${roleId}`,
+      id: uuidv4(),
+      groupId,
+      roleId,
+      createdAt: now,
+    };
 
-    // ── 4. Link Technical Role → Technical Group ─────────────────────────
-    await this.dynamoDb.put({
-      Item: {
-        PK: `GROUP#${groupId}`,
-        SK: `ROLE#${roleId}`,
-        id: uuidv4(),
-        groupId,
-        roleId,
-        createdAt: now,
-      },
-    });
+    // Run independent writes concurrently to reduce create-account latency.
+    await Promise.all([
+      this.dynamoDb.put({ Item: roleItem }),
+      ...permissionItems.map((permission) => this.dynamoDb.put({ Item: permission })),
+      this.dynamoDb.put({ Item: groupItem }),
+      this.dynamoDb.put({ Item: groupRoleJunctionItem }),
+    ]);
 
-    // ── 5. Replicate to private table if applicable ──────────────────────
-    if (cloudType === 'private') {
-      this.dynamoDbRouter.invalidateCache(accountId);
-
-      await this.dynamoDbRouter.put(accountId, { Item: { ...roleItem } });
-      await this.dynamoDbRouter.put(accountId, { Item: { ...groupItem } });
-      await this.dynamoDbRouter.put(accountId, {
-        Item: {
-          PK: `GROUP#${groupId}`,
-          SK: `ROLE#${roleId}`,
-          id: uuidv4(),
-          groupId,
-          roleId,
-          createdAt: now,
-        },
-      });
-
-      // Replicate permissions to private table
-      for (const menu of AccountsService.MENU_ITEMS) {
-        await this.dynamoDbRouter.put(accountId, {
-          Item: {
-            PK: `ROLE#${roleId}`,
-            SK: `PERMISSION#${menu.key}`,
-            id: uuidv4(),
-            roleId,
-            menuKey: menu.key,
-            menuLabel: menu.label,
-            isVisible: true,
-            canView: true,
-            canCreate: false,
-            canEdit: false,
-            canDelete: false,
-            tabs: this.getTabsForMenu(menu.key),
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
-      }
-    }
+    // ── 5. Private table replication is deferred to the provisioning
+    //    finalizer (initializeFromPendingRecord) since the dedicated
+    //    table may not exist yet during account creation.
 
     this.logger.log(`Technical Group/Role auto-provisioned for account ${accountId}`);
 
@@ -812,11 +746,263 @@ export class AccountsService {
 
     await this.dynamoDb.put({ Item: junctionItem });
 
-    if (cloudType === 'private') {
-      await this.dynamoDbRouter.put(accountId, { Item: { ...junctionItem } });
-    }
+    // Private table replication deferred to provisioning finalizer
 
     this.logger.log(`User ${userId} assigned to Technical Group ${groupId}`);
+  }
+
+  // ── Background Provisioning Finalizer ────────────────────────────────
+
+  /**
+   * Finalize all private accounts whose CFN provisioning has completed.
+   *
+   * Called periodically (e.g. every minute via CloudWatch Events) to:
+   * 1. Find accounts with status = 'provisioning'
+   * 2. Check SSM provisioning-status for each
+   * 3. If 'active': initialize dedicated table data, update account status
+   * 4. If 'failed': update account status to 'failed'
+   */
+  async finalizeProvisionedAccounts(): Promise<{
+    checked: number;
+    finalized: string[];
+    failed: string[];
+    stillPending: string[];
+  }> {
+    this.logger.log('Running provisioning finalizer...');
+
+    // Query all accounts with status = 'provisioning'
+    const result = await this.dynamoDb.queryByIndex(
+      'GSI1',
+      'GSI1PK = :pk',
+      { ':pk': 'ENTITY#ACCOUNT' },
+    );
+
+    const provisioningAccounts = (result.Items || []).filter(
+      (item) => item.status === 'provisioning' && item.cloudType === 'private',
+    );
+
+    const finalized: string[] = [];
+    const failed: string[] = [];
+    const stillPending: string[] = [];
+
+    for (const accountItem of provisioningAccounts) {
+      const accountId = accountItem.id;
+
+      try {
+        const provStatus = await this.accountProvisioner.getProvisioningStatus(accountId);
+
+        if (provStatus?.status === 'active') {
+          // ── CFN stack complete — initialize dedicated table data ─────────
+          await this.initializeFromPendingRecord(accountId, accountItem);
+
+          // Update account status to 'active'
+          await this.dynamoDb.update({
+            Key: { PK: `ACCOUNT#${accountId}`, SK: 'METADATA' },
+            UpdateExpression: 'SET #status = :status, #provStatus = :provStatus, #updatedAt = :now',
+            ExpressionAttributeNames: {
+              '#status': 'status',
+              '#provStatus': 'provisioningStatus',
+              '#updatedAt': 'updatedAt',
+            },
+            ExpressionAttributeValues: {
+              ':status': 'active',
+              ':provStatus': 'active',
+              ':now': new Date().toISOString(),
+            },
+          });
+
+          finalized.push(accountId);
+          this.logger.log(`Account ${accountId} finalized successfully`);
+
+        } else if (provStatus?.status === 'failed') {
+          // ── CFN stack failed ─────────────────────────────────────────────
+          await this.dynamoDb.update({
+            Key: { PK: `ACCOUNT#${accountId}`, SK: 'METADATA' },
+            UpdateExpression: 'SET #status = :status, #provStatus = :provStatus, #updatedAt = :now',
+            ExpressionAttributeNames: {
+              '#status': 'status',
+              '#provStatus': 'provisioningStatus',
+              '#updatedAt': 'updatedAt',
+            },
+            ExpressionAttributeValues: {
+              ':status': 'failed',
+              ':provStatus': 'failed',
+              ':now': new Date().toISOString(),
+            },
+          });
+
+          failed.push(accountId);
+          this.logger.warn(`Account ${accountId} provisioning failed`);
+
+        } else {
+          stillPending.push(accountId);
+          this.logger.debug(`Account ${accountId} still provisioning (status: ${provStatus?.status})`);
+        }
+      } catch (error: any) {
+        this.logger.error(`Error finalizing account ${accountId}: ${error.message}`, error.stack);
+        failed.push(accountId);
+      }
+    }
+
+    this.logger.log(
+      `Provisioning finalizer complete: checked=${provisioningAccounts.length}, ` +
+      `finalized=${finalized.length}, failed=${failed.length}, pending=${stillPending.length}`,
+    );
+
+    return {
+      checked: provisioningAccounts.length,
+      finalized,
+      failed,
+      stillPending,
+    };
+  }
+
+  /**
+   * Read PENDING_INIT record and initialize the dedicated table for a private account.
+   */
+  private async initializeFromPendingRecord(
+    accountId: string,
+    accountItem: Record<string, any>,
+  ): Promise<void> {
+    // Read the pending init payload
+    const pendingResult = await this.dynamoDb.get({
+      Key: { PK: `ACCOUNT#${accountId}`, SK: 'PENDING_INIT' },
+    });
+
+    const pending = pendingResult.Item;
+    if (!pending) {
+      this.logger.warn(`No PENDING_INIT record found for account ${accountId}, skipping data init`);
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    // Invalidate router cache so it picks up the new table
+    this.dynamoDbRouter.invalidateCache(accountId);
+
+    // Write account metadata to dedicated table
+    const accountData = pending.accountData || accountItem;
+    await this.dynamoDbRouter.put(accountId, {
+      Item: {
+        ...accountData,
+        PK: 'ACCOUNT#METADATA',
+        SK: 'METADATA',
+        status: 'active',
+        provisioningStatus: 'active',
+      },
+    });
+
+    // Write addresses to dedicated table
+    const addresses = pending.addresses || [];
+    for (const addr of addresses) {
+      const addressId = uuidv4();
+      await this.dynamoDbRouter.put(accountId, {
+        Item: {
+          PK: 'ADDRESS#LIST',
+          SK: `ADDRESS#${addressId}`,
+          id: addressId,
+          accountId,
+          ...addr,
+          createdAt: now,
+        },
+      });
+    }
+
+    // Write technical user to dedicated table
+    const techUser = pending.technicalUser;
+    if (techUser) {
+      const techUserId = uuidv4();
+      await this.dynamoDbRouter.put(accountId, {
+        Item: {
+          PK: 'USER#LIST',
+          SK: `USER#${techUserId}`,
+          GSI1PK: 'ENTITY#USER',
+          GSI1SK: `USER#${techUserId}`,
+          id: techUserId,
+          accountId,
+          ...techUser,
+          isTechnicalUser: true,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    }
+
+    // Replicate licenses from control plane to dedicated table
+    const licenseResult = await this.dynamoDb.query({
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `ACCOUNT#${accountId}`,
+        ':sk': 'LICENSE#',
+      },
+    });
+
+    for (const license of (licenseResult.Items || [])) {
+      await this.dynamoDbRouter.put(accountId, {
+        Item: {
+          ...license,
+          PK: 'LICENSE#LIST',
+          SK: license.SK,
+        },
+      });
+    }
+
+    // Replicate RBAC (groups, roles, permissions) from control plane to dedicated table
+    // Query groups for this account
+    const groupResult = await this.dynamoDb.queryByIndex(
+      'GSI1',
+      'GSI1PK = :pk',
+      { ':pk': 'ENTITY#GROUP' },
+    );
+    const accountGroups = (groupResult.Items || []).filter((g) => g.accountId === accountId);
+
+    for (const group of accountGroups) {
+      await this.dynamoDbRouter.put(accountId, { Item: { ...group } });
+
+      // Replicate group-role junctions
+      const junctions = await this.dynamoDb.query({
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `GROUP#${group.id}`,
+          ':sk': 'ROLE#',
+        },
+      });
+      for (const junction of (junctions.Items || [])) {
+        await this.dynamoDbRouter.put(accountId, { Item: { ...junction } });
+      }
+    }
+
+    // Query roles for this account
+    const roleResult = await this.dynamoDb.queryByIndex(
+      'GSI1',
+      'GSI1PK = :pk',
+      { ':pk': 'ENTITY#ROLE' },
+    );
+    const accountRoles = (roleResult.Items || []).filter((r) => r.accountId === accountId);
+
+    for (const role of accountRoles) {
+      await this.dynamoDbRouter.put(accountId, { Item: { ...role } });
+
+      // Replicate role permissions
+      const perms = await this.dynamoDb.query({
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        ExpressionAttributeValues: {
+          ':pk': `ROLE#${role.id}`,
+          ':sk': 'PERMISSION#',
+        },
+      });
+      for (const perm of (perms.Items || [])) {
+        await this.dynamoDbRouter.put(accountId, { Item: { ...perm } });
+      }
+    }
+
+    // Clean up the PENDING_INIT record
+    await this.dynamoDb.delete({
+      Key: { PK: `ACCOUNT#${accountId}`, SK: 'PENDING_INIT' },
+    });
+
+    this.logger.log(`Private account ${accountId} data initialized from PENDING_INIT record`);
   }
 
   // Mappers

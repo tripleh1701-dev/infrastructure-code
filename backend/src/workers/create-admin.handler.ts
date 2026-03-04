@@ -28,6 +28,7 @@ import {
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
+import { renderCredentialProvisionedEmail } from '../common/notifications/templates/credential-provisioned.template';
 import { v4 as uuidv4 } from 'uuid';
 
 const logger = new Logger('CreateAdminWorker');
@@ -345,25 +346,34 @@ async function sendCredentialEmail(
 
   const senderEmail = process.env.SES_SENDER_EMAIL || 'noreply@example.com';
   const loginUrl = process.env.PLATFORM_LOGIN_URL || 'https://portal.example.com/login';
-  const platformName = process.env.PLATFORM_NAME || 'License Portal';
+  const platformName = process.env.PLATFORM_NAME || 'Trumpet DevOps';
   const supportEmail = process.env.PLATFORM_SUPPORT_EMAIL || 'support@example.com';
 
   try {
     const sesClient = new SESClient({ region });
+    const firstName = event.adminFirstName || event.adminEmail.split('@')[0];
+    const lastName = event.adminLastName || '';
+
+    const { subject, htmlBody, textBody } = renderCredentialProvisionedEmail({
+      firstName,
+      lastName,
+      email: event.adminEmail,
+      temporaryPassword,
+      loginUrl,
+      accountName: event.accountName || event.accountId,
+      platformName,
+      supportEmail,
+    });
+
     await sesClient.send(
       new SendEmailCommand({
         Source: senderEmail,
         Destination: { ToAddresses: [event.adminEmail] },
         Message: {
-          Subject: {
-            Data: `Welcome to ${platformName} — Your Admin Credentials`,
-            Charset: 'UTF-8',
-          },
+          Subject: { Data: subject, Charset: 'UTF-8' },
           Body: {
-            Text: {
-              Data: `Welcome to ${platformName}\n\nYour admin account has been created for ${event.accountName || event.accountId}.\n\nEmail: ${event.adminEmail}\nTemporary Password: ${temporaryPassword}\n\nLogin at: ${loginUrl}\n\nPlease change your password upon first login.\n\nSupport: ${supportEmail}`,
-              Charset: 'UTF-8',
-            },
+            Html: { Data: htmlBody, Charset: 'UTF-8' },
+            Text: { Data: textBody, Charset: 'UTF-8' },
           },
         },
         Tags: [
@@ -372,6 +382,7 @@ async function sendCredentialEmail(
         ],
       }),
     );
+
     logger.log(`[${event.executionId}] Credential email sent to ${event.adminEmail}`);
   } catch (error: any) {
     logger.error(`[${event.executionId}] Failed to send credential email: ${error.message}`);

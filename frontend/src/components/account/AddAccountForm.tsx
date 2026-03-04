@@ -53,7 +53,6 @@ import {
   AccountFormData,
   getPasswordRequirementStatus,
 } from "@/lib/validations/account";
-import { supabase } from "@/integrations/supabase/client";
 import { useGroups } from "@/hooks/useGroups";
 import { useEnterprises } from "@/hooks/useEnterprises";
 import { useLicenses, LicenseFormData } from "@/hooks/useLicenses";
@@ -132,7 +131,7 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
   const [accountNameError, setAccountNameError] = useState("");
   const [pendingLicenses, setPendingLicenses] = useState<PendingLicense[]>([{ ...emptyLicense, id: crypto.randomUUID() }]);
   const [isSaving, setIsSaving] = useState(false);
-  const { createAccount } = useAccounts();
+  const { createAccount, accounts } = useAccounts();
   const { createLicense } = useLicenses();
   const { startProvisioning } = useProvisioningStatus();
   
@@ -145,16 +144,10 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
   const { enterprises } = useEnterprises();
 
   useEffect(() => {
-    if (open) {
-      setCurrentStep(1);
-      supabase
-        .from("accounts")
-        .select("name")
-        .then(({ data }) => {
-          setExistingAccountNames((data || []).map((a) => a.name.toLowerCase()));
-        });
-    }
-  }, [open]);
+    if (!open) return;
+    setCurrentStep(1);
+    setExistingAccountNames((accounts || []).map((a) => a.name.toLowerCase()));
+  }, [open, accounts]);
 
   const {
     register,

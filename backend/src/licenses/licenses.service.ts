@@ -147,6 +147,100 @@ export class LicensesService {
     return { products, services };
   }
 
+  /**
+   * Returns aggregate license capacity for an account:
+   * totalAllowed (sum of numberOfUsers across active licenses),
+   * currentActiveUsers, remaining, isAtCapacity, etc.
+   */
+  async getCapacity(accountId?: string): Promise<{
+    totalAllowed: number;
+    currentActiveUsers: number;
+    remaining: number;
+    isAtCapacity: boolean;
+    hasLicenses: boolean;
+    licenses: Array<{
+      licenseId: string;
+      enterpriseName: string;
+      productName: string;
+      numberOfUsers: number;
+      endDate: string;
+    }>;
+  }> {
+    if (!accountId) {
+      return {
+        totalAllowed: 0,
+        currentActiveUsers: 0,
+        remaining: 0,
+        isAtCapacity: true,
+        hasLicenses: false,
+        licenses: [],
+      };
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Fetch all licenses for the account
+    const allLicenses = await this.findAll({ accountId });
+
+    // Filter to active (non-expired) licenses
+    const activeLicenses = allLicenses.filter((l) => l.endDate >= today);
+
+    // Count active technical users
+    const usersResult = await this.dynamoDb.query({
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: {
+        ':pk': `ACCOUNT#${accountId}`,
+        ':sk': 'TECH_USER#',
+      },
+    });
+    const activeUsers = (usersResult.Items || []).filter(
+      (item) => item.status === 'active',
+    );
+    const currentActiveUsers = activeUsers.length;
+
+    const totalAllowed = activeLicenses.reduce(
+      (sum, lic) => sum + (lic.numberOfUsers || 0),
+      0,
+    );
+    const remaining = Math.max(0, totalAllowed - currentActiveUsers);
+
+    // Resolve enterprise and product names for each active license
+    const licenses = await Promise.all(
+      activeLicenses.map(async (lic) => {
+        let enterpriseName = 'Unknown';
+        let productName = 'Unknown';
+        try {
+          const entResult = await this.dynamoDb.get({
+            Key: { PK: `ENTERPRISE#${lic.enterpriseId}`, SK: 'METADATA' },
+          });
+          enterpriseName = entResult.Item?.name || 'Unknown';
+        } catch {}
+        try {
+          const prodResult = await this.dynamoDb.get({
+            Key: { PK: `PRODUCT#${lic.productId}`, SK: 'METADATA' },
+          });
+          productName = prodResult.Item?.name || 'Unknown';
+        } catch {}
+        return {
+          licenseId: lic.id,
+          enterpriseName,
+          productName,
+          numberOfUsers: lic.numberOfUsers,
+          endDate: lic.endDate,
+        };
+      }),
+    );
+
+    return {
+      totalAllowed,
+      currentActiveUsers,
+      remaining,
+      isAtCapacity: remaining <= 0,
+      hasLicenses: activeLicenses.length > 0,
+      licenses,
+    };
+  }
+
   async findOne(id: string): Promise<License> {
     // Need to query by GSI to find the license without knowing the account
     const result = await this.dynamoDb.queryByIndex(

@@ -22,3 +22,10 @@ data_plane_region        = "us-east-1"
 
 # Monitoring
 alarm_email = ""
+
+# ---- Credential Notification / SES ----
+credential_notification_enabled = true
+ses_sender_email                = "noreply@yourdomain.com"      # Must be SES-verified
+platform_name                   = "Trumpet DevOps"
+platform_support_email          = "support@yourdomain.com"
+platform_login_url              = ""                            # Auto-derived from CloudFront if blank

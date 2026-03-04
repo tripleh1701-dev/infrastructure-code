@@ -59,7 +59,7 @@ const DialogContent = React.forwardRef<
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
-        aria-describedby={hasDescription ? undefined : descId}
+        {...(!hasDescription ? { "aria-describedby": descId } : {})}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         className={cn(

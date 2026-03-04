@@ -4,6 +4,10 @@
  * Sent to technical users when their Cognito identity is created,
  * delivering their login URL, email, and temporary password.
  *
+ * Design: Matches the branded Cognito verification email style
+ * defined in infra/modules/cognito/main.tf — gradient header,
+ * card layout, consistent typography, and Trumpet DevOps branding.
+ *
  * Security notes:
  *  - The temporary password is set as a permanent password in Cognito
  *    (no forced change on first login), but the email instructs the
@@ -34,96 +38,91 @@ export function renderCredentialProvisionedEmail(params: CredentialEmailParams):
     temporaryPassword,
     loginUrl,
     accountName = 'your organization',
-    platformName = 'License Portal',
+    platformName = 'Trumpet DevOps',
     supportEmail = 'support@example.com',
   } = params;
 
-  const subject = `${platformName} — Your login credentials are ready`;
+  const subject = `${platformName} — Your Login Credentials Are Ready`;
 
-  const htmlBody = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Your Credentials</title>
-  <style>
-    body { margin: 0; padding: 0; background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
-    .wrapper { max-width: 600px; margin: 0 auto; padding: 24px 16px; }
-    .card { background: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px; }
-    .header { text-align: center; margin-bottom: 24px; }
-    .header h1 { margin: 0; font-size: 22px; color: #1a1a2e; }
-    .greeting { font-size: 15px; color: #333; line-height: 1.6; }
-    .credentials-box { background: #f8f9fb; border: 1px solid #e2e6ed; border-radius: 6px; padding: 20px; margin: 20px 0; }
-    .credentials-box table { width: 100%; border-collapse: collapse; }
-    .credentials-box td { padding: 6px 0; font-size: 14px; color: #333; }
-    .credentials-box td.label { font-weight: 600; width: 130px; color: #555; }
-    .credentials-box td.value { font-family: 'Courier New', Courier, monospace; word-break: break-all; }
-    .password-value { background: #fff3cd; padding: 4px 8px; border-radius: 4px; border: 1px dashed #d4a017; display: inline-block; }
-    .cta { text-align: center; margin: 24px 0; }
-    .cta a { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-size: 15px; font-weight: 600; }
-    .security-notice { background: #fef3cd; border-left: 4px solid #d4a017; padding: 12px 16px; margin: 20px 0; font-size: 13px; color: #856404; border-radius: 0 4px 4px 0; }
-    .footer { text-align: center; margin-top: 24px; font-size: 12px; color: #888; line-height: 1.5; }
-    .footer a { color: #2563eb; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <div class="card">
-      <div class="header">
-        <h1>Welcome to ${platformName}</h1>
-      </div>
+  const htmlBody = `<html>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Arial,Helvetica,sans-serif;background-color:#f4f6f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f9;padding:40px 0;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
 
-      <div class="greeting">
-        <p>Hello ${firstName} ${lastName},</p>
-        <p>
-          Your account for <strong>${accountName}</strong> has been provisioned.
-          You can now log in using the credentials below.
-        </p>
-      </div>
+<!-- Branded gradient header -->
+<tr><td style="background:linear-gradient(135deg,#1a6ddb,#0db7c4);padding:32px 40px;text-align:center;">
+<h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">${platformName}</h1>
+<p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">CI/CD Platform</p>
+</td></tr>
 
-      <div class="credentials-box">
-        <table>
-          <tr>
-            <td class="label">Login URL</td>
-            <td class="value"><a href="${loginUrl}" style="color:#2563eb;">${loginUrl}</a></td>
-          </tr>
-          <tr>
-            <td class="label">Email</td>
-            <td class="value">${email}</td>
-          </tr>
-          <tr>
-            <td class="label">Password</td>
-            <td class="value"><span class="password-value">${temporaryPassword}</span></td>
-          </tr>
-        </table>
-      </div>
+<!-- Body -->
+<tr><td style="padding:36px 40px;">
 
-      <div class="cta">
-        <a href="${loginUrl}">Sign In Now</a>
-      </div>
+<h2 style="margin:0 0 12px;color:#1a1a2e;font-size:20px;font-weight:600;">Your Login Credentials</h2>
 
-      <div class="security-notice">
-        ⚠️ <strong>Security notice:</strong> Please change your password immediately
-        after your first login. Do not share these credentials with anyone.
-        This email contains sensitive information — delete it after saving
-        your credentials in a secure password manager.
-      </div>
+<p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+  Hello <strong>${firstName} ${lastName}</strong>,<br/>
+  Your account for <strong>${accountName}</strong> has been provisioned successfully.
+  Use the credentials below to sign in.
+</p>
 
-      <div class="greeting" style="margin-top:16px;">
-        <p>If you did not expect this email, please contact
-          <a href="mailto:${supportEmail}" style="color:#2563eb;">${supportEmail}</a>.
-        </p>
-      </div>
-    </div>
+<!-- Credentials card -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8f9fb;border:1px solid #e2e6ed;border-radius:8px;margin:0 0 24px;">
+<tr><td style="padding:20px 24px;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td style="padding:6px 0;font-size:13px;color:#888;font-weight:600;width:100px;vertical-align:top;">EMAIL</td>
+      <td style="padding:6px 0;font-size:14px;color:#1a1a2e;font-family:'Courier New',monospace;word-break:break-all;">${email}</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 0;font-size:13px;color:#888;font-weight:600;width:100px;vertical-align:top;">PASSWORD</td>
+      <td style="padding:6px 0;">
+        <div style="display:inline-block;background-color:#f0f4ff;border:2px dashed #1a6ddb;border-radius:8px;padding:8px 16px;">
+          <span style="font-size:18px;font-weight:700;letter-spacing:2px;color:#1a6ddb;font-family:'Courier New',monospace;">${temporaryPassword}</span>
+        </div>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+</table>
 
-    <div class="footer">
-      <p>This is an automated message from ${platformName}.<br />
-        Please do not reply directly to this email.</p>
-    </div>
-  </div>
+<!-- CTA button -->
+<div style="text-align:center;margin:0 0 24px;">
+  <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#1a6ddb,#0db7c4);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-size:15px;font-weight:600;letter-spacing:0.5px;">Sign In Now</a>
+</div>
+
+<!-- Security notice -->
+<div style="background:#fff8e1;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:0 8px 8px 0;margin:0 0 20px;">
+  <p style="margin:0;color:#92400e;font-size:13px;line-height:1.5;">
+    <strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.
+    Do not share these credentials with anyone. Delete this email after saving your password in a secure password manager.
+  </p>
+</div>
+
+<p style="margin:0 0 8px;color:#555;font-size:14px;line-height:1.5;">
+  If you did not expect this email, please contact
+  <a href="mailto:${supportEmail}" style="color:#1a6ddb;text-decoration:none;">${supportEmail}</a>.
+</p>
+
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+
+<p style="margin:0;color:#999;font-size:12px;line-height:1.5;">
+  Need help? Contact our support team if you have any questions about your account setup.
+</p>
+
+</td></tr>
+
+<!-- Footer -->
+<tr><td style="background-color:#f8f9fb;padding:20px 40px;text-align:center;">
+<p style="margin:0;color:#aaa;font-size:11px;">&copy; ${new Date().getFullYear()} ${platformName}. All rights reserved.</p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
 </body>
-</html>`.trim();
+</html>`;
 
   const textBody = [
     `Welcome to ${platformName}`,

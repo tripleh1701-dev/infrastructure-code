@@ -67,9 +67,9 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const updateUserWorkstreams = useUpdateUserWorkstreams();
   const updateUserGroups = useUpdateUserGroups();
   
-  const { data: groups = [] } = useGroups();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { data: groups = [] } = useGroups(selectedAccount?.id, selectedEnterprise?.id);
 
   // License capacity check
   const { data: licenseCapacity, isLoading: isLoadingCapacity } = useLicenseCapacity(selectedAccount?.id);

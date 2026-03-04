@@ -43,6 +43,10 @@ resource "aws_iam_role_policy" "sfn_invoke_lambda" {
 }
 
 # ---- Create Account State Machine ----
+# IMPORTANT: Each task uses ResultPath to store its output in a nested key,
+# preserving the original input (accountId, adminEmail, etc.) throughout
+# the entire pipeline. Without ResultPath, each step's output replaces the
+# full state, causing downstream steps to lose required fields.
 resource "aws_sfn_state_machine" "create_account" {
   name     = "${var.name_prefix}-create-account"
   role_arn = aws_iam_role.step_functions.arn
@@ -52,9 +56,10 @@ resource "aws_sfn_state_machine" "create_account" {
     StartAt = "CreateInfrastructure"
     States = {
       CreateInfrastructure = {
-        Type     = "Task"
-        Resource = var.create_infra_worker_arn
-        Next     = "WaitForInfra"
+        Type       = "Task"
+        Resource   = var.create_infra_worker_arn
+        ResultPath = "$.infraResult"
+        Next       = "WaitForInfra"
         Retry = [{
           ErrorEquals     = ["States.TaskFailed"]
           IntervalSeconds = 10
@@ -73,9 +78,10 @@ resource "aws_sfn_state_machine" "create_account" {
         Next    = "PollInfraStatus"
       }
       PollInfraStatus = {
-        Type     = "Task"
-        Resource = var.poll_infra_worker_arn
-        Next     = "CheckInfraReady"
+        Type       = "Task"
+        Resource   = var.poll_infra_worker_arn
+        ResultPath = "$.pollResult"
+        Next       = "CheckInfraReady"
         Retry = [{
           ErrorEquals     = ["States.TaskFailed"]
           IntervalSeconds = 5
@@ -87,12 +93,12 @@ resource "aws_sfn_state_machine" "create_account" {
         Type = "Choice"
         Choices = [
           {
-            Variable     = "$.status"
+            Variable     = "$.pollResult.status"
             StringEquals = "READY"
             Next         = "SetupRBAC"
           },
           {
-            Variable     = "$.status"
+            Variable     = "$.pollResult.status"
             StringEquals = "FAILED"
             Next         = "ProvisioningFailed"
           }
@@ -100,9 +106,10 @@ resource "aws_sfn_state_machine" "create_account" {
         Default = "WaitForInfra"
       }
       SetupRBAC = {
-        Type     = "Task"
-        Resource = var.setup_rbac_worker_arn
-        Next     = "CreateAdminUser"
+        Type       = "Task"
+        Resource   = var.setup_rbac_worker_arn
+        ResultPath = "$.rbacResult"
+        Next       = "CreateAdminUser"
         Retry = [{
           ErrorEquals     = ["States.TaskFailed"]
           IntervalSeconds = 5
@@ -116,9 +123,10 @@ resource "aws_sfn_state_machine" "create_account" {
         }]
       }
       CreateAdminUser = {
-        Type     = "Task"
-        Resource = var.create_admin_worker_arn
-        Next     = "VerifyProvisioning"
+        Type       = "Task"
+        Resource   = var.create_admin_worker_arn
+        ResultPath = "$.adminResult"
+        Next       = "VerifyProvisioning"
         Retry = [{
           ErrorEquals     = ["States.TaskFailed"]
           IntervalSeconds = 5
@@ -132,9 +140,10 @@ resource "aws_sfn_state_machine" "create_account" {
         }]
       }
       VerifyProvisioning = {
-        Type     = "Task"
-        Resource = var.verify_provisioning_worker_arn
-        Next     = "CheckVerification"
+        Type       = "Task"
+        Resource   = var.verify_provisioning_worker_arn
+        ResultPath = "$.verifyResult"
+        Next       = "CheckVerification"
         Retry = [{
           ErrorEquals     = ["States.TaskFailed"]
           IntervalSeconds = 5
@@ -151,7 +160,7 @@ resource "aws_sfn_state_machine" "create_account" {
         Type = "Choice"
         Choices = [
           {
-            Variable      = "$.verified"
+            Variable      = "$.verifyResult.verified"
             BooleanEquals = true
             Next          = "ProvisioningComplete"
           }

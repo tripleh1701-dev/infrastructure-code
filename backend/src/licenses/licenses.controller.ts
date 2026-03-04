@@ -54,6 +54,16 @@ export class LicensesController {
     });
   }
 
+  /**
+   * GET /api/licenses/capacity?accountId=...
+   * Returns aggregate license capacity for an account.
+   * Must be declared before :id to avoid route conflicts.
+   */
+  @Get('capacity')
+  async getCapacity(@Query('accountId') accountId?: string) {
+    return this.licensesService.getCapacity(accountId);
+  }
+
   @Get()
   async findAll(
     @Query('accountId') accountId?: string,
