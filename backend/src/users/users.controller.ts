@@ -11,11 +11,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CognitoUserProvisioningService } from '../auth/cognito-user-provisioning.service';
 import { AuthenticatedRequest } from '../auth/interfaces/cognito-user.interface';
 import { AccountGuard } from '../auth/guards/account.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -23,7 +25,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 @Controller('users')
 @UseGuards(AccountGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  private readonly logger = new Logger(UsersController.name);
+
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly cognitoProvisioning: CognitoUserProvisioningService,
+  ) {}
 
   /**
    * GET /api/users/me/access
@@ -90,6 +97,58 @@ export class UsersController {
       dryRun: dryRun === 'true',
       includeInactive: includeInactive === 'true',
     });
+  }
+
+  /**
+   * POST /api/users/provision
+   * Provision a Cognito auth user (called by frontend AddUserDialog and Step Functions).
+   * Must be declared before :id to avoid route conflicts.
+   */
+  @Post('provision')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
+  @HttpCode(HttpStatus.OK)
+  async provisionAuthUser(
+    @Body()
+    body: {
+      email: string;
+      password?: string;
+      firstName: string;
+      lastName: string;
+      middleName?: string;
+      accountId?: string;
+      enterpriseId?: string;
+      role?: string;
+      groupName?: string;
+    },
+  ) {
+    this.logger.log(`Provisioning auth user: ${body.email}`);
+    try {
+      const result = await this.cognitoProvisioning.createUser({
+        email: body.email,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        accountId: body.accountId || '',
+        enterpriseId: body.enterpriseId,
+        role: body.role || 'user',
+        groupName: body.groupName,
+        temporaryPassword: body.password,
+      });
+
+      return {
+        success: true,
+        userId: result.cognitoSub,
+        created: result.created,
+        updated: result.updated,
+        skipped: result.skipped,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to provision auth user ${body.email}: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message || 'Failed to provision authentication user',
+      };
+    }
   }
 
   @Get()

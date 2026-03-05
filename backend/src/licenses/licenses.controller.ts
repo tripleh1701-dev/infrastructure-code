@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { LicensesService } from './licenses.service';
 import { CreateLicenseDto } from './dto/create-license.dto';
@@ -21,6 +22,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Controller('licenses')
 @UseGuards(AccountGuard)
 export class LicensesController {
+  private readonly logger = new Logger(LicensesController.name);
+
   constructor(private readonly licensesService: LicensesService) {}
 
   /**
@@ -47,11 +50,16 @@ export class LicensesController {
     @Query('enterpriseId') enterpriseId?: string,
     @Query('days') days?: string,
   ) {
-    return this.licensesService.findExpiring({
-      accountId,
-      enterpriseId,
-      days: days ? parseInt(days, 10) : 30,
-    });
+    try {
+      return await this.licensesService.findExpiring({
+        accountId,
+        enterpriseId,
+        days: days ? parseInt(days, 10) : 30,
+      });
+    } catch (error: any) {
+      this.logger.warn(`Failed to fetch expiring licenses for account ${accountId}: ${error.message}`);
+      return [];
+    }
   }
 
   /**
@@ -61,7 +69,19 @@ export class LicensesController {
    */
   @Get('capacity')
   async getCapacity(@Query('accountId') accountId?: string) {
-    return this.licensesService.getCapacity(accountId);
+    try {
+      return await this.licensesService.getCapacity(accountId);
+    } catch (error: any) {
+      this.logger.warn(`Failed to fetch license capacity for account ${accountId}: ${error.message}`);
+      return {
+        totalAllowed: 0,
+        currentActiveUsers: 0,
+        remaining: 0,
+        isAtCapacity: false,
+        hasLicenses: false,
+        licenses: [],
+      };
+    }
   }
 
   @Get()
@@ -69,7 +89,12 @@ export class LicensesController {
     @Query('accountId') accountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
   ) {
-    return this.licensesService.findAll({ accountId, enterpriseId });
+    try {
+      return await this.licensesService.findAll({ accountId, enterpriseId });
+    } catch (error: any) {
+      this.logger.warn(`Failed to fetch licenses for account ${accountId}: ${error.message}`);
+      return [];
+    }
   }
 
   @Get(':id')

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { CreateLicenseDto } from './dto/create-license.dto';
@@ -31,6 +31,8 @@ interface FindAllFilters {
 
 @Injectable()
 export class LicensesService {
+  private readonly logger = new Logger(LicensesService.name);
+
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
   async findAll(filters: FindAllFilters = {}): Promise<License[]> {
@@ -107,10 +109,19 @@ export class LicensesService {
     accountId?: string;
     enterpriseId?: string;
   }): Promise<{ products: { id: string; name: string }[]; services: { id: string; name: string }[] }> {
-    const licenses = await this.findAll({
-      accountId: filters.accountId,
-      enterpriseId: filters.enterpriseId,
-    });
+    let licenses: License[];
+    try {
+      licenses = await this.findAll({
+        accountId: filters.accountId,
+        enterpriseId: filters.enterpriseId,
+      });
+    } catch (error: any) {
+      // Gracefully handle cases where the account's infra isn't ready yet
+      this.logger.warn(
+        `Failed to query licenses for account ${filters.accountId}: ${error.message}`,
+      );
+      return { products: [], services: [] };
+    }
 
     // Collect unique product and service IDs
     const productIds = [...new Set(licenses.map((l) => l.productId).filter(Boolean))];

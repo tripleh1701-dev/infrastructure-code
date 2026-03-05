@@ -230,41 +230,92 @@ export class AccountProvisionerService {
       // Set provisioning status to creating
       await this.updateProvisioningStatus(config.accountId, 'creating');
 
-      // Upload CloudFormation template to S3 if needed
-      const templateUrl = await retryWithBackoff(
-        () => this.ensureTemplateUploaded(),
-        { maxAttempts: 3, label: 'EnsureTemplateUploaded' },
-      );
+      // Check if stack already exists (handles retries / re-provisioning)
+      let stackId: string | undefined;
+      let stackAlreadyComplete = false;
 
-      // Create CloudFormation stack (retry on transient errors)
-      const createStackResult = await retryWithBackoff(
-        () => this.cfnClient.send(new CreateStackCommand({
+      try {
+        const describeResult = await this.cfnClient.send(new DescribeStacksCommand({
           StackName: stackName,
-          TemplateURL: templateUrl,
-          Parameters: [
-            { ParameterKey: 'AccountId', ParameterValue: config.accountId },
-            { ParameterKey: 'AccountName', ParameterValue: config.accountName },
-            { ParameterKey: 'Environment', ParameterValue: this.environment },
-            { ParameterKey: 'ProjectName', ParameterValue: this.projectName },
-            { ParameterKey: 'BillingMode', ParameterValue: config.billingMode || 'PAY_PER_REQUEST' },
-            { ParameterKey: 'ReadCapacity', ParameterValue: String(config.readCapacity || 5) },
-            { ParameterKey: 'WriteCapacity', ParameterValue: String(config.writeCapacity || 5) },
-            { ParameterKey: 'EnablePointInTimeRecovery', ParameterValue: config.enablePointInTimeRecovery !== false ? 'true' : 'false' },
-            { ParameterKey: 'EnableDeletionProtection', ParameterValue: config.enableDeletionProtection !== false ? 'true' : 'false' },
-            { ParameterKey: 'EnableAutoScaling', ParameterValue: config.enableAutoScaling ? 'true' : 'false' },
-          ],
-          Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
-          Tags: [
-            { Key: 'AccountId', Value: config.accountId },
-            { Key: 'AccountName', Value: config.accountName },
-            { Key: 'Environment', Value: this.environment },
-            { Key: 'CloudType', Value: 'private' },
-            { Key: 'ManagedBy', Value: 'AccountProvisioner' },
-          ],
-          OnFailure: 'ROLLBACK',
-        })),
-        { maxAttempts: 3, label: 'CreateStack', retryIf: isTransientAwsError },
-      );
+        }));
+        const existingStack = describeResult.Stacks?.[0];
+
+        if (existingStack) {
+          const status = existingStack.StackStatus;
+          stackId = existingStack.StackId;
+          this.logger.log(`Stack ${stackName} already exists with status: ${status}`);
+
+          if (status === 'CREATE_COMPLETE' || status === 'UPDATE_COMPLETE') {
+            // Stack is already done — skip creation, just ensure SSM params
+            stackAlreadyComplete = true;
+            this.logger.log(`Stack ${stackName} already complete — reusing existing infrastructure`);
+          } else if (status === 'ROLLBACK_COMPLETE' || status === 'DELETE_COMPLETE') {
+            // Previous attempt failed and rolled back — delete remnant and recreate
+            this.logger.log(`Stack ${stackName} in ${status} — deleting before recreation`);
+            await this.cfnClient.send(new DeleteStackCommand({ StackName: stackName }));
+            // Wait briefly for delete to propagate
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            stackId = undefined; // will recreate below
+          } else if (
+            status === 'CREATE_IN_PROGRESS' ||
+            status === 'UPDATE_IN_PROGRESS'
+          ) {
+            // Stack is still being created — just attach the background watcher
+            this.logger.log(`Stack ${stackName} creation already in progress — attaching watcher`);
+          } else {
+            // Other states (DELETE_IN_PROGRESS, UPDATE_ROLLBACK_IN_PROGRESS, etc.)
+            throw new BadRequestException(
+              `Stack ${stackName} is in state ${status} and cannot be re-provisioned. Please wait or contact support.`,
+            );
+          }
+        }
+      } catch (error: any) {
+        // Stack does not exist — proceed with creation
+        if (error.name !== 'ValidationError' && !(error instanceof BadRequestException)) {
+          throw error;
+        }
+      }
+
+      // Only create the stack if it doesn't already exist
+      if (!stackId) {
+        // Upload CloudFormation template to S3 if needed
+        const templateUrl = await retryWithBackoff(
+          () => this.ensureTemplateUploaded(),
+          { maxAttempts: 3, label: 'EnsureTemplateUploaded' },
+        );
+
+        // Create CloudFormation stack (retry on transient errors)
+        const createStackResult = await retryWithBackoff(
+          () => this.cfnClient.send(new CreateStackCommand({
+            StackName: stackName,
+            TemplateURL: templateUrl,
+            Parameters: [
+              { ParameterKey: 'AccountId', ParameterValue: config.accountId },
+              { ParameterKey: 'AccountName', ParameterValue: config.accountName },
+              { ParameterKey: 'Environment', ParameterValue: this.environment },
+              { ParameterKey: 'ProjectName', ParameterValue: this.projectName },
+              { ParameterKey: 'BillingMode', ParameterValue: config.billingMode || 'PAY_PER_REQUEST' },
+              { ParameterKey: 'ReadCapacity', ParameterValue: String(config.readCapacity || 5) },
+              { ParameterKey: 'WriteCapacity', ParameterValue: String(config.writeCapacity || 5) },
+              { ParameterKey: 'EnablePointInTimeRecovery', ParameterValue: config.enablePointInTimeRecovery !== false ? 'true' : 'false' },
+              { ParameterKey: 'EnableDeletionProtection', ParameterValue: config.enableDeletionProtection !== false ? 'true' : 'false' },
+              { ParameterKey: 'EnableAutoScaling', ParameterValue: config.enableAutoScaling ? 'true' : 'false' },
+            ],
+            Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+            Tags: [
+              { Key: 'AccountId', Value: config.accountId },
+              { Key: 'AccountName', Value: config.accountName },
+              { Key: 'Environment', Value: this.environment },
+              { Key: 'CloudType', Value: 'private' },
+              { Key: 'ManagedBy', Value: 'AccountProvisioner' },
+            ],
+            OnFailure: 'ROLLBACK',
+          })),
+          { maxAttempts: 3, label: 'CreateStack', retryIf: isTransientAwsError },
+        );
+
+        stackId = createStackResult.StackId;
+      }
 
       const stackId = createStackResult.StackId;
       this.logger.log(`CloudFormation stack initiated: ${stackId}`);
@@ -285,6 +336,22 @@ export class AccountProvisionerService {
         Overwrite: true,
         Description: `DynamoDB table for private account ${config.accountId}`,
       }));
+
+      if (stackAlreadyComplete) {
+        // Stack is already done — mark as active immediately
+        await this.updateProvisioningStatus(config.accountId, 'active');
+        this.logger.log(
+          `Private account ${config.accountId} reused existing stack. Table: ${expectedTableName}`,
+        );
+
+        return {
+          success: true,
+          tableName: expectedTableName,
+          stackId,
+          cloudType: 'private',
+          message: `Infrastructure already exists. Table ready: ${expectedTableName}`,
+        };
+      }
 
       // Fire-and-forget: wait for stack completion in background, then finalize
       this.waitAndFinalizeStack(stackName, config.accountId, expectedTableName)
