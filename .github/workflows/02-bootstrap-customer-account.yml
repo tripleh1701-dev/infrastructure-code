@@ -126,6 +126,7 @@ jobs:
           echo "🔧 Setting environment secrets for '$ENV' from Terraform outputs..."
           gh secret set DATA_PLANE_ROLE_ARN   --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.customer_role }}"
           gh secret set DATA_PLANE_TABLE_NAME --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.customer_table }}"
+          gh secret set CFN_EXECUTION_ROLE_ARN --repo "$REPO" --env "$ENV" --body "${{ steps.tf-outputs.outputs.cfn_role }}"
 
           echo "✅ Data plane secrets set automatically for '$ENV'"
           echo "### ✅ GitHub Secrets Auto-Configured (WF 02)" >> $GITHUB_STEP_SUMMARY
@@ -164,6 +165,7 @@ jobs:
           ENV=${{ inputs.environment }}
           gh secret set DATA_PLANE_ROLE_ARN     --env \$ENV --body "${{ steps.tf-outputs.outputs.customer_role }}"
           gh secret set DATA_PLANE_TABLE_NAME   --env \$ENV --body "${{ steps.tf-outputs.outputs.customer_table }}"
+          gh secret set CFN_EXECUTION_ROLE_ARN  --env \$ENV --body "${{ steps.tf-outputs.outputs.cfn_role }}"
           \`\`\`
 
           Then re-run **04 · Deploy Backend** to pick up the cross-account config.

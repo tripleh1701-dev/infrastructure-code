@@ -93,6 +93,7 @@ export class AccountProvisionerService {
   private readonly templateBucket: string;
   private readonly awsRegion: string;
   private readonly dataPlaneRoleArn: string | undefined;
+  private readonly cfnExecutionRoleArn: string | undefined;
 
   // Cache for assumed credentials (keyed by accountId)
   private assumedCredentialsCache = new Map<string, AssumedCredentials>();
@@ -107,6 +108,7 @@ export class AccountProvisionerService {
     this.projectName = this.configService.get('PROJECT_NAME', 'app');
     this.templateBucket = this.configService.get('CFN_TEMPLATE_BUCKET', `${this.projectName}-cfn-templates`);
     this.dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
+    this.cfnExecutionRoleArn = this.configService.get<string>('CFN_EXECUTION_ROLE_ARN');
 
     const credentials = resolveAwsCredentials(
       this.configService.get<string>('AWS_ACCESS_KEY_ID'),
@@ -412,39 +414,54 @@ export class AccountProvisionerService {
 
       // Only create the stack if it doesn't already exist
       if (!stackId) {
-        // Upload CloudFormation template to S3 (in Platform Admin account)
-        const templateUrl = await retryWithBackoff(
-          () => this.ensureTemplateUploaded(),
-          { maxAttempts: 3, label: 'EnsureTemplateUploaded' },
-        );
+        // Use inline TemplateBody to avoid cross-account S3 access issues.
+        // The template is embedded in the build so no S3 read is required.
+        const templateBody = PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE;
+
+        // Resolve the CloudFormation execution role for the customer account.
+        // This role grants CloudFormation permission to create DynamoDB, SSM, etc.
+        const cfnRoleArn = await this.resolveCfnExecutionRoleArn();
+
+        const createStackParams: any = {
+          StackName: stackName,
+          TemplateBody: templateBody,
+          Parameters: [
+            { ParameterKey: 'AccountId', ParameterValue: config.accountId },
+            { ParameterKey: 'AccountName', ParameterValue: config.accountName },
+            { ParameterKey: 'Environment', ParameterValue: this.environment },
+            { ParameterKey: 'ProjectName', ParameterValue: this.projectName },
+            { ParameterKey: 'BillingMode', ParameterValue: config.billingMode || 'PAY_PER_REQUEST' },
+            { ParameterKey: 'ReadCapacity', ParameterValue: String(config.readCapacity || 5) },
+            { ParameterKey: 'WriteCapacity', ParameterValue: String(config.writeCapacity || 5) },
+            { ParameterKey: 'EnablePointInTimeRecovery', ParameterValue: config.enablePointInTimeRecovery !== false ? 'true' : 'false' },
+            { ParameterKey: 'EnableDeletionProtection', ParameterValue: config.enableDeletionProtection !== false ? 'true' : 'false' },
+            { ParameterKey: 'EnableAutoScaling', ParameterValue: config.enableAutoScaling ? 'true' : 'false' },
+          ],
+          Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+          Tags: [
+            { Key: 'AccountId', Value: config.accountId },
+            { Key: 'AccountName', Value: config.accountName },
+            { Key: 'Environment', Value: this.environment },
+            { Key: 'CloudType', Value: 'private' },
+            { Key: 'ManagedBy', Value: 'AccountProvisioner' },
+          ],
+          OnFailure: 'ROLLBACK',
+        };
+
+        // Pass the CFN execution role so CloudFormation has permissions to create resources
+        if (cfnRoleArn) {
+          createStackParams.RoleARN = cfnRoleArn;
+          this.logger.log(`[CrossAccount] Using CFN execution role: ${cfnRoleArn}`);
+        } else {
+          this.logger.warn(
+            `[CrossAccount] No CFN_EXECUTION_ROLE_ARN configured — CloudFormation will use caller credentials. ` +
+            `This may fail if the assumed role lacks direct resource creation permissions.`,
+          );
+        }
 
         // Create CloudFormation stack in CUSTOMER account
         const createStackResult = await retryWithBackoff(
-          () => customerCfnClient.send(new CreateStackCommand({
-            StackName: stackName,
-            TemplateURL: templateUrl,
-            Parameters: [
-              { ParameterKey: 'AccountId', ParameterValue: config.accountId },
-              { ParameterKey: 'AccountName', ParameterValue: config.accountName },
-              { ParameterKey: 'Environment', ParameterValue: this.environment },
-              { ParameterKey: 'ProjectName', ParameterValue: this.projectName },
-              { ParameterKey: 'BillingMode', ParameterValue: config.billingMode || 'PAY_PER_REQUEST' },
-              { ParameterKey: 'ReadCapacity', ParameterValue: String(config.readCapacity || 5) },
-              { ParameterKey: 'WriteCapacity', ParameterValue: String(config.writeCapacity || 5) },
-              { ParameterKey: 'EnablePointInTimeRecovery', ParameterValue: config.enablePointInTimeRecovery !== false ? 'true' : 'false' },
-              { ParameterKey: 'EnableDeletionProtection', ParameterValue: config.enableDeletionProtection !== false ? 'true' : 'false' },
-              { ParameterKey: 'EnableAutoScaling', ParameterValue: config.enableAutoScaling ? 'true' : 'false' },
-            ],
-            Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
-            Tags: [
-              { Key: 'AccountId', Value: config.accountId },
-              { Key: 'AccountName', Value: config.accountName },
-              { Key: 'Environment', Value: this.environment },
-              { Key: 'CloudType', Value: 'private' },
-              { Key: 'ManagedBy', Value: 'AccountProvisioner' },
-            ],
-            OnFailure: 'ROLLBACK',
-          })),
+          () => customerCfnClient.send(new CreateStackCommand(createStackParams)),
           { maxAttempts: 3, label: 'CreateStack', retryIf: isTransientAwsError },
         );
 
@@ -754,7 +771,34 @@ export class AccountProvisionerService {
   }
 
   /**
-   * Ensure CloudFormation template is uploaded to S3
+   * Resolve the CloudFormation execution role ARN.
+   * Checks env var first, then falls back to SSM lookup.
+   */
+  private async resolveCfnExecutionRoleArn(): Promise<string | undefined> {
+    if (this.cfnExecutionRoleArn) {
+      return this.cfnExecutionRoleArn;
+    }
+
+    // Fallback: try to read from SSM (set by Terraform in data-plane bootstrap)
+    try {
+      const ssmPrefix = `/${this.projectName}/${this.environment}`;
+      const result = await this.ssmClient.send(new GetParameterCommand({
+        Name: `${ssmPrefix}/cloudformation/execution-role-arn`,
+      }));
+      const roleArn = result.Parameter?.Value;
+      if (roleArn) {
+        this.logger.log(`Resolved CFN execution role from SSM: ${roleArn}`);
+        return roleArn;
+      }
+    } catch {
+      this.logger.warn('Could not resolve CFN execution role from SSM');
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Ensure CloudFormation template is uploaded to S3 (kept for backward compatibility / worker Lambda)
    */
   private async ensureTemplateUploaded(): Promise<string> {
     const templateKey = `${this.environment}/private-account-dynamodb.yaml`;
