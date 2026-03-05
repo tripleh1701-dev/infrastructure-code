@@ -50,6 +50,35 @@ resource "aws_iam_role_policy" "control_plane_dynamodb" {
   })
 }
 
+# Same-account data-plane DynamoDB access (public cloud customers)
+resource "aws_iam_role_policy" "data_plane_dynamodb" {
+  count = var.data_plane_dynamodb_arn_pattern != "" ? 1 : 0
+  name  = "${var.function_name}-data-plane-dynamodb"
+  role  = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:BatchGetItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:DescribeTable"
+      ]
+      Resource = [
+        var.data_plane_dynamodb_arn_pattern,
+        "${var.data_plane_dynamodb_arn_pattern}/index/*"
+      ]
+    }]
+  })
+}
+
 # Cross-account assume role for data-plane access
 resource "aws_iam_role_policy" "assume_data_plane" {
   count = var.data_plane_role_arn != "" ? 1 : 0

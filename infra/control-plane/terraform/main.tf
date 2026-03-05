@@ -168,26 +168,27 @@ module "account_registry_dynamodb" {
 module "lambda" {
   source = "../../modules/lambda"
 
-  function_name               = "${local.name_prefix}-backend"
-  description                 = "NestJS Backend API — Platform Admin"
-  project_name                = var.project_name
-  environment                 = var.environment
-  runtime                     = var.lambda_runtime
-  memory_size                 = var.lambda_memory_size
-  timeout                     = var.lambda_timeout
-  package_path                = var.lambda_package_path
-  control_plane_dynamodb_arn  = module.control_plane_dynamodb.table_arn
-  control_plane_dynamodb_name = module.control_plane_dynamodb.table_name
-  data_plane_role_arn         = var.data_plane_role_arn
-  data_plane_dynamodb_name    = var.data_plane_dynamodb_name
-  data_plane_region           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
-  cognito_user_pool_arn       = module.cognito.user_pool_arn
-  enable_cognito              = true
-  enable_sns_publish            = module.monitoring.provisioning_sns_topic_arn != ""
-  sns_topic_arn                 = module.monitoring.provisioning_sns_topic_arn
-  cfn_template_bucket_arn       = module.frontend.bucket_arn
-  enable_cfn_template_bucket    = true
-  enable_cloudformation         = true
+  function_name                   = "${local.name_prefix}-backend"
+  description                     = "NestJS Backend API — Platform Admin"
+  project_name                    = var.project_name
+  environment                     = var.environment
+  runtime                         = var.lambda_runtime
+  memory_size                     = var.lambda_memory_size
+  timeout                         = var.lambda_timeout
+  package_path                    = var.lambda_package_path
+  control_plane_dynamodb_arn      = module.control_plane_dynamodb.table_arn
+  control_plane_dynamodb_name     = module.control_plane_dynamodb.table_name
+  data_plane_role_arn             = var.data_plane_role_arn
+  data_plane_dynamodb_name        = var.data_plane_dynamodb_name
+  data_plane_region               = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
+  data_plane_dynamodb_arn_pattern = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
+  cognito_user_pool_arn           = module.cognito.user_pool_arn
+  enable_cognito                  = true
+  enable_sns_publish              = module.monitoring.provisioning_sns_topic_arn != ""
+  sns_topic_arn                   = module.monitoring.provisioning_sns_topic_arn
+  cfn_template_bucket_arn         = module.frontend.bucket_arn
+  enable_cfn_template_bucket      = true
+  enable_cloudformation           = true
 
   environment_variables = {
     COGNITO_USER_POOL_ID             = module.cognito.user_pool_id
@@ -240,9 +241,10 @@ module "create_infra_worker" {
   enable_dynamodb           = true
   customer_account_role_arn = var.data_plane_role_arn
   enable_cloudformation     = true
-  ssm_prefix                = "${var.project_name}/${var.environment}"
-  vpc_subnet_ids            = module.vpc.private_subnet_ids
-  vpc_security_group_ids    = [module.vpc.lambda_security_group_id]
+  ssm_prefix                      = "${var.project_name}/${var.environment}"
+  data_plane_dynamodb_arn_pattern  = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
+  vpc_subnet_ids                  = module.vpc.private_subnet_ids
+  vpc_security_group_ids          = [module.vpc.lambda_security_group_id]
 
   environment_variables = {
     NODE_ENV                    = var.environment
@@ -274,9 +276,10 @@ module "delete_infra_worker" {
   enable_dynamodb           = true
   customer_account_role_arn = var.data_plane_role_arn
   enable_cloudformation     = true
-  ssm_prefix                = "${var.project_name}/${var.environment}"
-  vpc_subnet_ids            = module.vpc.private_subnet_ids
-  vpc_security_group_ids    = [module.vpc.lambda_security_group_id]
+  ssm_prefix                      = "${var.project_name}/${var.environment}"
+  data_plane_dynamodb_arn_pattern  = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
+  vpc_subnet_ids                  = module.vpc.private_subnet_ids
+  vpc_security_group_ids          = [module.vpc.lambda_security_group_id]
 
   environment_variables = {
     NODE_ENV                    = var.environment
@@ -307,6 +310,7 @@ module "poll_infra_worker" {
   enable_cloudformation          = true
   enable_step_functions_callback = true
   ssm_prefix                     = "${var.project_name}/${var.environment}"
+  data_plane_dynamodb_arn_pattern = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
   vpc_subnet_ids                 = module.vpc.private_subnet_ids
   vpc_security_group_ids         = [module.vpc.lambda_security_group_id]
 

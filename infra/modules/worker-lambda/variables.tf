@@ -65,6 +65,12 @@ variable "enable_dynamodb" {
   default     = false
 }
 
+variable "data_plane_dynamodb_arn_pattern" {
+  description = "ARN pattern for same-account data-plane DynamoDB tables (e.g. arn:aws:dynamodb:us-east-1:123456:table/app-staging-*)"
+  type        = string
+  default     = ""
+}
+
 variable "customer_account_role_arn" {
   type    = string
   default = ""

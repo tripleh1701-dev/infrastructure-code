@@ -71,6 +71,12 @@ variable "control_plane_dynamodb_name" {
   type        = string
 }
 
+variable "data_plane_dynamodb_arn_pattern" {
+  description = "ARN pattern for same-account data-plane DynamoDB tables (e.g. arn:aws:dynamodb:us-east-1:123456:table/app-staging-*)"
+  type        = string
+  default     = ""
+}
+
 variable "data_plane_role_arn" {
   description = "ARN of the IAM role to assume in the data-plane account"
   type        = string
