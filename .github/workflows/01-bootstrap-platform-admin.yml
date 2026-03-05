@@ -32,6 +32,9 @@ env:
   TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'license-portal' }}
   TF_VAR_environment: ${{ inputs.environment }}
   TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VAR_data_plane_role_arn: ${{ secrets.DATA_PLANE_ROLE_ARN || '' }}
+  TF_VAR_data_plane_dynamodb_name: ${{ secrets.DATA_PLANE_TABLE_NAME || '' }}
+  TF_VAR_data_plane_region: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_VAR_credential_notification_enabled: ${{ vars.CREDENTIAL_NOTIFICATION_ENABLED || 'false' }}
   TF_VAR_ses_sender_email: ${{ vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
   TF_VAR_platform_login_url: ${{ vars.PLATFORM_LOGIN_URL || '' }}

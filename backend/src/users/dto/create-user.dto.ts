@@ -65,4 +65,9 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   accountName?: string;
+
+  /** User status — defaults to 'active' if not provided */
+  @IsString()
+  @IsOptional()
+  status?: string;
 }

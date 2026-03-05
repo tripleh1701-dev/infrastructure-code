@@ -18,6 +18,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CognitoUserProvisioningService } from '../auth/cognito-user-provisioning.service';
+import { NotificationService } from '../common/notifications/notification.service';
 import { AuthenticatedRequest } from '../auth/interfaces/cognito-user.interface';
 import { AccountGuard } from '../auth/guards/account.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -30,6 +31,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly cognitoProvisioning: CognitoUserProvisioningService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -122,10 +124,20 @@ export class UsersController {
       groupName?: string;
     },
   ) {
-    this.logger.log(`Provisioning auth user: ${body.email}`);
+    // Validate and normalize email before sending to Cognito
+    const email = (body.email || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.logger.warn(`Invalid email for provisioning: "${body.email}"`);
+      return {
+        success: false,
+        error: `Invalid email address: "${body.email}". Please provide a valid email.`,
+      };
+    }
+
+    this.logger.log(`Provisioning auth user: ${email}`);
     try {
       const result = await this.cognitoProvisioning.createUser({
-        email: body.email,
+        email,
         firstName: body.firstName,
         lastName: body.lastName,
         accountId: body.accountId || '',
@@ -134,6 +146,29 @@ export class UsersController {
         groupName: body.groupName,
         temporaryPassword: body.password,
       });
+
+      // Send credential email if user was newly created
+      if (result.created && result.temporaryPassword) {
+        try {
+          const notifResult = await this.notificationService.sendCredentialProvisionedEmail(
+            { email, firstName: body.firstName, lastName: body.lastName },
+            result.temporaryPassword,
+            body.accountId || 'Platform',
+            {
+              accountId: body.accountId || '',
+              accountName: body.accountId || 'Platform',
+              userId: result.cognitoSub || '',
+            },
+          );
+          if (notifResult.sent) {
+            this.logger.log(`Credential email sent to ${email} (msgId: ${notifResult.messageId})`);
+          } else {
+            this.logger.warn(`Credential email not sent for ${email}: ${notifResult.reason}`);
+          }
+        } catch (emailError: any) {
+          this.logger.error(`Failed to send credential email to ${email}: ${emailError.message}`);
+        }
+      }
 
       return {
         success: true,
