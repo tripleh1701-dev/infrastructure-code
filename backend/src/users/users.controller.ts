@@ -16,6 +16,8 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserWorkstreamsDto } from './dto/update-user-workstreams.dto';
+import { UpdateUserGroupsDto } from './dto/update-user-groups.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CognitoUserProvisioningService } from '../auth/cognito-user-provisioning.service';
 import { NotificationService } from '../common/notifications/notification.service';
@@ -238,9 +240,9 @@ export class UsersController {
   @Roles('admin', 'super_admin')
   async updateWorkstreams(
     @Param('id') id: string,
-    @Body() workstreamIds: string[],
+    @Body() body: UpdateUserWorkstreamsDto,
   ) {
-    return this.usersService.updateWorkstreams(id, workstreamIds);
+    return this.usersService.updateWorkstreams(id, body.workstreamIds);
   }
 
   // User Groups
@@ -254,7 +256,7 @@ export class UsersController {
   @Roles('admin', 'super_admin')
   async updateUserGroups(
     @Param('id') id: string,
-    @Body() body: { groupIds: string[] },
+    @Body() body: UpdateUserGroupsDto,
   ) {
     return this.usersService.updateUserGroups(id, body.groupIds);
   }

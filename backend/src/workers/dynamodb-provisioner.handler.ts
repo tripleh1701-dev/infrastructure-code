@@ -58,6 +58,7 @@ export async function handler(event: ProvisionerEvent): Promise<ProvisionerResul
     || process.env.DATA_PLANE_TABLE_NAME
     || `account-admin-public-${environment}`;
   const templateBucket = process.env.CFN_TEMPLATE_BUCKET || `${projectName}-cfn-templates`;
+  const cfnExecutionRoleArn = process.env.CFN_EXECUTION_ROLE_ARN;
 
   const ssmClient = new SSMClient({ region });
   const cfnClient = new CloudFormationClient({ region });
@@ -77,6 +78,7 @@ export async function handler(event: ProvisionerEvent): Promise<ProvisionerResul
         projectName,
         templateBucket,
         region,
+        cfnExecutionRoleArn,
       });
     }
 
@@ -124,29 +126,12 @@ async function provisionPrivateAccount(
   cfnClient: CloudFormationClient,
   ssmClient: SSMClient,
   event: ProvisionerEvent,
-  config: { environment: string; projectName: string; templateBucket: string; region: string },
+  config: { environment: string; projectName: string; templateBucket: string; region: string; cfnExecutionRoleArn?: string },
 ): Promise<ProvisionerResult> {
   const stackName = `${config.projectName}-${config.environment}-account-${event.accountId}`;
-  const templateKey = `${config.environment}/private-account-dynamodb.yaml`;
-  const templateUrl = `https://${config.templateBucket}.s3.${config.region}.amazonaws.com/${templateKey}`;
 
-  // Ensure the CloudFormation template exists in S3
-  const s3Client = new S3Client({ region: config.region });
-  try {
-    await s3Client.send(new GetObjectCommand({
-      Bucket: config.templateBucket,
-      Key: templateKey,
-    }));
-  } catch {
-    // Template not in S3 yet — upload inline template
-    logger.log(`Uploading CloudFormation template to s3://${config.templateBucket}/${templateKey}`);
-    await s3Client.send(new PutObjectCommand({
-      Bucket: config.templateBucket,
-      Key: templateKey,
-      Body: PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE,
-      ContentType: 'text/yaml',
-    }));
-  }
+  // Use inline TemplateBody to avoid cross-account S3 access issues
+  const templateBody = PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE;
 
   // Update status to creating
   await ssmClient.send(
@@ -158,30 +143,51 @@ async function provisionPrivateAccount(
     }),
   );
 
+  // Build CreateStack params
+  const createStackParams: any = {
+    StackName: stackName,
+    TemplateBody: templateBody,
+    Parameters: [
+      { ParameterKey: 'AccountId', ParameterValue: event.accountId },
+      { ParameterKey: 'AccountName', ParameterValue: event.accountName },
+      { ParameterKey: 'Environment', ParameterValue: config.environment },
+      { ParameterKey: 'ProjectName', ParameterValue: config.projectName },
+      { ParameterKey: 'BillingMode', ParameterValue: event.billingMode || 'PAY_PER_REQUEST' },
+    ],
+    Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+    Tags: [
+      { Key: 'AccountId', Value: event.accountId },
+      { Key: 'AccountName', Value: event.accountName },
+      { Key: 'Environment', Value: config.environment },
+      { Key: 'CloudType', Value: 'private' },
+      { Key: 'ManagedBy', Value: 'StepFunctions-Worker' },
+    ],
+    OnFailure: 'ROLLBACK',
+  };
+
+  // Pass CFN execution role so CloudFormation has permissions to create resources
+  if (config.cfnExecutionRoleArn) {
+    createStackParams.RoleARN = config.cfnExecutionRoleArn;
+    logger.log(`Using CFN execution role: ${config.cfnExecutionRoleArn}`);
+  } else {
+    // Fallback: try SSM lookup
+    try {
+      const ssmPrefix = `/${config.projectName}/${config.environment}`;
+      const roleResult = await ssmClient.send(new GetParameterCommand({
+        Name: `${ssmPrefix}/cloudformation/execution-role-arn`,
+      }));
+      if (roleResult.Parameter?.Value) {
+        createStackParams.RoleARN = roleResult.Parameter.Value;
+        logger.log(`Resolved CFN execution role from SSM: ${roleResult.Parameter.Value}`);
+      }
+    } catch {
+      logger.warn('No CFN_EXECUTION_ROLE_ARN configured and SSM lookup failed');
+    }
+  }
+
   // Create CloudFormation stack (with retry for transient errors)
   const createResult = await retryWithBackoff(
-    () => cfnClient.send(
-      new CreateStackCommand({
-        StackName: stackName,
-        TemplateURL: templateUrl,
-        Parameters: [
-          { ParameterKey: 'AccountId', ParameterValue: event.accountId },
-          { ParameterKey: 'AccountName', ParameterValue: event.accountName },
-          { ParameterKey: 'Environment', ParameterValue: config.environment },
-          { ParameterKey: 'ProjectName', ParameterValue: config.projectName },
-          { ParameterKey: 'BillingMode', ParameterValue: event.billingMode || 'PAY_PER_REQUEST' },
-        ],
-        Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
-        Tags: [
-          { Key: 'AccountId', Value: event.accountId },
-          { Key: 'AccountName', Value: event.accountName },
-          { Key: 'Environment', Value: config.environment },
-          { Key: 'CloudType', Value: 'private' },
-          { Key: 'ManagedBy', Value: 'StepFunctions-Worker' },
-        ],
-        OnFailure: 'ROLLBACK',
-      }),
-    ),
+    () => cfnClient.send(new CreateStackCommand(createStackParams)),
     { maxAttempts: 3, label: 'CreateStack-Worker', retryIf: isTransientAwsError },
   );
 

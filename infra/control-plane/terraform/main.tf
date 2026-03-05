@@ -206,6 +206,7 @@ module "lambda" {
     SNS_PROVISIONING_TOPIC_ARN       = module.monitoring.provisioning_sns_topic_arn
     CFN_TEMPLATE_BUCKET              = module.frontend.bucket_name
     PIPELINE_EXECUTOR_FUNCTION       = module.pipeline_executor.function_name
+    CFN_EXECUTION_ROLE_ARN           = var.cfn_execution_role_arn
   }
 
   account_registry_dynamodb_arn = module.account_registry_dynamodb.table_arn
@@ -256,6 +257,7 @@ module "create_infra_worker" {
     DATA_PLANE_REGION           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
     SSM_PREFIX                  = local.ssm_prefix
     CFN_TEMPLATE_BUCKET         = module.frontend.bucket_name
+    CFN_EXECUTION_ROLE_ARN      = var.cfn_execution_role_arn
   }
 
   tags = local.common_tags

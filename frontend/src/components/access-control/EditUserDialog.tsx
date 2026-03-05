@@ -340,17 +340,24 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                 <Mail className="w-4 h-4 text-muted-foreground" />
                 Email Address *
               </Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="user@company.com"
-                className={cn(
-                  "h-11 transition-all focus:ring-2 focus:ring-primary/20",
-                  isEmailDuplicate && "border-destructive focus:border-destructive focus:ring-destructive/20"
+              <div className="relative">
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="user@company.com"
+                  className={cn(
+                    "h-11 pl-10 transition-all focus:ring-2 focus:ring-primary/20",
+                    isEmailDuplicate && "border-destructive focus:border-destructive focus:ring-destructive/20"
+                  )}
+                />
+                {isCheckingEmail && formData.email.trim() ? (
+                  <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
+                ) : (
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 )}
-              />
+              </div>
               {isEmailDuplicate && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5" />

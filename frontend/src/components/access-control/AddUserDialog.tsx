@@ -495,7 +495,11 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
               isEmailDuplicate && "border-destructive focus:border-destructive focus:ring-destructive/20"
             )}
           />
-          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          {isCheckingEmail && formData.email.trim() ? (
+            <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
+          ) : (
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          )}
         </div>
         {isEmailDuplicate && (
           <p className="text-sm text-destructive flex items-center gap-1.5">
@@ -695,7 +699,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
           enterpriseId={effectiveEnterpriseId}
           selectedIds={selectedWorkstreams}
           onSelectionChange={handleWorkstreamChange}
-          autoSelectDefault={formData.isTechnicalUser}
+          autoSelectDefault={true}
         />
         
         <p className="text-xs text-muted-foreground">
@@ -1084,7 +1088,12 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                   type="button"
                   onClick={handleSubmit}
                   disabled={!isAllValid || isPending || isSubmitBlocked}
-                  className="gap-2 min-w-[140px] bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg shadow-primary/30"
+                  className={cn(
+                    "gap-2 min-w-[140px]",
+                    (!isAllValid || isPending || isSubmitBlocked)
+                      ? "bg-muted text-muted-foreground cursor-not-allowed shadow-none"
+                      : "bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg shadow-primary/30"
+                  )}
                 >
                   {isPending ? (
                     <>

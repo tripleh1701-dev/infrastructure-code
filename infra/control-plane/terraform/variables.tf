@@ -99,6 +99,12 @@ variable "data_plane_region" {
   default     = ""
 }
 
+variable "cfn_execution_role_arn" {
+  description = "CloudFormation execution role ARN in the customer account for private-tier stack creation"
+  type        = string
+  default     = ""
+}
+
 # ---- Monitoring ----
 variable "alarm_email" {
   description = "Email for alarm notifications"
