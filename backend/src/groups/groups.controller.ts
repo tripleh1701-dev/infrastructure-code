@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -21,11 +22,18 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Controller('groups')
 @UseGuards(AccountGuard)
 export class GroupsController {
+  private readonly logger = new Logger(GroupsController.name);
+
   constructor(private readonly groupsService: GroupsService) {}
 
   @Get()
   async findAll(@Query('accountId') accountId?: string) {
-    return this.groupsService.findAll(accountId);
+    try {
+      return await this.groupsService.findAll(accountId);
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch groups for account ${accountId}: ${error.message}`, error.stack);
+      return [];
+    }
   }
 
   /**
@@ -39,7 +47,12 @@ export class GroupsController {
     @Query('accountId') accountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
   ) {
-    return this.groupsService.checkNameExists(name, accountId, enterpriseId);
+    try {
+      return await this.groupsService.checkNameExists(name, accountId, enterpriseId);
+    } catch (error: any) {
+      this.logger.error(`Failed to check group name: ${error.message}`, error.stack);
+      return [];
+    }
   }
 
   @Get(':id')

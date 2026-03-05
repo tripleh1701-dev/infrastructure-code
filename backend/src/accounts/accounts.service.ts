@@ -265,6 +265,7 @@ export class AccountsService {
     // Add technical user
     if (dto.technicalUser) {
       const techUserId = uuidv4();
+      // Store as TECH_USER under account partition (for account detail view)
       operations.push({
         Put: {
           Item: {
@@ -275,6 +276,36 @@ export class AccountsService {
             id: techUserId,
             accountId: id,
             ...dto.technicalUser,
+            isTechnicalUser: true,
+            status: 'active',
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+      });
+
+      // Also store as USER# record so it appears in Access Control users list
+      // (queried via GSI2PK = ACCOUNT#<accountId>#USERS)
+      operations.push({
+        Put: {
+          Item: {
+            PK: `USER#${techUserId}`,
+            SK: 'METADATA',
+            GSI1PK: 'ENTITY#USER',
+            GSI1SK: `USER#${techUserId}`,
+            GSI2PK: `ACCOUNT#${id}#USERS`,
+            GSI2SK: `USER#${techUserId}`,
+            id: techUserId,
+            accountId: id,
+            enterpriseId: dto.licenses?.[0]?.enterpriseId || null,
+            firstName: dto.technicalUser.firstName,
+            lastName: dto.technicalUser.lastName,
+            middleName: dto.technicalUser.middleName || null,
+            email: dto.technicalUser.email,
+            assignedRole: dto.technicalUser.assignedRole || 'user',
+            assignedGroup: dto.technicalUser.assignedGroup || 'TechnicalUsers',
+            startDate: dto.technicalUser.startDate || now,
+            endDate: dto.technicalUser.endDate || null,
             isTechnicalUser: true,
             status: 'active',
             createdAt: now,
@@ -912,6 +943,7 @@ export class AccountsService {
     const techUser = pending.technicalUser;
     if (techUser) {
       const techUserId = uuidv4();
+      // Store as user list item in dedicated table
       await this.dynamoDbRouter.put(accountId, {
         Item: {
           PK: 'USER#LIST',
@@ -927,6 +959,36 @@ export class AccountsService {
           updatedAt: now,
         },
       });
+
+      // Also store as USER# record in control plane for Access Control visibility
+      // (queried via GSI2PK = ACCOUNT#<accountId>#USERS)
+      await this.dynamoDb.transactWrite([{
+        Put: {
+          Item: {
+            PK: `USER#${techUserId}`,
+            SK: 'METADATA',
+            GSI1PK: 'ENTITY#USER',
+            GSI1SK: `USER#${techUserId}`,
+            GSI2PK: `ACCOUNT#${accountId}#USERS`,
+            GSI2SK: `USER#${techUserId}`,
+            id: techUserId,
+            accountId,
+            enterpriseId: techUser.enterpriseId || null,
+            firstName: techUser.firstName,
+            lastName: techUser.lastName,
+            middleName: techUser.middleName || null,
+            email: techUser.email,
+            assignedRole: techUser.assignedRole || 'user',
+            assignedGroup: techUser.assignedGroup || 'TechnicalUsers',
+            startDate: techUser.startDate || now,
+            endDate: techUser.endDate || null,
+            isTechnicalUser: true,
+            status: 'active',
+            createdAt: now,
+            updatedAt: now,
+          },
+        },
+      }]);
     }
 
     // Replicate licenses from control plane to dedicated table

@@ -36,7 +36,12 @@ export class LicensesController {
     @Query('accountId') accountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
   ) {
-    return this.licensesService.findLicensedEntities({ accountId, enterpriseId });
+    try {
+      return await this.licensesService.findLicensedEntities({ accountId, enterpriseId });
+    } catch (error: any) {
+      this.logger.warn(`Failed to fetch licensed entities for account ${accountId}: ${error.message}`);
+      return { products: [], services: [] };
+    }
   }
 
   /**

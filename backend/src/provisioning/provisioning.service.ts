@@ -10,6 +10,7 @@ import {
   DescribeStacksCommand,
   DescribeStackResourcesCommand,
 } from '@aws-sdk/client-cloudformation';
+import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
 import { resolveAwsCredentials } from '../common/utils/aws-credentials';
 import { v4 as uuidv4 } from 'uuid';
 import { CloudType } from '../common/types/cloud-type';
@@ -21,8 +22,11 @@ const provisioningJobs = new Map<string, ProvisioningJobDto>();
 export class ProvisioningService {
   private readonly logger = new Logger(ProvisioningService.name);
   private cfnClient: CloudFormationClient;
+  private stsClient: STSClient;
   private readonly environment: string;
   private readonly projectName: string;
+  private readonly awsRegion: string;
+  private readonly dataPlaneRoleArn: string | undefined;
 
   constructor(
     private configService: ConfigService,
@@ -30,9 +34,10 @@ export class ProvisioningService {
     private metricsService: CloudWatchMetricsService,
     private snsNotificationService: SnsNotificationService,
   ) {
-    const awsRegion = this.configService.get('AWS_REGION', 'us-east-1');
+    this.awsRegion = this.configService.get('AWS_REGION', 'us-east-1');
     this.environment = this.configService.get('NODE_ENV', 'dev');
     this.projectName = this.configService.get('PROJECT_NAME', 'app');
+    this.dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
 
     const credentials = resolveAwsCredentials(
       this.configService.get<string>('AWS_ACCESS_KEY_ID'),
@@ -40,8 +45,43 @@ export class ProvisioningService {
     );
 
     this.cfnClient = new CloudFormationClient({
-      region: awsRegion,
+      region: this.awsRegion,
       ...(credentials && { credentials }),
+    });
+
+    this.stsClient = new STSClient({
+      region: this.awsRegion,
+      ...(credentials && { credentials }),
+    });
+  }
+
+  /**
+   * Get a CloudFormation client for the CUSTOMER account via STS AssumeRole.
+   * Falls back to Platform Admin client if DATA_PLANE_ROLE_ARN is not set.
+   */
+  private async getCrossAccountCfnClient(): Promise<CloudFormationClient> {
+    if (!this.dataPlaneRoleArn) {
+      return this.cfnClient;
+    }
+
+    const result = await this.stsClient.send(new AssumeRoleCommand({
+      RoleArn: this.dataPlaneRoleArn,
+      RoleSessionName: `provisioning-status-${Date.now()}`,
+      DurationSeconds: 900,
+    }));
+
+    if (!result.Credentials) {
+      this.logger.warn('Failed to assume data-plane role for status polling — using default client');
+      return this.cfnClient;
+    }
+
+    return new CloudFormationClient({
+      region: this.awsRegion,
+      credentials: {
+        accessKeyId: result.Credentials.AccessKeyId!,
+        secretAccessKey: result.Credentials.SecretAccessKey!,
+        sessionToken: result.Credentials.SessionToken!,
+      },
     });
   }
 
@@ -207,7 +247,30 @@ export class ProvisioningService {
 
       const durationMs = Date.now() - startTime;
 
-      // Update job with success
+      // If the provisioner signals that the stack is still being created (async),
+      // keep the job in "in_progress" — do NOT mark completed yet.
+      // The status endpoint will poll CloudFormation for real-time updates.
+      if (result.inProgress) {
+        job.status = 'in_progress';
+        job.message = result.message;
+        job.progress = 25; // Stack creation initiated
+        job.stackId = result.stackId;
+        
+        // Update resource statuses to 'creating'
+        job.resources = job.resources.map((r) => ({
+          ...r,
+          status: 'creating' as const,
+        }));
+
+        this.logger.log(
+          `Provisioning initiated for account: ${dto.accountId} — stack creation in progress in customer account`,
+        );
+
+        // Don't emit completion metrics yet — they'll come when the stack finishes
+        return;
+      }
+
+      // Stack was already complete or this is a public account — mark as completed
       job.status = 'completed';
       job.message = result.message;
       job.progress = 100;
@@ -292,9 +355,12 @@ export class ProvisioningService {
     const stackName = `${this.projectName}-${this.environment}-account-${job.accountId}`;
 
     try {
+      // Use cross-account client to poll CUSTOMER account CloudFormation
+      const customerCfnClient = await this.getCrossAccountCfnClient();
+
       const [stackResult, resourcesResult] = await Promise.all([
-        this.cfnClient.send(new DescribeStacksCommand({ StackName: stackName })),
-        this.cfnClient.send(new DescribeStackResourcesCommand({ StackName: stackName })),
+        customerCfnClient.send(new DescribeStacksCommand({ StackName: stackName })),
+        customerCfnClient.send(new DescribeStackResourcesCommand({ StackName: stackName })),
       ]);
 
       const stack = stackResult.Stacks?.[0];

@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -21,6 +22,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Controller('roles')
 @UseGuards(AccountGuard)
 export class RolesController {
+  private readonly logger = new Logger(RolesController.name);
+
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
@@ -28,7 +31,12 @@ export class RolesController {
     @Query('accountId') accountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
   ) {
-    return this.rolesService.findAll(accountId, enterpriseId);
+    try {
+      return await this.rolesService.findAll(accountId, enterpriseId);
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch roles: ${error.message}`, error.stack);
+      return [];
+    }
   }
 
   /**

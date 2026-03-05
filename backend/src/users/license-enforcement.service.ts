@@ -156,6 +156,7 @@ export class LicenseEnforcementService {
       ExpressionAttributeValues: {
         ':pk': `ACCOUNT#${accountId}`,
         ':sk': 'TECH_USER#',
+        ':active': 'active',
       },
       FilterExpression: '#status = :active',
       ExpressionAttributeNames: { '#status': 'status' },

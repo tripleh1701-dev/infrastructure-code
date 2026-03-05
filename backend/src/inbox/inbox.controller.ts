@@ -41,19 +41,27 @@ export class InboxController {
 
   @Get()
   async listNotifications(@CurrentUser() user: CognitoUser) {
-    return this.inboxService.listForUser(
-      user.accountId!,
-      user.email,
-    );
+    try {
+      return await this.inboxService.listForUser(
+        user.accountId || '',
+        user.email,
+      );
+    } catch (error: any) {
+      return [];
+    }
   }
 
   @Get('count')
   async getPendingCount(@CurrentUser() user: CognitoUser) {
-    const count = await this.inboxService.getPendingCount(
-      user.accountId!,
-      user.email,
-    );
-    return { count };
+    try {
+      const count = await this.inboxService.getPendingCount(
+        user.accountId || '',
+        user.email,
+      );
+      return { count };
+    } catch (error: any) {
+      return { count: 0 };
+    }
   }
 
   /**

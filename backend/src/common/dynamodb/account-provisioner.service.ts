@@ -20,12 +20,24 @@ import {
   PutObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
+import {
+  STSClient,
+  AssumeRoleCommand,
+  GetCallerIdentityCommand,
+} from '@aws-sdk/client-sts';
 import { ProvisioningEventsService } from '../events/provisioning-events.service';
 import { resolveAwsCredentials } from '../utils/aws-credentials';
 import { retryWithBackoff, isTransientAwsError } from '../utils/retry';
 import { PRIVATE_ACCOUNT_DYNAMODB_TEMPLATE } from '../cloudformation/private-account-template';
 import { v4 as uuidv4 } from 'uuid';
 import { CloudType } from '../types/cloud-type';
+
+interface AssumedCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken: string;
+  expiration: Date;
+}
 
 export interface ProvisioningConfig {
   accountId: string;
@@ -46,6 +58,7 @@ export interface ProvisioningResult {
   stackId?: string;
   cloudType: CloudType;
   message: string;
+  inProgress?: boolean; // true when stack creation is still ongoing (async)
 }
 
 export interface ProvisioningStatus {
@@ -73,11 +86,17 @@ export class AccountProvisionerService {
   private cfnClient: CloudFormationClient;
   private ssmClient: SSMClient;
   private s3Client: S3Client;
+  private stsClient: STSClient;
   
   private readonly environment: string;
   private readonly projectName: string;
   private readonly templateBucket: string;
   private readonly awsRegion: string;
+  private readonly dataPlaneRoleArn: string | undefined;
+
+  // Cache for assumed credentials (keyed by accountId)
+  private assumedCredentialsCache = new Map<string, AssumedCredentials>();
+  private readonly CREDENTIALS_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 min buffer
 
   constructor(
     private configService: ConfigService,
@@ -87,12 +106,14 @@ export class AccountProvisionerService {
     this.environment = this.configService.get('NODE_ENV', 'dev');
     this.projectName = this.configService.get('PROJECT_NAME', 'app');
     this.templateBucket = this.configService.get('CFN_TEMPLATE_BUCKET', `${this.projectName}-cfn-templates`);
+    this.dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
 
     const credentials = resolveAwsCredentials(
       this.configService.get<string>('AWS_ACCESS_KEY_ID'),
       this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
     );
 
+    // Platform Admin account clients (for S3 template uploads, etc.)
     this.cfnClient = new CloudFormationClient({
       region: this.awsRegion,
       ...(credentials && { credentials }),
@@ -106,6 +127,121 @@ export class AccountProvisionerService {
     this.s3Client = new S3Client({
       region: this.awsRegion,
       ...(credentials && { credentials }),
+    });
+
+    this.stsClient = new STSClient({
+      region: this.awsRegion,
+      ...(credentials && { credentials }),
+    });
+
+    if (!this.dataPlaneRoleArn) {
+      this.logger.warn('DATA_PLANE_ROLE_ARN not set — private account provisioning will use default credentials (Platform Admin account)');
+    } else {
+      this.logger.log(`AccountProvisioner initialized. Data-plane role: ${this.dataPlaneRoleArn}`);
+    }
+  }
+
+  // =============================================================================
+  // Cross-Account Credential Management
+  // =============================================================================
+
+  /**
+   * Assume the DATA_PLANE_ROLE_ARN to get temporary credentials for
+   * accessing the customer AWS account (CloudFormation, DynamoDB, SSM).
+   */
+  private async assumeDataPlaneRole(accountId: string): Promise<AssumedCredentials> {
+    const cached = this.assumedCredentialsCache.get(accountId);
+    if (cached && cached.expiration.getTime() - Date.now() > this.CREDENTIALS_REFRESH_BUFFER_MS) {
+      return cached;
+    }
+
+    if (!this.dataPlaneRoleArn) {
+      throw new Error('DATA_PLANE_ROLE_ARN is not configured — cannot assume cross-account role for provisioning');
+    }
+
+    this.logger.debug(`Assuming data-plane role for account ${accountId}`);
+
+    const result = await this.stsClient.send(new AssumeRoleCommand({
+      RoleArn: this.dataPlaneRoleArn,
+      RoleSessionName: `provisioner-${accountId}-${Date.now()}`,
+      DurationSeconds: 3600,
+      Tags: [
+        { Key: 'AccountId', Value: accountId },
+        { Key: 'Service', Value: 'AccountProvisioner' },
+      ],
+    }));
+
+    if (!result.Credentials) {
+      throw new Error(`Failed to assume role ${this.dataPlaneRoleArn} for account ${accountId}`);
+    }
+
+    const assumed: AssumedCredentials = {
+      accessKeyId: result.Credentials.AccessKeyId!,
+      secretAccessKey: result.Credentials.SecretAccessKey!,
+      sessionToken: result.Credentials.SessionToken!,
+      expiration: result.Credentials.Expiration!,
+    };
+
+    this.assumedCredentialsCache.set(accountId, assumed);
+
+    // Verify which AWS account we landed in
+    const identityClient = new STSClient({
+      region: this.awsRegion,
+      credentials: {
+        accessKeyId: assumed.accessKeyId,
+        secretAccessKey: assumed.secretAccessKey,
+        sessionToken: assumed.sessionToken,
+      },
+    });
+    const identity = await identityClient.send(new GetCallerIdentityCommand({}));
+    this.logger.log(
+      `[CrossAccount] Assumed role for tenant ${accountId} → ` +
+      `AWS Account: ${identity.Account}, ` +
+      `ARN: ${identity.Arn}, ` +
+      `expires: ${assumed.expiration.toISOString()}`,
+    );
+
+    return assumed;
+  }
+
+  /**
+   * Get a CloudFormation client with cross-account credentials (customer account).
+   * Falls back to default credentials if DATA_PLANE_ROLE_ARN is not set.
+   */
+  private async getCrossAccountCfnClient(accountId: string): Promise<CloudFormationClient> {
+    if (!this.dataPlaneRoleArn) {
+      this.logger.warn(`No DATA_PLANE_ROLE_ARN — using default CFN client (Platform Admin account)`);
+      return this.cfnClient;
+    }
+
+    const assumed = await this.assumeDataPlaneRole(accountId);
+    return new CloudFormationClient({
+      region: this.awsRegion,
+      credentials: {
+        accessKeyId: assumed.accessKeyId,
+        secretAccessKey: assumed.secretAccessKey,
+        sessionToken: assumed.sessionToken,
+      },
+    });
+  }
+
+  /**
+   * Get an SSM client with cross-account credentials (customer account).
+   * Falls back to default credentials if DATA_PLANE_ROLE_ARN is not set.
+   */
+  private async getCrossAccountSsmClient(accountId: string): Promise<SSMClient> {
+    if (!this.dataPlaneRoleArn) {
+      return this.ssmClient;
+    }
+
+    const assumed = await this.assumeDataPlaneRole(accountId);
+    return new SSMClient({
+      region: this.awsRegion,
+      credentials: {
+        accessKeyId: assumed.accessKeyId,
+        secretAccessKey: assumed.secretAccessKey,
+        sessionToken: assumed.sessionToken,
+      },
     });
   }
 
@@ -219,23 +355,27 @@ export class AccountProvisionerService {
   }
 
   /**
-   * Provision a private cloud account (creates dedicated table)
+   * Provision a private cloud account (creates dedicated table in CUSTOMER account)
+   * Uses cross-account role assumption to create resources in the customer's AWS account.
    */
   private async provisionPrivateAccount(config: ProvisioningConfig): Promise<ProvisioningResult> {
     const stackName = `${this.projectName}-${this.environment}-account-${config.accountId}`;
-    // Derive the expected table name from the CFN template naming convention
     const expectedTableName = `${this.projectName}-${this.environment}-${config.accountId}`;
 
+    // Get cross-account clients for the CUSTOMER account
+    const customerCfnClient = await this.getCrossAccountCfnClient(config.accountId);
+    const customerSsmClient = await this.getCrossAccountSsmClient(config.accountId);
+
     try {
-      // Set provisioning status to creating
+      // Set provisioning status to creating (in Platform Admin SSM)
       await this.updateProvisioningStatus(config.accountId, 'creating');
 
-      // Check if stack already exists (handles retries / re-provisioning)
+      // Check if stack already exists in CUSTOMER account
       let stackId: string | undefined;
       let stackAlreadyComplete = false;
 
       try {
-        const describeResult = await this.cfnClient.send(new DescribeStacksCommand({
+        const describeResult = await customerCfnClient.send(new DescribeStacksCommand({
           StackName: stackName,
         }));
         const existingStack = describeResult.Stacks?.[0];
@@ -243,34 +383,28 @@ export class AccountProvisionerService {
         if (existingStack) {
           const status = existingStack.StackStatus;
           stackId = existingStack.StackId;
-          this.logger.log(`Stack ${stackName} already exists with status: ${status}`);
+          this.logger.log(`Stack ${stackName} already exists in customer account with status: ${status}`);
 
           if (status === 'CREATE_COMPLETE' || status === 'UPDATE_COMPLETE') {
-            // Stack is already done — skip creation, just ensure SSM params
             stackAlreadyComplete = true;
             this.logger.log(`Stack ${stackName} already complete — reusing existing infrastructure`);
           } else if (status === 'ROLLBACK_COMPLETE' || status === 'DELETE_COMPLETE') {
-            // Previous attempt failed and rolled back — delete remnant and recreate
             this.logger.log(`Stack ${stackName} in ${status} — deleting before recreation`);
-            await this.cfnClient.send(new DeleteStackCommand({ StackName: stackName }));
-            // Wait briefly for delete to propagate
+            await customerCfnClient.send(new DeleteStackCommand({ StackName: stackName }));
             await new Promise(resolve => setTimeout(resolve, 5000));
-            stackId = undefined; // will recreate below
+            stackId = undefined;
           } else if (
             status === 'CREATE_IN_PROGRESS' ||
             status === 'UPDATE_IN_PROGRESS'
           ) {
-            // Stack is still being created — just attach the background watcher
             this.logger.log(`Stack ${stackName} creation already in progress — attaching watcher`);
           } else {
-            // Other states (DELETE_IN_PROGRESS, UPDATE_ROLLBACK_IN_PROGRESS, etc.)
             throw new BadRequestException(
               `Stack ${stackName} is in state ${status} and cannot be re-provisioned. Please wait or contact support.`,
             );
           }
         }
       } catch (error: any) {
-        // Stack does not exist — proceed with creation
         if (error.name !== 'ValidationError' && !(error instanceof BadRequestException)) {
           throw error;
         }
@@ -278,15 +412,15 @@ export class AccountProvisionerService {
 
       // Only create the stack if it doesn't already exist
       if (!stackId) {
-        // Upload CloudFormation template to S3 if needed
+        // Upload CloudFormation template to S3 (in Platform Admin account)
         const templateUrl = await retryWithBackoff(
           () => this.ensureTemplateUploaded(),
           { maxAttempts: 3, label: 'EnsureTemplateUploaded' },
         );
 
-        // Create CloudFormation stack (retry on transient errors)
+        // Create CloudFormation stack in CUSTOMER account
         const createStackResult = await retryWithBackoff(
-          () => this.cfnClient.send(new CreateStackCommand({
+          () => customerCfnClient.send(new CreateStackCommand({
             StackName: stackName,
             TemplateURL: templateUrl,
             Parameters: [
@@ -317,9 +451,16 @@ export class AccountProvisionerService {
         stackId = createStackResult.StackId;
       }
 
-      this.logger.log(`CloudFormation stack initiated: ${stackId}`);
+      // Log the target AWS account from the stack ARN for audit trail
+      const stackAccountId = stackId?.split(':')[4] || 'unknown';
+      this.logger.log(
+        `[CrossAccount] CloudFormation stack created → ` +
+        `Stack: ${stackName}, ` +
+        `Target AWS Account: ${stackAccountId}, ` +
+        `StackId: ${stackId}`,
+      );
 
-      // Pre-register SSM table-name so DynamoDB routing works once the table is ready
+      // Pre-register SSM params in PLATFORM ADMIN account for routing
       await this.ssmClient.send(new PutParameterCommand({
         Name: `/accounts/${config.accountId}/cloud-type`,
         Value: 'private',
@@ -337,7 +478,6 @@ export class AccountProvisionerService {
       }));
 
       if (stackAlreadyComplete) {
-        // Stack is already done — mark as active immediately
         await this.updateProvisioningStatus(config.accountId, 'active');
         this.logger.log(
           `Private account ${config.accountId} reused existing stack. Table: ${expectedTableName}`,
@@ -352,8 +492,8 @@ export class AccountProvisionerService {
         };
       }
 
-      // Fire-and-forget: wait for stack completion in background, then finalize
-      this.waitAndFinalizeStack(stackName, config.accountId, expectedTableName)
+      // Fire-and-forget: wait for stack completion in background using CUSTOMER account client
+      this.waitAndFinalizeStack(stackName, config.accountId, expectedTableName, customerCfnClient)
         .catch((err) => {
           this.logger.error(
             `Background stack finalization failed for ${config.accountId}: ${err.message}`,
@@ -362,15 +502,17 @@ export class AccountProvisionerService {
         });
 
       this.logger.log(
-        `Private account ${config.accountId} provisioning started (async). Expected table: ${expectedTableName}`,
+        `Private account ${config.accountId} provisioning started (async) in CUSTOMER account. Expected table: ${expectedTableName}`,
       );
 
+      // Return with in_progress status — NOT completed. The background watcher will finalize.
       return {
         success: true,
         tableName: expectedTableName,
         stackId,
         cloudType: 'private',
-        message: `Provisioning started. Table will be ready shortly: ${expectedTableName}`,
+        inProgress: true, // Signal that provisioning is still ongoing
+        message: `Provisioning started in customer account. Table will be ready shortly: ${expectedTableName}`,
       };
     } catch (error: any) {
       this.logger.error(`Failed to initiate private account provisioning: ${error.message}`);
@@ -380,21 +522,25 @@ export class AccountProvisionerService {
   }
 
   /**
-   * Background task: wait for CFN stack completion and finalize SSM status.
+   * Background task: wait for CFN stack completion in CUSTOMER account and finalize SSM status.
    */
   private async waitAndFinalizeStack(
     stackName: string,
     accountId: string,
     expectedTableName: string,
+    cfnClient?: CloudFormationClient,
   ): Promise<void> {
+    // Use the provided cross-account client, or get a fresh one
+    const customerCfnClient = cfnClient || await this.getCrossAccountCfnClient(accountId);
+
     try {
       await waitUntilStackCreateComplete(
-        { client: this.cfnClient, maxWaitTime: 600 },
+        { client: customerCfnClient, maxWaitTime: 600 },
         { StackName: stackName },
       );
 
-      // Get the outputs from the completed stack
-      const describeResult = await this.cfnClient.send(new DescribeStacksCommand({
+      // Get the outputs from the completed stack in CUSTOMER account
+      const describeResult = await customerCfnClient.send(new DescribeStacksCommand({
         StackName: stackName,
       }));
 
@@ -406,7 +552,7 @@ export class AccountProvisionerService {
         throw new Error('Stack created but table name output not found');
       }
 
-      // Update SSM with actual table name if different from expected
+      // Update SSM in PLATFORM ADMIN account with actual table name
       if (tableName !== expectedTableName) {
         await this.ssmClient.send(new PutParameterCommand({
           Name: `/accounts/${accountId}/dynamodb/table-name`,
@@ -426,7 +572,7 @@ export class AccountProvisionerService {
       }
 
       await this.updateProvisioningStatus(accountId, 'active');
-      this.logger.log(`Private account ${accountId} stack completed. Table: ${tableName}`);
+      this.logger.log(`Private account ${accountId} stack completed in customer account. Table: ${tableName}`);
     } catch (error: any) {
       this.logger.error(`Stack creation failed for ${accountId}: ${error.message}`);
       await this.updateProvisioningStatus(accountId, 'failed', error.message);
@@ -450,28 +596,29 @@ export class AccountProvisionerService {
     );
 
     try {
-      // Check if this is a private account with a dedicated stack
+      // Check if this is a private account with a dedicated stack in CUSTOMER account
       const stackName = `${this.projectName}-${this.environment}-account-${accountId}`;
+      const customerCfnClient = await this.getCrossAccountCfnClient(accountId);
 
       try {
-        const describeResult = await this.cfnClient.send(new DescribeStacksCommand({
+        const describeResult = await customerCfnClient.send(new DescribeStacksCommand({
           StackName: stackName,
         }));
 
         if (describeResult.Stacks?.length) {
-          // Delete the CloudFormation stack
+          // Delete the CloudFormation stack in CUSTOMER account
           await this.updateProvisioningStatus(accountId, 'deleting');
 
-          await this.cfnClient.send(new DeleteStackCommand({
+          await customerCfnClient.send(new DeleteStackCommand({
             StackName: stackName,
           }));
 
           await waitUntilStackDeleteComplete(
-            { client: this.cfnClient, maxWaitTime: 600 },
+            { client: customerCfnClient, maxWaitTime: 600 },
             { StackName: stackName },
           );
 
-          this.logger.log(`Stack ${stackName} deleted successfully`);
+          this.logger.log(`Stack ${stackName} deleted from customer account successfully`);
         }
       } catch (error: any) {
         if (error.name !== 'ValidationError') {

@@ -253,14 +253,16 @@ export class DynamoDBRouterService implements OnModuleInit {
 
   /**
    * Get full table configuration for an account from SSM.
-   * Uses cross-account credentials when DATA_PLANE_ROLE_ARN is configured.
+   * 
+   * SSM routing parameters are always stored in the Platform Admin account
+   * (written by AccountProvisionerService and the backfill script).
+   * We always use the default (Platform Admin) SSM client here.
+   * The cross-account role is only needed for DynamoDB data access, not SSM lookups.
    */
   private async getAccountTableConfig(accountId: string): Promise<TableConfig | null> {
     try {
-      // Use cross-account SSM client if role is configured
-      const ssmClient = this.dataPlaneRoleArn
-        ? await this.getCrossAccountSsmClient(accountId)
-        : this.ssmClient;
+      // Always read SSM from Platform Admin account (where params are written)
+      const ssmClient = this.ssmClient;
 
       const [tableNameResult, cloudTypeResult] = await Promise.all([
         ssmClient.send(new GetParameterCommand({
@@ -349,10 +351,8 @@ export class DynamoDBRouterService implements OnModuleInit {
     const accounts: { accountId: string; tableName: string }[] = [];
     let nextToken: string | undefined;
 
-    // Use cross-account SSM if available
-    const ssmClient = this.dataPlaneRoleArn
-      ? await this.getCrossAccountSsmClient('list-all')
-      : this.ssmClient;
+    // SSM routing params are always in the Platform Admin account
+    const ssmClient = this.ssmClient;
 
     do {
       const result = await ssmClient.send(new GetParametersByPathCommand({
