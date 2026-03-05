@@ -317,7 +317,6 @@ export class AccountProvisionerService {
         stackId = createStackResult.StackId;
       }
 
-      const stackId = createStackResult.StackId;
       this.logger.log(`CloudFormation stack initiated: ${stackId}`);
 
       // Pre-register SSM table-name so DynamoDB routing works once the table is ready
