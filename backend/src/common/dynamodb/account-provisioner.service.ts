@@ -137,7 +137,7 @@ export class AccountProvisionerService {
     });
 
     if (!this.dataPlaneRoleArn) {
-      this.logger.warn('DATA_PLANE_ROLE_ARN not set — private account provisioning will use default credentials (Platform Admin account)');
+      this.logger.warn('DATA_PLANE_ROLE_ARN not set — private account provisioning is blocked to prevent provisioning in Platform Admin account');
     } else {
       this.logger.log(`AccountProvisioner initialized. Data-plane role: ${this.dataPlaneRoleArn}`);
     }
@@ -208,12 +208,13 @@ export class AccountProvisionerService {
 
   /**
    * Get a CloudFormation client with cross-account credentials (customer account).
-   * Falls back to default credentials if DATA_PLANE_ROLE_ARN is not set.
+   * Throws if DATA_PLANE_ROLE_ARN is not configured to prevent provisioning in Platform Admin account.
    */
   private async getCrossAccountCfnClient(accountId: string): Promise<CloudFormationClient> {
     if (!this.dataPlaneRoleArn) {
-      this.logger.warn(`No DATA_PLANE_ROLE_ARN — using default CFN client (Platform Admin account)`);
-      return this.cfnClient;
+      throw new BadRequestException(
+        'DATA_PLANE_ROLE_ARN is required for private account provisioning. Refusing to create CloudFormation stack in Platform Admin account.',
+      );
     }
 
     const assumed = await this.assumeDataPlaneRole(accountId);
@@ -229,11 +230,13 @@ export class AccountProvisionerService {
 
   /**
    * Get an SSM client with cross-account credentials (customer account).
-   * Falls back to default credentials if DATA_PLANE_ROLE_ARN is not set.
+   * Throws if DATA_PLANE_ROLE_ARN is not configured to prevent writes in Platform Admin account.
    */
   private async getCrossAccountSsmClient(accountId: string): Promise<SSMClient> {
     if (!this.dataPlaneRoleArn) {
-      return this.ssmClient;
+      throw new BadRequestException(
+        'DATA_PLANE_ROLE_ARN is required for private account provisioning. Refusing to write customer-account parameters from Platform Admin account.',
+      );
     }
 
     const assumed = await this.assumeDataPlaneRole(accountId);

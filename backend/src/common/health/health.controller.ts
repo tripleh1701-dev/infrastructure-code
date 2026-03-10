@@ -1,4 +1,5 @@
 import { Controller, Get, Param, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Public } from '../../auth/decorators/public.decorator';
 import { DynamoDBRouterService } from '../dynamodb/dynamodb-router.service';
 
@@ -12,7 +13,10 @@ interface CheckResult {
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
 
-  constructor(private readonly dynamoRouter: DynamoDBRouterService) {}
+  constructor(
+    private readonly dynamoRouter: DynamoDBRouterService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * Basic health check — no auth required
@@ -24,6 +28,34 @@ export class HealthController {
       status: 'ok',
       timestamp: new Date().toISOString(),
       sharedTable: this.dynamoRouter.getSharedTableName(),
+    };
+  }
+
+  /**
+   * Reports whether critical cross-account environment variables are configured.
+   * Values are never exposed — only presence is reported.
+   */
+  @Get('config')
+  @Public()
+  configCheck() {
+    const vars = [
+      'DATA_PLANE_ROLE_ARN',
+      'CFN_EXECUTION_ROLE_ARN',
+      'PUBLIC_ACCOUNT_TABLE_NAME',
+      'DATA_PLANE_TABLE_NAME',
+    ];
+
+    const results: Record<string, boolean> = {};
+    for (const key of vars) {
+      results[key] = !!this.configService.get<string>(key);
+    }
+
+    const allConfigured = Object.values(results).every(Boolean);
+
+    return {
+      status: allConfigured ? 'ok' : 'incomplete',
+      timestamp: new Date().toISOString(),
+      variables: results,
     };
   }
 

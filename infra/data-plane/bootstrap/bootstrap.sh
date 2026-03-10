@@ -57,7 +57,7 @@ rm -f tfplan
 
 # ---- Validate cross-account access ----
 echo "[7/7] Validating cross-account access..."
-DATA_PLANE_ROLE=$(terraform output -raw data_plane_role_arn)
+DATA_PLANE_ROLE=$(terraform output -raw customer_account_role_arn)
 TABLE_NAME=$(terraform output -raw customer_dynamodb_table_name)
 
 echo "  Data Plane Role ARN:  ${DATA_PLANE_ROLE}"

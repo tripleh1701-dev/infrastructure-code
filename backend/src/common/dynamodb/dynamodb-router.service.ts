@@ -78,6 +78,9 @@ export class DynamoDBRouterService implements OnModuleInit {
   // Cache for cross-account DynamoDB doc clients
   private crossAccountDocClients: Map<string, { client: DynamoDBDocumentClient; expiresAt: number }> = new Map();
 
+  // Prevent log spam when private accounts run without cross-account role configured
+  private warnedMissingRoleAccounts: Set<string> = new Set();
+
   constructor(private configService: ConfigService) {}
 
   onModuleInit() {
@@ -165,9 +168,20 @@ export class DynamoDBRouterService implements OnModuleInit {
   }
 
   /**
-   * Get a DynamoDB DocumentClient with cross-account credentials
+   * Get a DynamoDB DocumentClient with cross-account credentials.
+   * Falls back to default client when DATA_PLANE_ROLE_ARN is not configured.
    */
   private async getCrossAccountDocClient(accountId: string): Promise<DynamoDBDocumentClient> {
+    if (!this.dataPlaneRoleArn) {
+      if (!this.warnedMissingRoleAccounts.has(accountId)) {
+        this.logger.warn(
+          `Account ${accountId} is marked private but DATA_PLANE_ROLE_ARN is not configured; using default DynamoDB client`,
+        );
+        this.warnedMissingRoleAccounts.add(accountId);
+      }
+      return this.docClient;
+    }
+
     const cached = this.crossAccountDocClients.get(accountId);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.client;
@@ -201,9 +215,14 @@ export class DynamoDBRouterService implements OnModuleInit {
   }
 
   /**
-   * Get an SSM client with cross-account credentials
+   * Get an SSM client with cross-account credentials.
+   * Falls back to default SSM client when DATA_PLANE_ROLE_ARN is not configured.
    */
   private async getCrossAccountSsmClient(accountId: string): Promise<SSMClient> {
+    if (!this.dataPlaneRoleArn) {
+      return this.ssmClient;
+    }
+
     const creds = await this.assumeDataPlaneRole(accountId);
     return new SSMClient({
       region: this.region,
@@ -383,6 +402,7 @@ export class DynamoDBRouterService implements OnModuleInit {
     this.tableCache.delete(accountId);
     this.assumedCredentialsCache.delete(accountId);
     this.crossAccountDocClients.delete(accountId);
+    this.warnedMissingRoleAccounts.delete(accountId);
     this.logger.log(`Cache invalidated for account ${accountId}`);
   }
 
@@ -393,6 +413,7 @@ export class DynamoDBRouterService implements OnModuleInit {
     this.tableCache.clear();
     this.assumedCredentialsCache.clear();
     this.crossAccountDocClients.clear();
+    this.warnedMissingRoleAccounts.clear();
     this.logger.log('All caches cleared');
   }
 
@@ -412,9 +433,17 @@ export class DynamoDBRouterService implements OnModuleInit {
       return { docClient: this.docClient, tableName };
     }
 
-    // Private account — use cross-account client
-    const docClient = await this.getCrossAccountDocClient(accountId);
-    return { docClient, tableName };
+    // Check cloud type — only private accounts may need cross-account credentials.
+    // Public customer accounts use a different table name but reside in the
+    // same (Platform Admin) AWS account, so default credentials suffice.
+    const cloudType = await this.getCloudType(accountId);
+    if (cloudType === 'private') {
+      const docClient = await this.getCrossAccountDocClient(accountId);
+      return { docClient, tableName };
+    }
+
+    // Public customer account — same AWS account, just a different table
+    return { docClient: this.docClient, tableName };
   }
 
   async get(accountId: string, params: Omit<GetCommandInput, 'TableName'>) {

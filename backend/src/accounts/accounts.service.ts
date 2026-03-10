@@ -198,6 +198,25 @@ export class AccountsService {
    * Create a new account with infrastructure provisioning based on cloud type
    */
   async create(dto: CreateAccountDto): Promise<Account> {
+    // ── Preflight: block private provisioning if cross-account config is missing ──
+    if (dto.cloudType === 'private' || dto.cloudType === 'hybrid') {
+      const dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
+      const cfnExecutionRoleArn = this.configService.get<string>('CFN_EXECUTION_ROLE_ARN');
+      const missing: string[] = [];
+      if (!dataPlaneRoleArn) missing.push('DATA_PLANE_ROLE_ARN');
+      if (!cfnExecutionRoleArn) missing.push('CFN_EXECUTION_ROLE_ARN');
+      if (missing.length > 0) {
+        this.logger.error(
+          `Preflight failed for ${dto.cloudType} account: missing ${missing.join(', ')}. ` +
+          `Refusing to proceed — infrastructure would be created in the Platform Admin account.`,
+        );
+        throw new BadRequestException(
+          `Cannot create ${dto.cloudType} account: required environment variables are not configured (${missing.join(', ')}). ` +
+          `Please ensure cross-account roles are bootstrapped before provisioning private infrastructure.`,
+        );
+      }
+    }
+
     const id = uuidv4();
     const now = new Date().toISOString();
     const t0 = Date.now();

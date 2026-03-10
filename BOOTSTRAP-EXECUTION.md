@@ -90,7 +90,7 @@ After Customer Account bootstrap, update the Platform Admin configuration:
 ```bash
 # 1. Get Customer Account outputs
 cd infra/data-plane/terraform
-CUSTOMER_ACCOUNT_ROLE=$(terraform output -raw data_plane_role_arn)
+CUSTOMER_ACCOUNT_ROLE=$(terraform output -raw customer_account_role_arn)
 TABLE_NAME=$(terraform output -raw customer_dynamodb_table_name)
 
 # 2. Update Platform Admin tfvars
