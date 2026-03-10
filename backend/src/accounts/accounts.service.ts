@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
@@ -73,6 +74,7 @@ export class AccountsService {
     private readonly dynamoDbRouter: DynamoDBRouterService,
     private readonly accountProvisioner: AccountProvisionerService,
     private readonly cognitoProvisioning: CognitoUserProvisioningService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
