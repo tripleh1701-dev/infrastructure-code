@@ -66,9 +66,15 @@ variable "enable_dynamodb" {
 }
 
 variable "data_plane_dynamodb_arn_pattern" {
-  description = "ARN pattern for same-account data-plane DynamoDB tables (e.g. arn:aws:dynamodb:us-east-1:123456:table/app-staging-*)"
+  description = "DEPRECATED: Use data_plane_dynamodb_arn_patterns instead"
   type        = string
   default     = ""
+}
+
+variable "data_plane_dynamodb_arn_patterns" {
+  description = "List of ARN patterns for same-account data-plane DynamoDB tables"
+  type        = list(string)
+  default     = []
 }
 
 variable "customer_account_role_arn" {

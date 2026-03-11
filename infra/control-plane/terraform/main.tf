@@ -181,7 +181,10 @@ module "lambda" {
   data_plane_role_arn             = var.data_plane_role_arn
   data_plane_dynamodb_name        = var.data_plane_dynamodb_name
   data_plane_region               = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
-  data_plane_dynamodb_arn_pattern = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
+  data_plane_dynamodb_arn_patterns = [
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*",
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/account-admin-public-${var.environment}"
+  ]
   cognito_user_pool_arn           = module.cognito.user_pool_arn
   enable_cognito                  = true
   enable_sns_publish              = module.monitoring.provisioning_sns_topic_arn != ""
@@ -243,7 +246,10 @@ module "create_infra_worker" {
   customer_account_role_arn = var.data_plane_role_arn
   enable_cloudformation     = true
   ssm_prefix                      = "${var.project_name}/${var.environment}"
-  data_plane_dynamodb_arn_pattern  = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
+  data_plane_dynamodb_arn_patterns = [
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*",
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/account-admin-public-${var.environment}"
+  ]
   vpc_subnet_ids                  = module.vpc.private_subnet_ids
   vpc_security_group_ids          = [module.vpc.lambda_security_group_id]
 
@@ -279,7 +285,10 @@ module "delete_infra_worker" {
   customer_account_role_arn = var.data_plane_role_arn
   enable_cloudformation     = true
   ssm_prefix                      = "${var.project_name}/${var.environment}"
-  data_plane_dynamodb_arn_pattern  = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
+  data_plane_dynamodb_arn_patterns = [
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*",
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/account-admin-public-${var.environment}"
+  ]
   vpc_subnet_ids                  = module.vpc.private_subnet_ids
   vpc_security_group_ids          = [module.vpc.lambda_security_group_id]
 
@@ -312,7 +321,10 @@ module "poll_infra_worker" {
   enable_cloudformation          = true
   enable_step_functions_callback = true
   ssm_prefix                     = "${var.project_name}/${var.environment}"
-  data_plane_dynamodb_arn_pattern = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*"
+  data_plane_dynamodb_arn_patterns = [
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*",
+    "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/account-admin-public-${var.environment}"
+  ]
   vpc_subnet_ids                 = module.vpc.private_subnet_ids
   vpc_security_group_ids         = [module.vpc.lambda_security_group_id]
 

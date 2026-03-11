@@ -52,9 +52,16 @@ resource "aws_iam_role_policy" "dynamodb" {
   })
 }
 
+locals {
+  _all_dp_patterns = compact(concat(
+    var.data_plane_dynamodb_arn_pattern != "" ? [var.data_plane_dynamodb_arn_pattern] : [],
+    var.data_plane_dynamodb_arn_patterns
+  ))
+}
+
 # Data-plane DynamoDB access (same-account customer tables)
 resource "aws_iam_role_policy" "data_plane_dynamodb" {
-  count = var.data_plane_dynamodb_arn_pattern != "" ? 1 : 0
+  count = length(local._all_dp_patterns) > 0 ? 1 : 0
   name  = "${var.function_name}-data-plane-dynamodb"
   role  = aws_iam_role.worker.id
 
@@ -67,7 +74,9 @@ resource "aws_iam_role_policy" "data_plane_dynamodb" {
         "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan",
         "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem", "dynamodb:DescribeTable"
       ]
-      Resource = [var.data_plane_dynamodb_arn_pattern, "${var.data_plane_dynamodb_arn_pattern}/index/*"]
+      Resource = flatten([
+        for p in local._all_dp_patterns : [p, "${p}/index/*"]
+      ])
     }]
   })
 }
