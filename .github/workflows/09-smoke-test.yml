@@ -399,7 +399,8 @@ jobs:
 
             # Check if status matches expected (support comma-separated list)
             MATCH=false
-            for EXP in $(echo "$EXPECTED" | tr ',' ' '); do
+            IFS=',' read -ra EXP_CODES <<< "$EXPECTED"
+            for EXP in "${EXP_CODES[@]}"; do
               if [ "$HTTP_CODE" == "$EXP" ]; then
                 MATCH=true
                 break
@@ -412,7 +413,8 @@ jobs:
             else
               FAILED=$((FAILED + 1))
               # Truncate response for summary
-              ERR_MSG=$(echo "$RESPONSE_BODY" | jq -r '.error.message // .message // "Unknown error"' 2>/dev/null | head -c 80)
+              ERR_MSG=$(echo "$RESPONSE_BODY" | jq -r '.error.message // .message // "Unknown error"' 2>/dev/null)
+              ERR_MSG="${ERR_MSG:0:80}"
               RESULTS="${RESULTS}\n| ${DESCRIPTION} | ❌ ${HTTP_CODE} | ${ERR_MSG} | \`${METHOD} ${PATH}\` |"
             fi
           }
@@ -481,7 +483,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Endpoint | Status | Details | Path |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|--------|---------|------|" >> $GITHUB_STEP_SUMMARY
-          echo -e "$RESULTS" >> $GITHUB_STEP_SUMMARY
+          printf '%b\n' "$RESULTS" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Summary" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
