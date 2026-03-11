@@ -51,12 +51,23 @@ const mockCognitoProvisioning = {
   createUser: jest.fn().mockResolvedValue({ created: true, cognitoSub: 'sub-123' }),
 };
 
+const mockConfigService = {
+  get: jest.fn((key: string) => {
+    const config: Record<string, string> = {
+      DATA_PLANE_ROLE_ARN: 'arn:aws:iam::123456789012:role/test-data-plane',
+      CFN_EXECUTION_ROLE_ARN: 'arn:aws:iam::123456789012:role/test-cfn-exec',
+    };
+    return config[key];
+  }),
+};
+
 function createService(): AccountsService {
   return new AccountsService(
     mockDynamoDb as any,
     mockDynamoDbRouter as any,
     mockAccountProvisioner as any,
     mockCognitoProvisioning as any,
+    mockConfigService as any,
   );
 }
 
