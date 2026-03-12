@@ -50,6 +50,12 @@ on:
         description: 'Type INIT to confirm'
         required: true
         type: string
+      target_environment:
+        description: 'Target environment to configure secrets for'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
       auto_set_secrets:
         description: 'Automatically set GitHub environment secrets (requires GH_PAT secret with repo scope)'
         required: false
@@ -613,8 +619,11 @@ jobs:
             exit 0
           fi
 
-          ENV="dev"
+          ENV="${{ inputs.target_environment }}"
           REPO="${{ github.repository }}"
+
+          echo "🔧 Ensuring GitHub environment '$ENV' exists..."
+          gh api --method PUT "repos/$REPO/environments/$ENV" --silent 2>/dev/null || echo "::warning::Could not auto-create environment '$ENV' — ensure it exists in Settings → Environments"
 
           echo "🔧 Setting repository variables..."
           gh variable set PROJECT_NAME --repo "$REPO" --body "${{ inputs.project_name }}" || echo "::warning::Failed to set PROJECT_NAME variable"
@@ -687,8 +696,9 @@ jobs:
             echo "gh variable set PROJECT_NAME --body \"${{ inputs.project_name }}\""
             echo "gh variable set AWS_REGION   --body \"${{ inputs.aws_region }}\""
             echo ""
-            echo "# Step 2: Set environment secrets (repeat for staging/prod)"
-            echo "ENV=dev"
+            echo "# Step 2: Create environment & set secrets"
+            echo "ENV=${{ inputs.target_environment }}"
+            echo "gh api --method PUT repos/\$(gh repo view --json nameWithOwner -q .nameWithOwner)/environments/\$ENV"
             echo ""
             echo "gh secret set PLATFORM_ADMIN_ROLE_ARN    --env \$ENV --body \"${PLATFORM_ADMIN_ROLE}\""
             echo "gh secret set CUSTOMER_ACCOUNT_ROLE_ARN  --env \$ENV --body \"${CUSTOMER_ACCOUNT_ROLE}\""
@@ -707,20 +717,21 @@ jobs:
             echo ""
             echo "### 🚀 Then run Bootstrap workflows:"
             echo '```bash'
-            echo "gh workflow run \"01 · Bootstrap Platform Admin\" -f environment=dev"
+            echo "gh workflow run \"01 · Bootstrap Platform Admin\" -f environment=${{ inputs.target_environment }}"
             echo "# Wait for completion, then:"
-            echo "gh workflow run \"02 · Bootstrap Customer Account\" -f environment=dev"
+            echo "gh workflow run \"02 · Bootstrap Customer Account\" -f environment=${{ inputs.target_environment }}"
             echo '```'
             echo ""
             echo "### After Bootstrap, set Terraform output secrets:"
             echo '```bash'
             echo "cd infra/control-plane/terraform"
-            echo "gh secret set VITE_API_BASE_URL         --env dev --body \"\$(terraform output -raw api_gateway_url)\""
-            echo "gh secret set VITE_COGNITO_USER_POOL_ID --env dev --body \"\$(terraform output -raw cognito_user_pool_id)\""
-            echo "gh secret set VITE_COGNITO_CLIENT_ID    --env dev --body \"\$(terraform output -raw cognito_client_id)\""
-            echo "gh secret set VITE_COGNITO_DOMAIN       --env dev --body \"\$(terraform output -raw cognito_domain)\""
-            echo "gh secret set COGNITO_USER_POOL_ID      --env dev --body \"\$(terraform output -raw cognito_user_pool_id)\""
-            echo "gh secret set DYNAMODB_TABLE_NAME       --env dev --body \"\$(terraform output -raw control_plane_dynamodb_table)\""
+            echo "ENV=${{ inputs.target_environment }}"
+            echo "gh secret set VITE_API_BASE_URL         --env \$ENV --body \"\$(terraform output -raw api_gateway_url)\""
+            echo "gh secret set VITE_COGNITO_USER_POOL_ID --env \$ENV --body \"\$(terraform output -raw cognito_user_pool_id)\""
+            echo "gh secret set VITE_COGNITO_CLIENT_ID    --env \$ENV --body \"\$(terraform output -raw cognito_client_id)\""
+            echo "gh secret set VITE_COGNITO_DOMAIN       --env \$ENV --body \"\$(terraform output -raw cognito_domain)\""
+            echo "gh secret set COGNITO_USER_POOL_ID      --env \$ENV --body \"\$(terraform output -raw cognito_user_pool_id)\""
+            echo "gh secret set DYNAMODB_TABLE_NAME       --env \$ENV --body \"\$(terraform output -raw control_plane_dynamodb_table)\""
             echo '```'
             echo ""
             echo "---"
