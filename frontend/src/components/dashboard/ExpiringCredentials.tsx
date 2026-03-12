@@ -16,9 +16,10 @@ import {
   Bell,
   Mail,
   Loader2,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format, differenceInDays, isPast } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAccountContext } from "@/contexts/AccountContext";
@@ -41,11 +42,11 @@ export function ExpiringCredentials() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSendingReminders, setIsSendingReminders] = useState(false);
-  
+
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
 
-  const { data: expiringCredentials = [], isLoading } = useQuery({
+  const { data: allCredentials = [], isLoading } = useQuery({
     queryKey: ["expiring-credentials", selectedAccount?.id, selectedEnterprise?.id],
     queryFn: async () => {
       if (isExternalApi()) {
@@ -80,24 +81,27 @@ export function ExpiringCredentials() {
         `)
         .not("expires_at", "is", null)
         .lte("expires_at", thirtyDaysFromNow.toISOString());
-      
+
       if (selectedAccount?.id) {
         query = query.eq("account_id", selectedAccount.id);
       }
-      
+
       if (selectedEnterprise?.id) {
         query = query.eq("enterprise_id", selectedEnterprise.id);
       }
-      
+
       const { data, error } = await query.order("expires_at", { ascending: true });
 
       if (error) throw error;
-      return (data as ExpiringCredential[]).filter(cred => {
-        const daysRemaining = differenceInDays(new Date(cred.expires_at), new Date());
-        return daysRemaining <= 30;
-      });
+      return data as ExpiringCredential[];
     },
   });
+
+  // Split into expired vs expiring
+  const now = new Date();
+  const expiredCredentials = allCredentials.filter((c) => new Date(c.expires_at) < now);
+  const expiringCredentials = allCredentials.filter((c) => new Date(c.expires_at) >= now);
+  const totalCount = allCredentials.length;
 
   const handleSendReminders = async () => {
     setIsSendingReminders(true);
@@ -113,7 +117,7 @@ export function ExpiringCredentials() {
         if (error) throw error;
         result = data;
       }
-      
+
       if (result.success) {
         toast.success(`Successfully sent ${result.emailsSent} credential expiry reminder${result.emailsSent !== 1 ? "s" : ""}. ${result.logged} logged to history.`);
         queryClient.invalidateQueries({ queryKey: ["credential-notification-history"] });
@@ -164,6 +168,80 @@ export function ExpiringCredentials() {
     return null;
   };
 
+  const renderCredentialCard = (credential: ExpiringCredential) => {
+    const daysRemaining = getDaysRemaining(credential.expires_at);
+    const isExpired = daysRemaining < 0;
+    return (
+      <div
+        key={credential.id}
+        className="flex gap-3 p-3 rounded-lg bg-[#f8fafc] border border-[#e2e8f0] hover:border-[#cbd5e1] transition-colors"
+      >
+        <div
+          className={cn(
+            "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+            isExpired || daysRemaining <= 7
+              ? "bg-destructive/10"
+              : daysRemaining <= 14
+              ? "bg-warning/10"
+              : "bg-muted"
+          )}
+        >
+          {isExpired ? (
+            <XCircle className="w-5 h-5 text-destructive" />
+          ) : (
+            <Calendar
+              className={cn(
+                "w-5 h-5",
+                daysRemaining <= 7
+                  ? "text-destructive"
+                  : daysRemaining <= 14
+                  ? "text-warning"
+                  : "text-muted-foreground"
+              )}
+            />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-[#0f172a] truncate">
+                  {credential.name}
+                </p>
+                {getUrgencyBadge(daysRemaining)}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <Layers className="w-3 h-3 text-[#64748b]" />
+                <span className="text-xs text-[#64748b] truncate">
+                  {credential.connector} • {credential.workstreams?.name || "Unknown Workstream"}
+                </span>
+              </div>
+            </div>
+            {credential.expiry_notify && (
+              <Bell className="w-4 h-4 text-success shrink-0" />
+            )}
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-1">
+              <span className={cn("text-xs font-medium", getUrgencyColor(daysRemaining))}>
+                {isExpired
+                  ? `Expired ${Math.abs(daysRemaining)} days ago`
+                  : `${daysRemaining} days left`}
+              </span>
+              <span className="text-xs text-[#94a3b8]">•</span>
+              <span className="text-xs text-[#64748b]">
+                {format(new Date(credential.expires_at), "MMM d, yyyy")}
+              </span>
+            </div>
+            <span className="text-xs text-[#64748b]">
+              {credential.accounts?.name || "Unknown"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <motion.div
@@ -195,10 +273,10 @@ export function ExpiringCredentials() {
           <div className="p-1.5 rounded-lg bg-destructive/10">
             <Key className="w-4 h-4 text-destructive" />
           </div>
-          <h3 className="font-semibold text-[#0f172a]">Expiring Credentials</h3>
+          <h3 className="font-semibold text-[#0f172a]">Credential Status</h3>
         </div>
         <div className="flex items-center gap-2">
-          {expiringCredentials.length > 0 && (
+          {totalCount > 0 && (
             <>
               <Button
                 type="button"
@@ -215,98 +293,67 @@ export function ExpiringCredentials() {
                 )}
                 Send Reminders
               </Button>
-              <span className="px-2 py-0.5 bg-destructive/10 text-destructive text-xs font-medium rounded-full">
-                {expiringCredentials.length} expiring
-              </span>
+              {expiredCredentials.length > 0 && (
+                <span className="px-2 py-0.5 bg-destructive/10 text-destructive text-xs font-medium rounded-full">
+                  {expiredCredentials.length} expired
+                </span>
+              )}
+              {expiringCredentials.length > 0 && (
+                <span className="px-2 py-0.5 bg-warning/10 text-warning text-xs font-medium rounded-full">
+                  {expiringCredentials.length} expiring
+                </span>
+              )}
             </>
           )}
         </div>
       </div>
 
       <div className="p-4">
-        {expiringCredentials.length === 0 ? (
+        {totalCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center mb-3">
               <Key className="w-6 h-6 text-success" />
             </div>
             <p className="text-sm font-medium text-[#0f172a]">All Clear!</p>
             <p className="text-xs text-[#64748b] mt-1">
-              No credentials expiring in the next 30 days
+              No expired or expiring credentials
             </p>
           </div>
         ) : (
-          <div className="space-y-3 max-h-[320px] overflow-y-auto">
-            {expiringCredentials.map((credential) => {
-              const daysRemaining = getDaysRemaining(credential.expires_at);
-              const isExpired = isPast(new Date(credential.expires_at));
-              return (
-                <div
-                  key={credential.id}
-                  className="flex gap-3 p-3 rounded-lg bg-[#f8fafc] border border-[#e2e8f0] hover:border-[#cbd5e1] transition-colors"
-                >
-                  <div
-                    className={cn(
-                      "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
-                      isExpired || daysRemaining <= 7
-                        ? "bg-destructive/10"
-                        : daysRemaining <= 14
-                        ? "bg-warning/10"
-                        : "bg-muted"
-                    )}
-                  >
-                    <Calendar
-                      className={cn(
-                        "w-5 h-5",
-                        isExpired || daysRemaining <= 7
-                          ? "text-destructive"
-                          : daysRemaining <= 14
-                          ? "text-warning"
-                          : "text-muted-foreground"
-                      )}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-[#0f172a] truncate">
-                            {credential.name}
-                          </p>
-                          {getUrgencyBadge(daysRemaining)}
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Layers className="w-3 h-3 text-[#64748b]" />
-                          <span className="text-xs text-[#64748b] truncate">
-                            {credential.connector} • {credential.workstreams?.name || "Unknown Workstream"}
-                          </span>
-                        </div>
-                      </div>
-                      {credential.expiry_notify && (
-                        <Bell className="w-4 h-4 text-success shrink-0" />
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center gap-1">
-                        <span className={cn("text-xs font-medium", getUrgencyColor(daysRemaining))}>
-                          {isExpired ? "Expired" : `${daysRemaining} days left`}
-                        </span>
-                        <span className="text-xs text-[#94a3b8]">•</span>
-                        <span className="text-xs text-[#64748b]">
-                          {format(new Date(credential.expires_at), "MMM d, yyyy")}
-                        </span>
-                      </div>
-                      <span className="text-xs text-[#64748b]">
-                        {credential.accounts?.name || "Unknown"}
-                      </span>
-                    </div>
-                  </div>
+          <div className="space-y-4 max-h-[400px] overflow-y-auto">
+            {/* Expired Section */}
+            {expiredCredentials.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <XCircle className="w-3.5 h-3.5 text-destructive" />
+                  <span className="text-xs font-semibold text-destructive uppercase tracking-wider">
+                    Expired ({expiredCredentials.length})
+                  </span>
                 </div>
-              );
-            })}
+                <div className="space-y-2">
+                  {expiredCredentials.map(renderCredentialCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Expiring Soon Section */}
+            {expiringCredentials.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                  <span className="text-xs font-semibold text-warning uppercase tracking-wider">
+                    Expiring in 30 Days ({expiringCredentials.length})
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {expiringCredentials.map(renderCredentialCard)}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {expiringCredentials.length > 0 && (
+        {totalCount > 0 && (
           <Button
             type="button"
             variant="link"

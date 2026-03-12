@@ -29,16 +29,16 @@ export interface Group {
   roles: GroupRole[];
 }
 
-export function useGroups(accountId?: string | null, enterpriseId?: string | null) {
+export function useGroups(accountId?: string | null, enterpriseId?: string | null, productId?: string | null) {
   return useQuery({
-    queryKey: ["groups", accountId, enterpriseId],
+    queryKey: ["groups", accountId, enterpriseId, productId],
     enabled: !!accountId,
     queryFn: async () => {
       if (isExternalApi()) {
         // Fetch groups and roles in parallel since backend doesn't store group-role associations
         const [groupsRes, rolesRes] = await Promise.all([
           httpClient.get<any[]>('/groups', {
-            params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
+            params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined, productId: productId || undefined },
           }),
           httpClient.get<any[]>('/roles'),
         ]);
@@ -84,6 +84,9 @@ export function useGroups(accountId?: string | null, enterpriseId?: string | nul
       }
       if (enterpriseId) {
         directQuery = directQuery.eq("enterprise_id", enterpriseId);
+      }
+      if (productId) {
+        directQuery = directQuery.or(`product_id.eq.${productId},product_id.is.null`);
       }
 
       const { data: directGroups, error: directError } = await directQuery;

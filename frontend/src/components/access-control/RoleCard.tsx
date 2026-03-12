@@ -37,9 +37,11 @@ interface RoleCardProps {
   index: number;
   onEdit: (role: Role) => void;
   onDelete: (role: Role) => void;
+  canEditAccess?: boolean;
+  canDeleteAccess?: boolean;
 }
 
-export function RoleCard({ role, index, onEdit, onDelete }: RoleCardProps) {
+export function RoleCard({ role, index, onEdit, onDelete, canEditAccess = true, canDeleteAccess = true }: RoleCardProps) {
   const [showScopes, setShowScopes] = useState(false);
   const permissionsQuery = useRolePermissions(role.id);
   const updatePermissionsMutation = useUpdateRolePermissions();
@@ -114,30 +116,36 @@ export function RoleCard({ role, index, onEdit, onDelete }: RoleCardProps) {
               </TooltipTrigger>
               <TooltipContent>View Scopes</TooltipContent>
             </Tooltip>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 rounded-lg"
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="rounded-xl shadow-xl border-slate-200">
-                <DropdownMenuItem onClick={() => onEdit(role)} className="rounded-lg">
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onDelete(role)}
-                  className="text-destructive focus:text-destructive rounded-lg"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {(canEditAccess || canDeleteAccess) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 rounded-lg"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="rounded-xl shadow-xl border-slate-200">
+                  {canEditAccess && (
+                    <DropdownMenuItem onClick={() => onEdit(role)} className="rounded-lg">
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                  )}
+                  {canDeleteAccess && (
+                    <DropdownMenuItem
+                      onClick={() => onDelete(role)}
+                      className="text-destructive focus:text-destructive rounded-lg"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
 

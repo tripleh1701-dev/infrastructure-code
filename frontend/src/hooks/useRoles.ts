@@ -37,14 +37,14 @@ export interface Role {
   service?: { id: string; name: string } | null;
 }
 
-export function useRoles(accountId?: string | null, enterpriseId?: string | null) {
+export function useRoles(accountId?: string | null, enterpriseId?: string | null, productId?: string | null) {
   return useQuery({
-    queryKey: ["roles", accountId, enterpriseId],
+    queryKey: ["roles", accountId, enterpriseId, productId],
     enabled: !!accountId,
     queryFn: async () => {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<Role[]>('/roles', {
-          params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined },
+          params: { accountId: accountId || undefined, enterpriseId: enterpriseId || undefined, productId: productId || undefined },
         });
         if (error) throw new Error(error.message);
         return data || [];
@@ -65,12 +65,15 @@ export function useRoles(accountId?: string | null, enterpriseId?: string | null
         `)
         .order("name", { ascending: true });
 
-      // Filter by account and enterprise if provided
+      // Filter by account, enterprise, and product if provided
       if (accountId) {
         query = query.or(`account_id.eq.${accountId},account_id.is.null`);
       }
       if (enterpriseId) {
         query = query.or(`enterprise_id.eq.${enterpriseId},enterprise_id.is.null`);
+      }
+      if (productId) {
+        query = query.or(`product_id.eq.${productId},product_id.is.null`);
       }
 
       const { data: directRoles, error } = await query;

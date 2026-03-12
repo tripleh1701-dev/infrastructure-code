@@ -30,9 +30,10 @@ export class RolesController {
   async findAll(
     @Query('accountId') accountId?: string,
     @Query('enterpriseId') enterpriseId?: string,
+    @Query('productId') productId?: string,
   ) {
     try {
-      return await this.rolesService.findAll(accountId, enterpriseId);
+      return await this.rolesService.findAll(accountId, enterpriseId, productId);
     } catch (error: any) {
       this.logger.error(`Failed to fetch roles: ${error.message}`, error.stack);
       return [];

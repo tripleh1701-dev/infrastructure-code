@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
+import { useLicenses } from "@/hooks/useLicenses";
 import { cn } from "@/lib/utils";
 import { WorkstreamMultiSelect } from "./WorkstreamMultiSelect";
 
@@ -33,64 +35,24 @@ const steps = [
 export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const updateRole = useUpdateRole();
   const updatePermissions = useUpdateRolePermissions();
 
-
-  // Fetch licensed products and services for the selected account/enterprise
-  const { data: licensedData = { products: [], services: [] } } = useQuery({
-    queryKey: ["licensed-products-services", selectedAccount?.id, selectedEnterprise?.id],
-    queryFn: async () => {
-      if (!selectedAccount?.id || !selectedEnterprise?.id) {
-        return { products: [], services: [] };
-      }
-
-      // Fetch licenses for the selected account and enterprise
-      const { data: licenses, error: licensesError } = await supabase
-        .from("account_licenses")
-        .select("product_id, service_id")
-        .eq("account_id", selectedAccount.id)
-        .eq("enterprise_id", selectedEnterprise.id)
-        .gte("end_date", new Date().toISOString().split("T")[0]); // Only active licenses
-
-      if (licensesError) throw licensesError;
-
-      if (!licenses || licenses.length === 0) {
-        return { products: [], services: [] };
-      }
-
-      // Get unique product and service IDs
-      const productIds = [...new Set(licenses.map((l) => l.product_id))];
-      const serviceIds = [...new Set(licenses.map((l) => l.service_id))];
-
-      // Fetch products
-      const { data: products, error: productsError } = await supabase
-        .from("products")
-        .select("*")
-        .in("id", productIds)
-        .order("name");
-
-      if (productsError) throw productsError;
-
-      // Fetch services
-      const { data: services, error: servicesError } = await supabase
-        .from("services")
-        .select("*")
-        .in("id", serviceIds)
-        .order("name");
-
-      if (servicesError) throw servicesError;
-
-      return {
-        products: products || [],
-        services: services || [],
-      };
-    },
-    enabled: Boolean(selectedAccount?.id && selectedEnterprise?.id),
-  });
-
-  const products = licensedData.products;
-  const services = licensedData.services;
+  // Fetch licensed services filtered by global product
+  const { licenses = [] } = useLicenses(selectedAccount?.id, selectedEnterprise?.id);
+  const services = useMemo(() => {
+    if (!selectedProduct?.id) return [];
+    const serviceMap = new Map<string, { id: string; name: string }>();
+    licenses
+      .filter(l => l.product_id === selectedProduct.id)
+      .forEach(l => {
+        if (l.service?.id && l.service?.name) {
+          serviceMap.set(l.service.id, { id: l.service.id, name: l.service.name });
+        }
+      });
+    return Array.from(serviceMap.values());
+  }, [licenses, selectedProduct?.id]);
 
   // Fetch existing role permissions
   const { data: existingPermissions = [] } = useQuery({
@@ -127,7 +89,6 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
     name: "",
     description: "",
     workstreamIds: [] as string[],
-    productId: "",
     serviceId: "",
   });
 
@@ -146,7 +107,6 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
         name: role.name,
         description: role.description || "",
         workstreamIds: role.workstreamIds || (role.workstreamId ? [role.workstreamId] : []),
-        productId: role.productId || "",
         serviceId: role.serviceId || "",
       });
       setCurrentStep(1);
@@ -186,7 +146,7 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
           description: formData.description || undefined,
           permissions: role.permissions,
           workstreamIds: formData.workstreamIds.length > 0 ? formData.workstreamIds : undefined,
-          productId: formData.productId || undefined,
+          productId: selectedProduct?.id || undefined,
           serviceId: formData.serviceId || undefined,
         },
       });
@@ -221,7 +181,6 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
       name: "",
       description: "",
       workstreamIds: [],
-      productId: "",
       serviceId: "",
     });
     setScopePermissions([]);
@@ -238,7 +197,7 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
       case 1:
         return formData.name.trim().length > 0 && !isNameDuplicate;
       case 2:
-        return Boolean(formData.workstreamIds.length > 0 && formData.productId && formData.serviceId); // Required fields
+        return Boolean(formData.workstreamIds.length > 0 && formData.serviceId); // Required fields
       case 3:
         return true; // Scopes are optional
       default:
@@ -347,30 +306,6 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="product">Product <span className="text-destructive">*</span></Label>
-                <Select
-                  value={formData.productId}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, productId: value }))}
-                >
-                  <SelectTrigger>
-                     <SelectValue placeholder="Select product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {products.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    No licensed products available for this account/enterprise
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
                  <Label htmlFor="service">Service <span className="text-destructive">*</span></Label>
                 <Select
                   value={formData.serviceId}
@@ -389,7 +324,7 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
                 </Select>
                 {services.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    No licensed services available for this account/enterprise
+                    No licensed services available for the selected product
                   </p>
                 )}
               </div>
@@ -397,7 +332,7 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 mt-4">
                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
                  <p className="text-xs">
-                   All context fields are required.
+                   Product is set from the global header. Workstream and service are required.
                  </p>
                </div>
             </div>
@@ -450,8 +385,13 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+      <Dialog open={open} onOpenChange={handleClose} modal={false}>
+        {open && <div className="fixed inset-0 z-50 bg-black/80" onClick={handleClose} />}
+        <DialogContent 
+          className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0"
+          onInteractOutside={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
           <VisuallyHidden>
             <DialogTitle>Edit Role</DialogTitle>
           </VisuallyHidden>

@@ -39,6 +39,7 @@ import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useLicenses } from "@/hooks/useLicenses";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { AlertCircle } from "lucide-react";
 
 interface EditGroupDialogProps {
@@ -57,6 +58,7 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
   const updateGroup = useUpdateGroup();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set());
@@ -64,7 +66,6 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
     name: "",
     description: "",
     workstreamId: "",
-    productId: "",
     serviceId: "",
     roleIds: [] as string[],
   });
@@ -105,30 +106,19 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
     return licenses.filter(l => l.enterprise_id === selectedEnterprise.id);
   }, [licenses, selectedEnterprise?.id]);
 
-  // Get unique products from licenses
-  const availableProducts = useMemo(() => {
-    const productMap = new Map<string, { id: string; name: string }>();
-    filteredLicenses.forEach(l => {
-      if (l.product?.id && l.product?.name) {
-        productMap.set(l.product.id, { id: l.product.id, name: l.product.name });
-      }
-    });
-    return Array.from(productMap.values());
-  }, [filteredLicenses]);
-
-  // Get services filtered by selected product
+  // Get services filtered by global product
   const availableServices = useMemo(() => {
-    if (!formData.productId) return [];
+    if (!selectedProduct?.id) return [];
     const serviceMap = new Map<string, { id: string; name: string }>();
     filteredLicenses
-      .filter(l => l.product_id === formData.productId)
+      .filter(l => l.product_id === selectedProduct.id)
       .forEach(l => {
         if (l.service?.id && l.service?.name) {
           serviceMap.set(l.service.id, { id: l.service.id, name: l.service.name });
         }
       });
     return Array.from(serviceMap.values());
-  }, [filteredLicenses, formData.productId]);
+  }, [filteredLicenses, selectedProduct?.id]);
 
   // Fetch roles filtered by account, enterprise, and workstream
   const { data: availableRoles = [] } = useGroupRoles(
@@ -144,7 +134,6 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
         name: group.name,
         description: group.description || "",
         workstreamId: group.workstreamId || "",
-        productId: group.productId || "",
         serviceId: group.serviceId || "",
         roleIds: group.roles.map(r => r.roleId),
       });
@@ -167,7 +156,7 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
           name: formData.name,
           description: formData.description || undefined,
           workstreamId: formData.workstreamId || undefined,
-          productId: formData.productId || undefined,
+          productId: selectedProduct?.id || undefined,
           serviceId: formData.serviceId || undefined,
           roleIds: formData.roleIds,
         },
@@ -204,7 +193,7 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
       case 1:
         return formData.name.trim().length > 0 && !isNameDuplicate;
       case 2:
-         return Boolean(formData.workstreamId && formData.productId && formData.serviceId); // Required fields
+         return Boolean(formData.workstreamId && formData.serviceId); // Required fields
       case 3:
         return true;
       default:
@@ -218,7 +207,7 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
   const progressPercentage = useMemo(() => {
     let completed = 0;
     if (isStepValid(1)) completed++;
-    if (formData.workstreamId || formData.productId) completed++;
+    if (formData.workstreamId) completed++;
     if (formData.roleIds.length > 0) completed++;
     return (completed / 3) * 100;
   }, [formData, isStepValid]);
@@ -417,55 +406,15 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
                     </div>
 
                     <div className="space-y-2">
-                       <Label htmlFor="product">Product <span className="text-destructive">*</span></Label>
-                      <Select
-                        value={formData.productId}
-                        onValueChange={(value) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            productId: value,
-                            serviceId: "",
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-11">
-                          <SelectValue placeholder="Select product" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableProducts.map((product) => (
-                            <SelectItem key={product.id} value={product.id}>
-                              <div className="flex items-center gap-2">
-                                <Package className="w-4 h-4 text-muted-foreground" />
-                                {product.name}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                       {availableProducts.length === 0 && (
-                         <p className="text-xs text-muted-foreground">
-                           No licensed products available for this account/enterprise
-                         </p>
-                       )}
-                    </div>
-
-                    <div className="space-y-2">
                        <Label htmlFor="service">Service <span className="text-destructive">*</span></Label>
                       <Select
                         value={formData.serviceId}
                         onValueChange={(value) =>
                           setFormData((prev) => ({ ...prev, serviceId: value }))
                         }
-                        disabled={!formData.productId}
                       >
                         <SelectTrigger className="h-11">
-                          <SelectValue
-                            placeholder={
-                              formData.productId
-                                ? "Select service"
-                                : "Select a product first"
-                            }
-                          />
+                          <SelectValue placeholder="Select service" />
                         </SelectTrigger>
                         <SelectContent>
                           {availableServices.map((service) => (
@@ -478,7 +427,7 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
                           ))}
                         </SelectContent>
                       </Select>
-                       {formData.productId && availableServices.length === 0 && (
+                       {availableServices.length === 0 && (
                          <p className="text-xs text-muted-foreground">
                            No services available for the selected product
                          </p>
@@ -488,7 +437,7 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
                      <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 mt-4">
                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
                        <p className="text-xs">
-                         All context fields are required.
+                         Product is set from the global header. Workstream and service are required.
                        </p>
                      </div>
                   </div>

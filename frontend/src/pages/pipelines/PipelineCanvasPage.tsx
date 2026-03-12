@@ -31,6 +31,7 @@ import {
   Minimize2,
   Workflow,
   PenTool,
+  Layers,
 } from "lucide-react";
 import { WorkflowNodeType, DeploymentType, PipelineMode } from "@/types/pipeline";
 import { NODE_LABELS, CATEGORY_COLORS, TEMPLATE_FLOWS } from "@/constants/pipeline";
@@ -45,6 +46,7 @@ import { NodeConfigPanel } from "@/components/pipeline/NodeConfigPanel";
 import { PipelineHeaderBar } from "@/components/pipeline/PipelineHeaderBar";
 import { ConnectionSuggestion } from "@/components/pipeline/ConnectionSuggestion";
 import { PipelineFlowView } from "@/components/pipeline/PipelineFlowView";
+import { PipelineSwimlaneView } from "@/components/pipeline/PipelineSwimlaneView";
 
 import { usePipelines } from "@/hooks/usePipelines";
 import { usePipelineBuildLinks } from "@/hooks/usePipelineBuildLinks";
@@ -52,6 +54,7 @@ import { useCanvasHistory } from "@/hooks/useCanvasHistory";
 import { useConnectionSuggestion } from "@/hooks/useConnectionSuggestion";
 import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useLicenses } from "@/hooks/useLicenses";
+import { useProductContext } from "@/contexts/ProductContext";
 import { toast } from "sonner";
 import { Json } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
@@ -94,21 +97,9 @@ function PipelineCanvasContent() {
   // Licenses hook for products/services
   const { licenses } = useLicenses(selectedAccountId || undefined, selectedEnterpriseId || undefined);
 
-  // Filter products and services from active licenses for this enterprise
-  const availableProducts = useMemo(() => {
-    if (!selectedEnterpriseId) return [];
-    const now = new Date();
-    const activeForEnterprise = licenses.filter(
-      (l) => l.enterprise_id === selectedEnterpriseId && new Date(l.end_date) >= now
-    );
-    const uniqueProducts = new Map<string, { id: string; name: string }>();
-    activeForEnterprise.forEach((l) => {
-      if (l.product && !uniqueProducts.has(l.product.id)) {
-        uniqueProducts.set(l.product.id, l.product);
-      }
-    });
-    return Array.from(uniqueProducts.values());
-  }, [licenses, selectedEnterpriseId]);
+  // Use global product context
+  const { selectedProduct } = useProductContext();
+  const selectedProductId = selectedProduct?.id;
 
   const availableServices = useMemo(() => {
     if (!selectedEnterpriseId) return [];
@@ -149,7 +140,6 @@ function PipelineCanvasContent() {
   const [currentPipelineId, setCurrentPipelineId] = useState<string | null>(pipelineId);
   const [isLoadingPipeline, setIsLoadingPipeline] = useState(false);
   const [selectedWorkstreamId, setSelectedWorkstreamId] = useState<string | undefined>();
-  const [selectedProductId, setSelectedProductId] = useState<string | undefined>();
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [lineStyle, setLineStyle] = useState<LineStyle>({
     type: "smoothstep",
@@ -162,7 +152,7 @@ function PipelineCanvasContent() {
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [lastAutoSaved, setLastAutoSaved] = useState<Date | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [viewMode, setViewMode] = useState<"canvas" | "flow">("canvas");
+  const [viewMode, setViewMode] = useState<"canvas" | "flow" | "swimlane">("canvas");
   const [pipelineStatus, setPipelineStatus] = useState<"draft" | "active" | "inactive" | "archived">("draft");
 
   // Auto-select first workstream if none selected
@@ -172,12 +162,7 @@ function PipelineCanvasContent() {
     }
   }, [workstreams, selectedWorkstreamId]);
 
-  // Auto-select first product if none selected
-  useEffect(() => {
-    if (availableProducts.length > 0 && !selectedProductId) {
-      setSelectedProductId(availableProducts[0].id);
-    }
-  }, [availableProducts, selectedProductId]);
+  // Product is now managed globally via ProductContext - no local auto-select needed
 
   // Auto-select first service if none selected
   useEffect(() => {
@@ -274,9 +259,7 @@ function PipelineCanvasContent() {
           setPipelineStatus((pipeline.status as "draft" | "active" | "inactive" | "archived") || "draft");
           
           // Restore context selections
-          if (pipeline.product_id) {
-            setSelectedProductId(pipeline.product_id);
-          }
+          // Product is now set globally via header breadcrumb - no need to restore from pipeline
           if (pipeline.service_ids && pipeline.service_ids.length > 0) {
             setSelectedServiceIds(pipeline.service_ids);
           }
@@ -1257,17 +1240,11 @@ ${edges.map((e) => `  - source: ${e.source}
               onSave={handleSave}
               onBack={() => navigate("/pipelines")}
               workstreams={workstreams.map(w => ({ id: w.id, name: w.name }))}
-              products={availableProducts}
               services={availableServices}
               selectedWorkstreamId={selectedWorkstreamId}
-              selectedProductId={selectedProductId}
               selectedServiceIds={selectedServiceIds}
               onWorkstreamChange={(id) => {
                 setSelectedWorkstreamId(id);
-                setHasUnsavedChanges(true);
-              }}
-              onProductChange={(id) => {
-                setSelectedProductId(id);
                 setHasUnsavedChanges(true);
               }}
               onServiceChange={(ids) => {
@@ -1361,9 +1338,22 @@ ${edges.map((e) => `  - source: ${e.source}
             </TooltipTrigger>
             <TooltipContent side="left"><span>Flow View</span></TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={viewMode === "swimlane" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setViewMode("swimlane")}
+                className="h-8 w-8"
+              >
+                <Layers className="w-3.5 h-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left"><span>Swimlane View</span></TooltipContent>
+          </Tooltip>
         </motion.div>
 
-        {/* Canvas / Flow View */}
+        {/* Canvas / Flow / Swimlane View */}
         <div 
           ref={reactFlowWrapper} 
           className={cn(
@@ -1373,6 +1363,8 @@ ${edges.map((e) => `  - source: ${e.source}
         >
           {viewMode === "flow" ? (
             <PipelineFlowView nodes={nodes} edges={edges} onUpdateNode={handleUpdateNode} />
+          ) : viewMode === "swimlane" ? (
+            <PipelineSwimlaneView nodes={nodes} edges={edges} onUpdateNode={handleUpdateNode} />
           ) : (
             <>
               <ReactFlow

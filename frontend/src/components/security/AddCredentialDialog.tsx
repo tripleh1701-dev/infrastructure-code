@@ -93,6 +93,7 @@ import {
 import { useWorkstreams, type WorkstreamTool } from "@/hooks/useWorkstreams";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { WorkstreamMultiSelect } from "@/components/access-control/WorkstreamMultiSelect";
 import type { LucideIcon } from "lucide-react";
 
@@ -371,7 +372,7 @@ const formSchema = z.object({
   name: z.string().min(1, "Credential name is required").max(100),
   description: z.string().max(500).optional(),
   workstream_ids: z.array(z.string()).min(1, "At least one workstream is required"),
-  product_id: z.string().min(1, "Product is required"),
+  product_id: z.string().optional(),
   service_id: z.string().min(1, "Service is required"),
   category: z.string().optional(),
   connector: z.string().optional(),
@@ -399,6 +400,7 @@ export function AddCredentialDialog({
 }: AddCredentialDialogProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const { workstreams } = useWorkstreams(selectedAccount?.id, selectedEnterprise?.id);
   const { createCredential, initiateOAuth } = useCredentials(selectedAccount?.id, selectedEnterprise?.id);
 
@@ -623,7 +625,7 @@ export function AddCredentialDialog({
         account_id: selectedAccount.id,
         enterprise_id: selectedEnterprise.id,
         workstream_ids: formData.workstream_ids,
-        product_id: formData.product_id || undefined,
+        product_id: selectedProduct?.id || formData.product_id || undefined,
         service_id: formData.service_id || undefined,
         category: selectedCategory,
         connector: selectedConnector,
@@ -745,7 +747,7 @@ export function AddCredentialDialog({
         account_id: selectedAccount.id,
         enterprise_id: selectedEnterprise.id,
         workstream_ids: data.workstream_ids,
-        product_id: data.product_id || undefined,
+        product_id: selectedProduct?.id || data.product_id || undefined,
         service_id: data.service_id || undefined,
         category: selectedCategory,
         connector: selectedConnector,
@@ -774,7 +776,7 @@ export function AddCredentialDialog({
   // Step validation - include all required fields for step 1 and name uniqueness
   const watchedName = form.watch("name");
   const watchedWorkstreamIds = form.watch("workstream_ids");
-  const watchedProductId = form.watch("product_id");
+  const watchedProductId = selectedProduct?.id || form.watch("product_id");
   const watchedServiceId = form.watch("service_id");
   
   // Check if Cloud Foundry requires service key type
@@ -1053,52 +1055,8 @@ export function AddCredentialDialog({
           )}
         />
 
-        {/* Products & Services */}
-        <div className="grid grid-cols-2 gap-4">
-            <FormField
-              control={form.control}
-              name="product_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-1.5">
-                    <Box className="w-3.5 h-3.5 text-muted-foreground" />
-                    Product <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <Select 
-                    onValueChange={field.onChange} 
-                    value={field.value}
-                    disabled={isLoadingLicensedData || products.length === 0}
-                  >
-                    <FormControl>
-                      <SelectTrigger className={cn(
-                        "bg-background transition-all duration-200",
-                        field.value && "ring-1 ring-primary/20 border-primary/30"
-                      )}>
-                        {isLoadingLicensedData ? (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Loading...</span>
-                          </div>
-                        ) : (
-                          <SelectValue placeholder={products.length === 0 ? "No licensed products" : "Select product"} />
-                        )}
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent position="popper">
-                      {products.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <div className="flex items-center gap-2">
-                            <Box className="w-3.5 h-3.5 text-primary" />
-                            {p.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+        {/* Service */}
+        <div className="grid grid-cols-1 gap-4">
 
             <FormField
               control={form.control}

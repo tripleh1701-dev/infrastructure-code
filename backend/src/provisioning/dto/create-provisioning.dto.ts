@@ -10,8 +10,8 @@ export class CreateProvisioningDto {
   accountName: string;
 
   @IsString()
-  @IsIn(['public', 'private', 'hybrid'])
-  cloudType: 'public' | 'private' | 'hybrid';
+  @IsIn(['public', 'private'])
+  cloudType: 'public' | 'private';
 
   @IsOptional()
   @IsString()

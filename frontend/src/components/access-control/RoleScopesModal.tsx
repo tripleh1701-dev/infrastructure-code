@@ -112,11 +112,21 @@ const MENU_STRUCTURE = [
   },
 ];
 
+export interface MenuPermissionTab {
+  key: string;
+  label: string;
+  isVisible: boolean;
+  canView?: boolean;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+}
+
 export interface MenuPermission {
   menuKey: string;
   menuLabel: string;
   isVisible: boolean;
-  tabs: { key: string; label: string; isVisible: boolean }[];
+  tabs: MenuPermissionTab[];
   canCreate: boolean;
   canView: boolean;
   canEdit: boolean;
@@ -129,6 +139,13 @@ interface RoleScopesModalProps {
   permissions: MenuPermission[];
   onSave: (permissions: MenuPermission[]) => void;
 }
+
+const CRUD_BUTTONS = [
+  { key: "canView", icon: Eye, label: "View", color: "text-blue-600" },
+  { key: "canCreate", icon: Plus, label: "Create", color: "text-emerald-600" },
+  { key: "canEdit", icon: Pencil, label: "Edit", color: "text-amber-600" },
+  { key: "canDelete", icon: Trash2, label: "Delete", color: "text-red-600" },
+] as const;
 
 export function RoleScopesModal({
   open,
@@ -153,6 +170,10 @@ export function RoleScopesModal({
               key: tab.key,
               label: tab.label,
               isVisible: existingTab?.isVisible ?? false,
+              canView: existingTab?.canView ?? false,
+              canCreate: existingTab?.canCreate ?? false,
+              canEdit: existingTab?.canEdit ?? false,
+              canDelete: existingTab?.canDelete ?? false,
             };
           }),
         };
@@ -165,6 +186,10 @@ export function RoleScopesModal({
           key: tab.key,
           label: tab.label,
           isVisible: false,
+          canView: false,
+          canCreate: false,
+          canEdit: false,
+          canDelete: false,
         })),
         canCreate: false,
         canView: false,
@@ -186,6 +211,11 @@ export function RoleScopesModal({
     });
   };
 
+  const hasTabs = (menuKey: string) => {
+    const menu = MENU_STRUCTURE.find((m) => m.key === menuKey);
+    return menu && menu.tabs.length > 0;
+  };
+
   const updateMenuVisibility = (menuKey: string, isVisible: boolean) => {
     setLocalPermissions((prev) =>
       prev.map((p) =>
@@ -193,7 +223,14 @@ export function RoleScopesModal({
           ? {
               ...p,
               isVisible,
-              tabs: p.tabs.map((t) => ({ ...t, isVisible: isVisible ? t.isVisible : false })),
+              tabs: p.tabs.map((t) => ({
+                ...t,
+                isVisible: isVisible ? t.isVisible : false,
+                canView: isVisible ? t.canView : false,
+                canCreate: isVisible ? t.canCreate : false,
+                canEdit: isVisible ? t.canEdit : false,
+                canDelete: isVisible ? t.canDelete : false,
+              })),
               canCreate: isVisible ? p.canCreate : false,
               canView: isVisible ? p.canView : false,
               canEdit: isVisible ? p.canEdit : false,
@@ -211,7 +248,16 @@ export function RoleScopesModal({
           ? {
               ...p,
               tabs: p.tabs.map((t) =>
-                t.key === tabKey ? { ...t, isVisible } : t
+                t.key === tabKey
+                  ? {
+                      ...t,
+                      isVisible,
+                      canView: isVisible ? t.canView : false,
+                      canCreate: isVisible ? t.canCreate : false,
+                      canEdit: isVisible ? t.canEdit : false,
+                      canDelete: isVisible ? t.canDelete : false,
+                    }
+                  : t
               ),
             }
           : p
@@ -219,6 +265,27 @@ export function RoleScopesModal({
     );
   };
 
+  const updateTabPermission = (
+    menuKey: string,
+    tabKey: string,
+    permission: "canCreate" | "canView" | "canEdit" | "canDelete",
+    value: boolean
+  ) => {
+    setLocalPermissions((prev) =>
+      prev.map((p) =>
+        p.menuKey === menuKey
+          ? {
+              ...p,
+              tabs: p.tabs.map((t) =>
+                t.key === tabKey ? { ...t, [permission]: value } : t
+              ),
+            }
+          : p
+      )
+    );
+  };
+
+  // For menus without tabs, CRUD is at the parent level
   const updatePermission = (
     menuKey: string,
     permission: "canCreate" | "canView" | "canEdit" | "canDelete",
@@ -245,14 +312,20 @@ export function RoleScopesModal({
       prev.map((p) => ({
         ...p,
         isVisible: true,
-        tabs: p.tabs.map((t) => ({ ...t, isVisible: true })),
+        tabs: p.tabs.map((t) => ({
+          ...t,
+          isVisible: true,
+          canView: true,
+          canCreate: true,
+          canEdit: true,
+          canDelete: true,
+        })),
         canCreate: true,
         canView: true,
         canEdit: true,
         canDelete: true,
       }))
     );
-    // Expand all menus to show the selection
     setExpandedMenus(new Set(MENU_STRUCTURE.map((m) => m.key)));
   };
 
@@ -263,18 +336,29 @@ export function RoleScopesModal({
       p.canView &&
       p.canEdit &&
       p.canDelete &&
-      p.tabs.every((t) => t.isVisible)
+      p.tabs.every((t) => t.isVisible && t.canView && t.canCreate && t.canEdit && t.canDelete)
   );
 
   const enabledMenuCount = localPermissions.filter((p) => p.isVisible).length;
   const totalPermissions = localPermissions.reduce((acc, p) => {
     if (!p.isVisible) return acc;
-    let count = 0;
-    if (p.canCreate) count++;
-    if (p.canView) count++;
-    if (p.canEdit) count++;
-    if (p.canDelete) count++;
-    return acc + count;
+    // For menus without tabs, count parent-level permissions
+    if (p.tabs.length === 0) {
+      if (p.canCreate) acc++;
+      if (p.canView) acc++;
+      if (p.canEdit) acc++;
+      if (p.canDelete) acc++;
+    } else {
+      // For menus with tabs, count tab-level permissions
+      p.tabs.forEach((t) => {
+        if (!t.isVisible) return;
+        if (t.canView) acc++;
+        if (t.canCreate) acc++;
+        if (t.canEdit) acc++;
+        if (t.canDelete) acc++;
+      });
+    }
+    return acc;
   }, 0);
 
   return (
@@ -297,7 +381,7 @@ export function RoleScopesModal({
                   <Sparkles className="w-4 h-4 text-primary" />
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Define menu visibility and CRUD permissions
+                  Define menu visibility and granular CRUD permissions per sub-component
                 </p>
               </div>
             </div>
@@ -341,6 +425,7 @@ export function RoleScopesModal({
               const permission = localPermissions.find((p) => p.menuKey === menu.key);
               const isExpanded = expandedMenus.has(menu.key);
               const Icon = menu.icon;
+              const menuHasTabs = menu.tabs.length > 0;
 
               return (
                 <div
@@ -364,7 +449,7 @@ export function RoleScopesModal({
                     />
                     <div
                       className="flex items-center gap-3 flex-1 cursor-pointer"
-                      onClick={() => toggleMenu(menu.key)}
+                      onClick={() => menuHasTabs ? toggleMenu(menu.key) : undefined}
                     >
                       <div
                         className={cn(
@@ -383,23 +468,22 @@ export function RoleScopesModal({
                         >
                           {menu.label}
                         </Label>
-                        {menu.tabs.length > 0 && (
+                        {menuHasTabs ? (
                           <p className="text-xs text-muted-foreground">
-                            {menu.tabs.length} tabs available
+                            {menu.tabs.length} sub-components · CRUD per sub-component
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            No sub-components
                           </p>
                         )}
                       </div>
                     </div>
 
-                    {/* CRUD Permissions */}
-                    {permission?.isVisible && (
+                    {/* CRUD Permissions - only for menus WITHOUT tabs */}
+                    {permission?.isVisible && !menuHasTabs && (
                       <div className="flex items-center gap-2 animate-scale-in">
-                        {[
-                          { key: "canView", icon: Eye, label: "View", color: "text-blue-600" },
-                          { key: "canCreate", icon: Plus, label: "Create", color: "text-emerald-600" },
-                          { key: "canEdit", icon: Pencil, label: "Edit", color: "text-amber-600" },
-                          { key: "canDelete", icon: Trash2, label: "Delete", color: "text-red-600" },
-                        ].map((perm) => (
+                        {CRUD_BUTTONS.map((perm) => (
                           <button
                             key={perm.key}
                             type="button"
@@ -417,6 +501,7 @@ export function RoleScopesModal({
                                 ? "bg-white shadow-sm border border-slate-200"
                                 : "bg-muted/50 hover:bg-muted"
                             )}
+                            title={perm.label}
                           >
                             <perm.icon
                               className={cn(
@@ -436,8 +521,17 @@ export function RoleScopesModal({
                       </div>
                     )}
 
+                    {/* For menus WITH tabs, show summary badge */}
+                    {permission?.isVisible && menuHasTabs && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs px-2 py-0.5">
+                          {permission.tabs.filter((t) => t.isVisible).length}/{menu.tabs.length} active
+                        </Badge>
+                      </div>
+                    )}
+
                     {/* Expand Toggle */}
-                    {menu.tabs.length > 0 && permission?.isVisible && (
+                    {menuHasTabs && permission?.isVisible && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -458,36 +552,86 @@ export function RoleScopesModal({
                     )}
                   </div>
 
-                  {/* Tabs Section */}
-                  {isExpanded && permission?.isVisible && menu.tabs.length > 0 && (
+                  {/* Tabs Section - with granular CRUD per tab */}
+                  {isExpanded && permission?.isVisible && menuHasTabs && (
                     <div className="overflow-hidden animate-accordion-down">
                       <div className="px-4 pb-4 pl-16">
-                        <div className="bg-white/50 rounded-lg border border-slate-100 p-3">
-                          <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">
-                            Visible Tabs
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {permission.tabs.map((tab) => (
-                              <label
-                                key={tab.key}
-                                className={cn(
-                                  "flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-200 hover:scale-102",
-                                  tab.isVisible
-                                    ? "bg-primary/10 border border-primary/30"
-                                    : "bg-muted/50 border border-transparent hover:bg-muted"
-                                )}
-                              >
-                                <Checkbox
-                                  checked={tab.isVisible}
-                                  onCheckedChange={(checked) =>
-                                    updateTabVisibility(menu.key, tab.key, checked === true)
-                                  }
-                                  className="w-3.5 h-3.5 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                                />
-                                <span className="text-xs font-medium">{tab.label}</span>
-                              </label>
-                            ))}
+                        <div className="bg-white/50 dark:bg-muted/20 rounded-lg border border-border/50 divide-y divide-border/30">
+                          {/* Header row */}
+                          <div className="flex items-center gap-3 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            <div className="flex-1">Sub-component</div>
+                            <div className="flex items-center gap-4 mr-1">
+                              <span className="w-8 text-center">View</span>
+                              <span className="w-8 text-center">Add</span>
+                              <span className="w-8 text-center">Edit</span>
+                              <span className="w-8 text-center">Del</span>
+                            </div>
                           </div>
+                          {permission.tabs.map((tab) => (
+                            <div
+                              key={tab.key}
+                              className={cn(
+                                "flex items-center gap-3 px-4 py-3 transition-colors",
+                                tab.isVisible ? "bg-primary/5" : "bg-transparent"
+                              )}
+                            >
+                              <Checkbox
+                                checked={tab.isVisible}
+                                onCheckedChange={(checked) =>
+                                  updateTabVisibility(menu.key, tab.key, checked === true)
+                                }
+                                className="w-3.5 h-3.5 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                              />
+                              <span className={cn(
+                                "text-sm flex-1 font-medium",
+                                tab.isVisible ? "text-foreground" : "text-muted-foreground"
+                              )}>
+                                {tab.label}
+                              </span>
+
+                              {/* Per-tab CRUD buttons */}
+                              {tab.isVisible && (
+                                <div className="flex items-center gap-4 animate-scale-in">
+                                  {CRUD_BUTTONS.map((perm) => (
+                                    <button
+                                      key={perm.key}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateTabPermission(
+                                          menu.key,
+                                          tab.key,
+                                          perm.key as "canCreate" | "canView" | "canEdit" | "canDelete",
+                                          !(tab[perm.key as keyof typeof tab] ?? false)
+                                        );
+                                      }}
+                                      className={cn(
+                                        "relative w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 hover:scale-110 active:scale-95",
+                                        tab[perm.key as keyof typeof tab]
+                                          ? "bg-white dark:bg-muted shadow-sm border border-border"
+                                          : "bg-muted/30 hover:bg-muted/60"
+                                      )}
+                                      title={`${perm.label} ${tab.label}`}
+                                    >
+                                      <perm.icon
+                                        className={cn(
+                                          "w-3.5 h-3.5 transition-colors",
+                                          tab[perm.key as keyof typeof tab]
+                                            ? perm.color
+                                            : "text-muted-foreground/50"
+                                        )}
+                                      />
+                                      {tab[perm.key as keyof typeof tab] && (
+                                        <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-primary rounded-full flex items-center justify-center">
+                                          <Check className="w-1.5 h-1.5 text-primary-foreground" />
+                                        </div>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>

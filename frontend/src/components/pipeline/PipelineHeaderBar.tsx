@@ -28,7 +28,6 @@ import {
   Loader2,
   Pencil,
   ChevronRight,
-  Package,
   Workflow,
   Box,
   CheckCircle,
@@ -72,13 +71,10 @@ interface PipelineHeaderBarProps {
   onBack: () => void;
   // Context selectors
   workstreams?: { id: string; name: string }[];
-  products?: { id: string; name: string }[];
   services?: { id: string; name: string }[];
   selectedWorkstreamId?: string;
-  selectedProductId?: string;
   selectedServiceIds?: string[];
   onWorkstreamChange?: (id: string) => void;
-  onProductChange?: (id: string) => void;
   onServiceChange?: (ids: string[]) => void;
 }
 
@@ -106,13 +102,10 @@ export function PipelineHeaderBar({
   onSave,
   onBack,
   workstreams = [],
-  products = [],
   services = [],
   selectedWorkstreamId,
-  selectedProductId,
   selectedServiceIds = [],
   onWorkstreamChange,
-  onProductChange,
   onServiceChange,
 }: PipelineHeaderBarProps) {
   const [isEditingName, setIsEditingName] = useState(false);
@@ -152,7 +145,6 @@ export function PipelineHeaderBar({
   const DeploymentIcon = deploymentTypes.find(d => d.value === deploymentType)?.icon || Layers;
 
   const selectedWorkstream = workstreams.find(w => w.id === selectedWorkstreamId);
-  const selectedProduct = products.find(p => p.id === selectedProductId);
   const selectedServicesDisplay = services
     .filter(s => selectedServiceIds.includes(s.id))
     .map(s => s.name)
@@ -271,31 +263,6 @@ export function PipelineHeaderBar({
               ))}
               {workstreams.length === 0 && (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">No workstreams</div>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <ChevronRight className="w-3.5 h-3.5 text-[#94a3b8]" />
-
-        {/* Product Selector */}
-        <div className="flex items-center gap-1.5 px-2 py-1 bg-[#f8fafc] rounded-lg border border-[#e2e8f0]">
-          <Package className="w-3.5 h-3.5 text-[#8b5cf6]" />
-          <Select 
-            value={selectedProductId || ""} 
-            onValueChange={(v) => onProductChange?.(v)}
-          >
-            <SelectTrigger className="h-7 w-[120px] border-0 bg-transparent p-0 text-xs font-medium focus:ring-0">
-              <SelectValue placeholder="Product" />
-            </SelectTrigger>
-            <SelectContent className="bg-white z-50">
-              {products.map((p) => (
-                <SelectItem key={p.id} value={p.id} className="text-xs">
-                  {p.name}
-                </SelectItem>
-              ))}
-              {products.length === 0 && (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">No products</div>
               )}
             </SelectContent>
           </Select>

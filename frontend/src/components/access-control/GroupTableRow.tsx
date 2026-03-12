@@ -33,6 +33,8 @@ interface GroupTableRowProps {
   onToggleSelect?: (id: string) => void;
   onEdit: (group: Group) => void;
   onDelete: (group: Group) => void;
+  canEditAccess?: boolean;
+  canDeleteAccess?: boolean;
 }
 
 const memberColors = [
@@ -43,7 +45,7 @@ const memberColors = [
   "bg-rose-500",
 ];
 
-export function GroupTableRow({ group, index, isSelected, onToggleSelect, onEdit, onDelete }: GroupTableRowProps) {
+export function GroupTableRow({ group, index, isSelected, onToggleSelect, onEdit, onDelete, canEditAccess = true, canDeleteAccess = true }: GroupTableRowProps) {
   return (
     <>
       <motion.tr
@@ -192,30 +194,36 @@ export function GroupTableRow({ group, index, isSelected, onToggleSelect, onEdit
 
         {/* Actions */}
         <td className="px-5 py-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="rounded-xl shadow-xl border-slate-200">
-              <DropdownMenuItem onClick={() => onEdit(group)} className="rounded-lg">
-                <Pencil className="w-4 h-4 mr-2" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onDelete(group)}
-                className="text-destructive focus:text-destructive rounded-lg"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {(canEditAccess || canDeleteAccess) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="rounded-xl shadow-xl border-slate-200">
+                {canEditAccess && (
+                  <DropdownMenuItem onClick={() => onEdit(group)} className="rounded-lg">
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {canDeleteAccess && (
+                  <DropdownMenuItem
+                    onClick={() => onDelete(group)}
+                    className="text-destructive focus:text-destructive rounded-lg"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </td>
       </motion.tr>
     </>

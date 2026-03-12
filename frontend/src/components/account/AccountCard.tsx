@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountWithDetails } from "@/hooks/useAccounts";
+import { getCountryFlag } from "@/lib/data/countries";
 
 interface AccountCardProps {
   account: AccountWithDetails;
@@ -66,14 +67,12 @@ export function AccountCard({
           <motion.div 
             whileHover={{ rotate: 5, scale: 1.05 }}
             transition={{ type: "spring", stiffness: 400 }}
-            className={cn(
-              "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-shadow duration-300 shadow-md",
-              account.cloud_type === "public" 
-                ? "bg-gradient-to-br from-[#0171EC] to-[#38bdf8] text-white group-hover:shadow-lg group-hover:shadow-primary/25" 
-                : account.cloud_type === "private"
-                ? "bg-gradient-to-br from-violet-500 to-purple-400 text-white group-hover:shadow-lg group-hover:shadow-violet-500/25"
-                : "bg-gradient-to-br from-emerald-500 to-teal-400 text-white group-hover:shadow-lg group-hover:shadow-emerald-500/25"
-            )}
+             className={cn(
+               "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-shadow duration-300 shadow-md",
+               account.cloud_type === "public" 
+                 ? "bg-gradient-to-br from-[#0171EC] to-[#38bdf8] text-white group-hover:shadow-lg group-hover:shadow-primary/25" 
+                 : "bg-gradient-to-br from-violet-500 to-purple-400 text-white group-hover:shadow-lg group-hover:shadow-violet-500/25"
+             )}
           >
             {account.cloud_type === "public" ? (
               <Cloud className="w-5 h-5" />
@@ -150,7 +149,7 @@ export function AccountCard({
         {/* Description */}
         <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1 line-clamp-2">
           {primaryAddress 
-            ? `Located in ${primaryAddress.city}, ${primaryAddress.country}${(account.addresses?.length ?? 0) > 1 ? ` (+${(account.addresses?.length ?? 0) - 1} more)` : ''}.`
+            ? `${getCountryFlag(primaryAddress.country)} Located in ${primaryAddress.city}, ${primaryAddress.country}${(account.addresses?.length ?? 0) > 1 ? ` (+${(account.addresses?.length ?? 0) - 1} more)` : ''}.`
             : "No location configured."
           }
           {expiringCount > 0 && ` ${expiringCount} license${expiringCount > 1 ? 's' : ''} expiring soon.`}
@@ -165,9 +164,7 @@ export function AccountCard({
               "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-200",
               account.cloud_type === "public" 
                 ? "border-primary/30 bg-primary/5 text-primary hover:border-primary/50" 
-                : account.cloud_type === "private"
-                ? "border-violet-500/30 bg-violet-500/5 text-violet-600 hover:border-violet-500/50"
-                : "border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:border-emerald-500/50"
+                : "border-violet-500/30 bg-violet-500/5 text-violet-600 hover:border-violet-500/50"
             )}
           >
             {account.cloud_type === "public" ? <Cloud className="w-3 h-3" /> : <Server className="w-3 h-3" />}

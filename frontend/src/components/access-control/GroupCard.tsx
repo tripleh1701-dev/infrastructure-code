@@ -30,6 +30,8 @@ interface GroupCardProps {
   index: number;
   onEdit: (group: Group) => void;
   onDelete: (group: Group) => void;
+  canEditAccess?: boolean;
+  canDeleteAccess?: boolean;
 }
 
 const memberColors = [
@@ -40,7 +42,7 @@ const memberColors = [
   "bg-rose-500",
 ];
 
-export function GroupCard({ group, index, onEdit, onDelete }: GroupCardProps) {
+export function GroupCard({ group, index, onEdit, onDelete, canEditAccess = true, canDeleteAccess = true }: GroupCardProps) {
   return (
     <>
       <motion.div
@@ -65,36 +67,42 @@ export function GroupCard({ group, index, onEdit, onDelete }: GroupCardProps) {
           >
             <Users className="w-6 h-6 text-white" />
           </motion.div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 rounded-lg"
+          {(canEditAccess || canDeleteAccess) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 rounded-lg"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="rounded-xl shadow-xl border-slate-200"
               >
-                <MoreHorizontal className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="rounded-xl shadow-xl border-slate-200"
-            >
-              <DropdownMenuItem
-                onClick={() => onEdit(group)}
-                className="rounded-lg"
-              >
-                <Pencil className="w-4 h-4 mr-2" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onDelete(group)}
-                className="text-destructive focus:text-destructive rounded-lg"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {canEditAccess && (
+                  <DropdownMenuItem
+                    onClick={() => onEdit(group)}
+                    className="rounded-lg"
+                  >
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {canDeleteAccess && (
+                  <DropdownMenuItem
+                    onClick={() => onDelete(group)}
+                    className="text-destructive focus:text-destructive rounded-lg"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* Name & Description */}

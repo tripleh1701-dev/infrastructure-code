@@ -8,7 +8,7 @@ import { Node, Edge } from "@xyflow/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Monitor, FlaskConical, Rocket, Server,
-  ChevronUp, X,
+  ChevronDown, X,
   Settings, Clock, Loader2, AlertCircle, AlertTriangle,
   CheckCircle, XCircle, SkipForward, Mail, MessageSquare,
   Bell, Webhook, RotateCcw, Zap,
@@ -99,9 +99,9 @@ function PipelineFlowViewComponent({ nodes, edges, onUpdateNode }: PipelineFlowV
           if (e.target === env.id) connectedIds.add(e.source);
         });
         const connected = childNodes.filter(c => connectedIds.has(c.id));
-        return { id: env.id, label: (env.data.label as string) || "Stage", nodeType: env.data.nodeType as string, children: connected, status: (env.data.status as string) || "Success" };
+        return { id: env.id, label: (env.data.label as string) || "Stage", nodeType: env.data.nodeType as string, children: connected, status: (env.data.status as string) || "Pending" };
       }
-      return { id: env.id, label: (env.data.label as string) || "Stage", nodeType: env.data.nodeType as string, children, status: (env.data.status as string) || "Success" };
+      return { id: env.id, label: (env.data.label as string) || "Stage", nodeType: env.data.nodeType as string, children, status: (env.data.status as string) || "Pending" };
     });
 
     const assignedIds = new Set(stageList.flatMap(s => s.children.map(c => c.id)));
@@ -173,7 +173,7 @@ function PipelineFlowViewComponent({ nodes, edges, onUpdateNode }: PipelineFlowV
                   <div className="flex flex-col items-center">
                     <div className="w-px h-4 border-l-2 border-dashed" style={{ borderColor: theme.border + "60" }} />
                     <div className="flex flex-col items-center gap-0">
-                      {[...stage.children].reverse().map((child, cIdx) => (
+                      {stage.children.map((child, cIdx) => (
                         <FlowStepNode
                           key={child.id}
                           child={child}
@@ -253,8 +253,8 @@ function FlowStepNode({ child, cIdx, theme, stageIdx, isSelected, onClick }: Flo
     >
       {cIdx > 0 && (
         <div className="flex flex-col items-center my-1">
-          <ChevronUp className="w-3.5 h-3.5" style={{ color: theme.border + "80" }} />
-          <div className="w-px h-2 border-l-2 border-dashed" style={{ borderColor: theme.border + "40" }} />
+          <div className="w-px h-2 border-l-2 border-dashed" style={{ borderColor: theme.border + "80" }} />
+          <ChevronDown className="w-4 h-4" style={{ color: theme.border }} />
         </div>
       )}
 
@@ -533,12 +533,7 @@ interface StageConnectorProps {
 }
 
 function StageConnector({ delay = 0, fromTheme, toTheme, hasFromNodes, hasToNodes }: StageConnectorProps) {
-  // Gradient id must be unique per connector pair
   const gradId = `grad-${fromTheme.border.replace("#", "")}-${toTheme.border.replace("#", "")}`;
-
-  // When both stages have nodes, draw a curved SVG path that arcs from the bottom
-  // of the last node (left side) to the top of the first node (right side).
-  // The connector sits at approximately node-centre height.
   const nodeYOffset = hasFromNodes && hasToNodes ? 120 : 48;
 
   return (
@@ -559,8 +554,8 @@ function StageConnector({ delay = 0, fromTheme, toTheme, hasFromNodes, hasToNode
       >
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={fromTheme.border} stopOpacity="0.5" />
-            <stop offset="100%" stopColor={toTheme.border} stopOpacity="0.5" />
+            <stop offset="0%" stopColor={fromTheme.border} stopOpacity="0.7" />
+            <stop offset="100%" stopColor={toTheme.border} stopOpacity="0.7" />
           </linearGradient>
           <marker
             id={`arrow-${gradId}`}
@@ -570,16 +565,15 @@ function StageConnector({ delay = 0, fromTheme, toTheme, hasFromNodes, hasToNode
             refY="3"
             orient="auto"
           >
-            <path d="M0,0 L0,6 L6,3 z" fill={toTheme.border} fillOpacity="0.6" />
+            <path d="M0,0.5 L0,5.5 L5,3 z" fill={toTheme.border} fillOpacity="0.8" />
           </marker>
         </defs>
 
-        {/* Subtle dashed path from left-centre to right-centre */}
+        {/* Connecting line */}
         <motion.path
-          d="M 2 20 C 20 20, 52 20, 70 20"
+          d="M 6 20 L 64 20"
           stroke={`url(#${gradId})`}
-          strokeWidth="1.5"
-          strokeDasharray="4 3"
+          strokeWidth="2"
           strokeLinecap="round"
           markerEnd={`url(#arrow-${gradId})`}
           initial={{ pathLength: 0, opacity: 0 }}
@@ -587,8 +581,8 @@ function StageConnector({ delay = 0, fromTheme, toTheme, hasFromNodes, hasToNode
           transition={{ delay: delay + 0.1, duration: 0.6, ease: "easeOut" }}
         />
 
-        {/* Small dot at start */}
-        <circle cx="2" cy="20" r="2.5" fill={fromTheme.border} fillOpacity="0.4" />
+        {/* Dot at start */}
+        <circle cx="4" cy="20" r="3" fill={fromTheme.border} fillOpacity="0.6" />
       </svg>
     </motion.div>
   );

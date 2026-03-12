@@ -262,7 +262,6 @@ export default function AccountSettingsPage() {
     const labels: Record<string, string> = {
       public: "Public Cloud",
       private: "Private Cloud",
-      hybrid: "Hybrid Cloud",
     };
     return labels[type] || type;
   };
@@ -560,12 +559,6 @@ export default function AccountSettingsPage() {
                       <span className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-violet-500" />
                         Private Cloud
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="hybrid" className="rounded-lg">
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                        Hybrid Cloud
                       </span>
                     </SelectItem>
                   </SelectContent>

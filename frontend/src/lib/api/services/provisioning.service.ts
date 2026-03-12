@@ -53,7 +53,7 @@ function mapBackendJob(job: BackendProvisioningJob): ProvisioningJob {
     id: job.id,
     accountId: job.accountId,
     accountName: job.accountName,
-    cloudType: job.cloudType === 'hybrid' ? 'private' : job.cloudType,
+    cloudType: job.cloudType,
     status: job.status,
     message: job.message,
     progress: job.progress,
@@ -72,7 +72,7 @@ function mapBackendStatus(status: BackendProvisioningStatus): ProvisioningJob {
     id: status.accountId, // Status DTO doesn't have a separate id
     accountId: status.accountId,
     accountName: status.accountName,
-    cloudType: status.cloudType === 'hybrid' ? 'private' : status.cloudType,
+    cloudType: status.cloudType,
     status: status.status,
     message: status.message,
     progress: status.progress,

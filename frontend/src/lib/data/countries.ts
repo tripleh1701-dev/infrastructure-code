@@ -235,6 +235,21 @@ export function getCountryByName(name: string): CountryData | undefined {
   return countries.find(c => c.name === name);
 }
 
+/** Convert a 2-letter country code to its flag emoji */
+export function countryCodeToFlag(code: string): string {
+  const upper = code.toUpperCase();
+  if (upper.length !== 2) return "";
+  return String.fromCodePoint(
+    ...upper.split("").map(c => 0x1f1e6 + c.charCodeAt(0) - 65)
+  );
+}
+
+/** Get flag emoji for a country name */
+export function getCountryFlag(countryName: string): string {
+  const country = countries.find(c => c.name === countryName);
+  return country ? countryCodeToFlag(country.code) : "";
+}
+
 /** Get sorted country names */
 export function getCountryNames(): string[] {
   return countries.map(c => c.name).sort();

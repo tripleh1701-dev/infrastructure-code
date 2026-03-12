@@ -201,7 +201,7 @@ export class AccountsService {
    */
   async create(dto: CreateAccountDto): Promise<Account> {
     // ── Preflight: block private provisioning if cross-account config is missing ──
-    if (dto.cloudType === 'private' || dto.cloudType === 'hybrid') {
+    if (dto.cloudType === 'private') {
       const dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
       const cfnExecutionRoleArn = this.configService.get<string>('CFN_EXECUTION_ROLE_ARN');
       const missing: string[] = [];

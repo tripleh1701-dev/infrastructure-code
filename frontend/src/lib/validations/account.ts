@@ -64,7 +64,7 @@ export const technicalUserSchema = z.object({
 export const accountFormSchema = z.object({
   accountName: z.string().min(1, "Account name is required").max(100, "Account name must be less than 100 characters"),
   masterAccountName: z.string().min(1, "Master account name is required").max(100, "Master account name must be less than 100 characters"),
-  cloudType: z.enum(["public", "private", "hybrid"], {
+  cloudType: z.enum(["public", "private"], {
     required_error: "Cloud type is required",
   }),
   addresses: z.array(addressSchema).min(1, "At least one address is required"),

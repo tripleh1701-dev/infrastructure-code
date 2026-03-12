@@ -58,12 +58,12 @@ describe("provisioningService (external API mode)", () => {
       expect(result.data!.resources[1].status).toBe("CREATE_IN_PROGRESS"); // creating -> CREATE_IN_PROGRESS
     });
 
-    it("maps hybrid cloudType to private", async () => {
+    it("maps private cloudType correctly", async () => {
       vi.mocked(httpClient.post).mockResolvedValue({
-        data: { ...mockBackendJob, cloudType: "hybrid" },
+        data: { ...mockBackendJob, cloudType: "private" },
         error: null,
       });
-      const result = await startProvisioning({ accountId: "acc-1", accountName: "Test", cloudType: "hybrid" as any });
+      const result = await startProvisioning({ accountId: "acc-1", accountName: "Test", cloudType: "private" });
       expect(result.data!.cloudType).toBe("private");
     });
 

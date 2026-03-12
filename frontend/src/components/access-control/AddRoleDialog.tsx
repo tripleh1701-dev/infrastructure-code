@@ -28,8 +28,8 @@ import { useCreateRolePermissions, CreateRolePermissionData } from "@/hooks/useR
 import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
-import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useProductContext } from "@/contexts/ProductContext";
+import { useLicenses } from "@/hooks/useLicenses";
 import { cn } from "@/lib/utils";
 import { RoleScopesModal, MenuPermission } from "./RoleScopesModal";
 import { WorkstreamMultiSelect } from "./WorkstreamMultiSelect";
@@ -50,63 +50,24 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
   const createRolePermissions = useCreateRolePermissions();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
 
   const { workstreams = [] } = useWorkstreams(selectedAccount?.id, selectedEnterprise?.id);
   
-  // Fetch licensed products and services for the selected account/enterprise
-  const { data: licensedData = { products: [], services: [] } } = useQuery({
-    queryKey: ["licensed-products-services", selectedAccount?.id, selectedEnterprise?.id],
-    queryFn: async () => {
-      if (!selectedAccount?.id || !selectedEnterprise?.id) {
-        return { products: [], services: [] };
-      }
-
-      // Fetch licenses for the selected account and enterprise
-      const { data: licenses, error: licensesError } = await supabase
-        .from("account_licenses")
-        .select("product_id, service_id")
-        .eq("account_id", selectedAccount.id)
-        .eq("enterprise_id", selectedEnterprise.id)
-        .gte("end_date", new Date().toISOString().split("T")[0]); // Only active licenses
-
-      if (licensesError) throw licensesError;
-
-      if (!licenses || licenses.length === 0) {
-        return { products: [], services: [] };
-      }
-
-      // Get unique product and service IDs
-      const productIds = [...new Set(licenses.map((l) => l.product_id))];
-      const serviceIds = [...new Set(licenses.map((l) => l.service_id))];
-
-      // Fetch products
-      const { data: products, error: productsError } = await supabase
-        .from("products")
-        .select("*")
-        .in("id", productIds)
-        .order("name");
-
-      if (productsError) throw productsError;
-
-      // Fetch services
-      const { data: services, error: servicesError } = await supabase
-        .from("services")
-        .select("*")
-        .in("id", serviceIds)
-        .order("name");
-
-      if (servicesError) throw servicesError;
-
-      return {
-        products: products || [],
-        services: services || [],
-      };
-    },
-    enabled: Boolean(selectedAccount?.id && selectedEnterprise?.id),
-  });
-
-  const products = licensedData.products;
-  const services = licensedData.services;
+  // Fetch licensed services for the selected account/enterprise
+  const { licenses = [] } = useLicenses(selectedAccount?.id, selectedEnterprise?.id);
+  const services = useMemo(() => {
+    if (!selectedProduct?.id) return [];
+    const serviceMap = new Map<string, { id: string; name: string }>();
+    licenses
+      .filter(l => l.product_id === selectedProduct.id)
+      .forEach(l => {
+        if (l.service?.id && l.service?.name) {
+          serviceMap.set(l.service.id, { id: l.service.id, name: l.service.name });
+        }
+      });
+    return Array.from(serviceMap.values());
+  }, [licenses, selectedProduct?.id]);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [direction, setDirection] = useState(1);
@@ -116,7 +77,6 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
     name: "",
     description: "",
     workstreamIds: [] as string[],
-    productId: "",
     serviceId: "",
   });
 
@@ -132,13 +92,13 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
   // Step validation
   const stepValidation = useMemo(() => ({
     1: Boolean(formData.name.trim() && !isNameDuplicate),
-    2: Boolean(formData.workstreamIds.length > 0 && formData.productId && formData.serviceId), // Required fields
+    2: Boolean(formData.workstreamIds.length > 0 && formData.serviceId), // Required fields
     3: true, // Optional but recommended
-  }), [formData.name, isNameDuplicate, formData.workstreamIds.length, formData.productId, formData.serviceId]);
+  }), [formData.name, isNameDuplicate, formData.workstreamIds.length, formData.serviceId]);
 
   const isCurrentStepValid = stepValidation[currentStep as keyof typeof stepValidation];
   const isAllValid = formData.name.trim().length > 0 && !isNameDuplicate && 
-    Boolean(formData.workstreamIds.length > 0 && formData.productId && formData.serviceId);
+    Boolean(formData.workstreamIds.length > 0 && formData.serviceId);
 
   const handleSubmit = async () => {
     if (!isAllValid || !selectedAccount?.id || !selectedEnterprise?.id) return;
@@ -158,7 +118,7 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
         accountId: selectedAccount.id,
         enterpriseId: selectedEnterprise.id,
         workstreamIds: formData.workstreamIds.length > 0 ? formData.workstreamIds : undefined,
-        productId: formData.productId || undefined,
+        productId: selectedProduct?.id || undefined,
         serviceId: formData.serviceId || undefined,
       });
 
@@ -190,7 +150,6 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
       name: "",
       description: "",
       workstreamIds: [],
-      productId: "",
       serviceId: "",
     });
     setPermissions([]);
@@ -471,38 +430,6 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
           transition={{ delay: 0.3 }}
         >
           <Label className="flex items-center gap-2">
-            <Box className="w-4 h-4 text-primary" />
-             Product <span className="text-destructive">*</span>
-          </Label>
-          <Select
-            value={formData.productId}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, productId: value }))}
-          >
-            <SelectTrigger>
-               <SelectValue placeholder="Select product" />
-            </SelectTrigger>
-            <SelectContent>
-              {products.map((product) => (
-                <SelectItem key={product.id} value={product.id}>
-                  {product.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-           {products.length === 0 && (
-             <p className="text-xs text-muted-foreground">
-               No licensed products available for this account/enterprise
-             </p>
-           )}
-        </motion.div>
-
-        <motion.div
-          className="space-y-2"
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.4 }}
-        >
-          <Label className="flex items-center gap-2">
             <Settings2 className="w-4 h-4 text-primary" />
              Service <span className="text-destructive">*</span>
           </Label>
@@ -523,7 +450,7 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
           </Select>
            {services.length === 0 && (
              <p className="text-xs text-muted-foreground">
-               No licensed services available for this account/enterprise
+               No licensed services available for the selected product
              </p>
            )}
         </motion.div>
@@ -533,11 +460,11 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
          className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700"
          initial={{ opacity: 0 }}
          animate={{ opacity: 1 }}
-         transition={{ delay: 0.5 }}
+         transition={{ delay: 0.4 }}
        >
          <AlertCircle className="w-4 h-4 flex-shrink-0" />
          <p className="text-xs">
-           All context fields are required. The role will be scoped to the selected workstream, product, and service.
+           Product is set from the global header. Workstream and service are required.
          </p>
        </motion.div>
     </div>
@@ -649,8 +576,13 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
+      <Dialog open={open} onOpenChange={handleClose} modal={false}>
+        {open && <div className="fixed inset-0 z-50 bg-black/80" onClick={handleClose} />}
+        <DialogContent 
+          className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0"
+          onInteractOutside={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
           <VisuallyHidden>
             <DialogTitle>Add New Role</DialogTitle>
           </VisuallyHidden>

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, ChevronDown, Check, Briefcase, AlertTriangle } from "lucide-react";
+import { Building2, ChevronDown, Check, Briefcase, AlertTriangle, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 import { useEnterpriseContext, GLOBAL_ENTERPRISE_ID } from "@/contexts/EnterpriseContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccountContext } from "@/contexts/AccountContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { useEffect, useState, useMemo } from "react";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
@@ -25,6 +26,7 @@ interface HeaderProps {
 export function Header({ title, subtitle, actions }: HeaderProps) {
   const { enterprises, selectedEnterprise, setSelectedEnterprise, isLoading: enterpriseLoading, getEnterpriseDisplayName } = useEnterpriseContext();
   const { accounts, selectedAccount, setSelectedAccount, isLoading: accountsLoading } = useAccountContext();
+  const { products, selectedProduct, setSelectedProduct, isLoading: productsLoading } = useProductContext();
   const { isSuperAdmin } = useAuth();
   
   const [accountEnterpriseIds, setAccountEnterpriseIds] = useState<string[]>([]);
@@ -198,6 +200,48 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
                     >
                       <span className="truncate">{getFilteredEnterpriseDisplayName(enterprise)}</span>
                       {selectedEnterprise?.id === enterprise.id && (
+                        <Check className="w-4 h-4 text-primary flex-shrink-0 ml-2" />
+                      )}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Product Selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2"
+                  disabled={productsLoading || products.length === 0}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium hidden md:inline">
+                    {productsLoading 
+                      ? "..." 
+                      : products.length === 0
+                        ? "No Product"
+                        : selectedProduct?.name || "Product"}
+                  </span>
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 max-h-64 overflow-y-auto">
+                {products.length === 0 ? (
+                  <DropdownMenuItem disabled className="text-muted-foreground">
+                    No products licensed
+                  </DropdownMenuItem>
+                ) : (
+                  products.map((product) => (
+                    <DropdownMenuItem
+                      key={product.id}
+                      onClick={() => setSelectedProduct(product)}
+                      className="flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="truncate">{product.name}</span>
+                      {selectedProduct?.id === product.id && (
                         <Check className="w-4 h-4 text-primary flex-shrink-0 ml-2" />
                       )}
                     </DropdownMenuItem>

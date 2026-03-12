@@ -129,6 +129,7 @@ const getUrgencyBadge = (urgency: { level: "critical" | "soon" | "upcoming" | nu
 import { useViewPreference } from "@/hooks/useViewPreference";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { FilterContextIndicator } from "@/components/layout/FilterContextIndicator";
 import { usePermissions } from "@/contexts/PermissionContext";
 import { PermissionGate } from "@/components/auth/PermissionGate";
@@ -212,10 +213,11 @@ export default function AccessControlPage() {
    const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
    const [userTechnicalFilter, setUserTechnicalFilter] = useState<string>("all");
   
-  // Get selected account and enterprise from context
+  // Get selected account, enterprise, and product from context
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
-  const { hasTabAccess, canCreate } = usePermissions();
+  const { selectedProduct } = useProductContext();
+  const { hasTabAccess, canCreate, canEdit, canDelete } = usePermissions();
   
   // User dialogs
   const [showAddUser, setShowAddUser] = useState(false);
@@ -232,12 +234,13 @@ export default function AccessControlPage() {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [deletingRole, setDeletingRole] = useState<Role | null>(null);
 
-  // Pass accountId and enterpriseId to filter users, roles user counts, and groups member counts
+  // Pass accountId, enterpriseId, and productId to filter users, roles user counts, and groups member counts
   const accountId = selectedAccount?.id;
   const enterpriseId = selectedEnterprise?.id;
+  const productId = selectedProduct?.id;
   const { data: users = [], isLoading: usersLoading } = useAccessControlUsers(accountId, enterpriseId);
-  const { data: groups = [], isLoading: groupsLoading } = useGroups(accountId, enterpriseId);
-  const { data: roles = [], isLoading: rolesLoading } = useRoles(accountId, enterpriseId);
+  const { data: groups = [], isLoading: groupsLoading } = useGroups(accountId, enterpriseId, productId);
+  const { data: roles = [], isLoading: rolesLoading } = useRoles(accountId, enterpriseId, productId);
   
   // Fetch workstreams and licenses for filter options
   const { workstreams } = useWorkstreams(accountId, enterpriseId);
@@ -863,7 +866,7 @@ export default function AccessControlPage() {
         {activeTab === "users" && (
           <>
             <AnimatePresence>
-              {userBulk.selectedIds.size > 0 && (
+              {canDelete("access-control") && userBulk.selectedIds.size > 0 && (
                 <BulkActionBar
                   selectedCount={userBulk.selectedIds.size}
                   totalCount={filteredUsers.length}
@@ -918,7 +921,7 @@ export default function AccessControlPage() {
                 <p className="text-slate-500 mb-6 max-w-md mx-auto">
                   {searchQuery ? "Try adjusting your search to find what you're looking for." : "Create a user or add a Technical User in the Accounts section."}
                 </p>
-                {!searchQuery && (
+                {!searchQuery && canCreate("access-control") && (
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button 
                       onClick={() => setShowAddUser(true)} 
@@ -1181,26 +1184,32 @@ export default function AccessControlPage() {
                           )}
                         </td>
                         <td className="px-5 py-4">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted">
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setEditingUser(user)}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => setDeletingUser(user)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {(canEdit("access-control") || canDelete("access-control")) && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted">
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {canEdit("access-control") && (
+                                  <DropdownMenuItem onClick={() => setEditingUser(user)}>
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                )}
+                                {canDelete("access-control") && (
+                                  <DropdownMenuItem 
+                                    onClick={() => setDeletingUser(user)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </td>
                       </motion.tr>
                     ))}
@@ -1248,26 +1257,32 @@ export default function AccessControlPage() {
                             </p>
                           </div>
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 rounded-lg">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="rounded-xl shadow-xl border-slate-200">
-                            <DropdownMenuItem onClick={() => setEditingUser(user)} className="rounded-lg">
-                              <Pencil className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => setDeletingUser(user)}
-                              className="text-destructive focus:text-destructive rounded-lg"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {(canEdit("access-control") || canDelete("access-control")) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all duration-200 rounded-lg">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="rounded-xl shadow-xl border-slate-200">
+                              {canEdit("access-control") && (
+                                <DropdownMenuItem onClick={() => setEditingUser(user)} className="rounded-lg">
+                                  <Pencil className="w-4 h-4 mr-2" />
+                                  Edit
+                                </DropdownMenuItem>
+                              )}
+                              {canDelete("access-control") && (
+                                <DropdownMenuItem 
+                                  onClick={() => setDeletingUser(user)}
+                                  className="text-destructive focus:text-destructive rounded-lg"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2 mb-3">
                         {user.groups && user.groups.length > 0 ? (
@@ -1427,7 +1442,7 @@ export default function AccessControlPage() {
         {activeTab === "roles" && (
           <>
             <AnimatePresence>
-              {roleBulk.selectedIds.size > 0 && (
+              {canDelete("access-control") && roleBulk.selectedIds.size > 0 && (
                 <BulkActionBar
                   selectedCount={roleBulk.selectedIds.size}
                   totalCount={filteredRoles.length}
@@ -1470,7 +1485,7 @@ export default function AccessControlPage() {
                 <p className="text-slate-500 mb-6 max-w-md mx-auto">
                   {searchQuery ? "Try adjusting your search to find what you're looking for." : "Create a role to define user permissions."}
                 </p>
-                {!searchQuery && (
+                {!searchQuery && canCreate("access-control") && (
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button 
                       onClick={() => setShowAddRole(true)} 
@@ -1518,6 +1533,8 @@ export default function AccessControlPage() {
                           onToggleSelect={roleBulk.toggle}
                           onEdit={setEditingRole}
                           onDelete={setDeletingRole}
+                          canEditAccess={canEdit("access-control")}
+                          canDeleteAccess={canDelete("access-control")}
                         />
                       ))}
                     </tbody>
@@ -1537,6 +1554,8 @@ export default function AccessControlPage() {
                       index={index}
                       onEdit={setEditingRole}
                       onDelete={setDeletingRole}
+                      canEditAccess={canEdit("access-control")}
+                      canDeleteAccess={canDelete("access-control")}
                     />
                   ))}
                 </AnimatePresence>
@@ -1549,7 +1568,7 @@ export default function AccessControlPage() {
         {activeTab === "groups" && (
           <>
             <AnimatePresence>
-              {groupBulk.selectedIds.size > 0 && (
+              {canDelete("access-control") && groupBulk.selectedIds.size > 0 && (
                 <BulkActionBar
                   selectedCount={groupBulk.selectedIds.size}
                   totalCount={filteredGroups.length}
@@ -1592,7 +1611,7 @@ export default function AccessControlPage() {
                 <p className="text-slate-500 mb-6 max-w-md mx-auto">
                   {searchQuery ? "Try adjusting your search to find what you're looking for." : "Create a group to organize users."}
                 </p>
-                {!searchQuery && (
+                {!searchQuery && canCreate("access-control") && (
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                     <Button 
                       onClick={() => setShowAddGroup(true)} 
@@ -1639,6 +1658,8 @@ export default function AccessControlPage() {
                           onToggleSelect={groupBulk.toggle}
                           onEdit={setEditingGroup}
                           onDelete={setDeletingGroup}
+                          canEditAccess={canEdit("access-control")}
+                          canDeleteAccess={canDelete("access-control")}
                         />
                       ))}
                     </tbody>
@@ -1658,6 +1679,8 @@ export default function AccessControlPage() {
                       index={index}
                       onEdit={setEditingGroup}
                       onDelete={setDeletingGroup}
+                      canEditAccess={canEdit("access-control")}
+                      canDeleteAccess={canDelete("access-control")}
                     />
                   ))}
                 </AnimatePresence>

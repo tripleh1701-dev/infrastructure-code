@@ -8,7 +8,7 @@ export interface Account {
   id: string;
   name: string;
   master_account_name: string;
-  cloud_type: "public" | "private" | "hybrid";
+  cloud_type: "public" | "private";
   status: string;
   created_at: string;
   updated_at: string;
@@ -54,7 +54,7 @@ export interface AccountWithDetails extends Account {
 export interface CreateAccountInput {
   name: string;
   master_account_name: string;
-  cloud_type: "public" | "private" | "hybrid";
+  cloud_type: "public" | "private";
   addresses: {
     line1: string;
     line2?: string;

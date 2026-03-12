@@ -100,7 +100,7 @@ describe("accountsService.update", () => {
       id: "a1",
       name: "Updated",
       masterAccountName: "M",
-      cloudType: "hybrid" as const,
+      cloudType: "private" as const,
       addresses: [],
       technicalUser: {} as any,
     };

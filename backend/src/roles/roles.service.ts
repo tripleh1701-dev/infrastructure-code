@@ -45,7 +45,7 @@ export interface RolePermissionTab {
 export class RolesService {
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
-  async findAll(accountId?: string, enterpriseId?: string): Promise<Role[]> {
+  async findAll(accountId?: string, enterpriseId?: string, productId?: string): Promise<Role[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
       'GSI1PK = :pk',
@@ -59,6 +59,9 @@ export class RolesService {
     }
     if (enterpriseId) {
       roles = roles.filter((r) => r.enterpriseId === enterpriseId);
+    }
+    if (productId) {
+      roles = roles.filter((r) => !r.productId || r.productId === productId);
     }
 
     // Deduplicate by name – keep the first occurrence per unique name

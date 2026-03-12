@@ -10,6 +10,10 @@ export interface PermissionTab {
   key: string;
   label: string;
   isVisible: boolean;
+  canView?: boolean;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export interface MenuPermission {
@@ -31,10 +35,10 @@ interface PermissionContextType {
   currentTechnicalUserId: string | null;
   hasMenuAccess: (menuKey: string) => boolean;
   hasTabAccess: (menuKey: string, tabKey: string) => boolean;
-  canCreate: (menuKey: string) => boolean;
-  canView: (menuKey: string) => boolean;
-  canEdit: (menuKey: string) => boolean;
-  canDelete: (menuKey: string) => boolean;
+  canCreate: (menuKey: string, tabKey?: string) => boolean;
+  canView: (menuKey: string, tabKey?: string) => boolean;
+  canEdit: (menuKey: string, tabKey?: string) => boolean;
+  canDelete: (menuKey: string, tabKey?: string) => boolean;
   getMenuPermission: (menuKey: string) => MenuPermission | undefined;
   refetchPermissions: () => Promise<void>;
 }
@@ -49,15 +53,15 @@ const DEFAULT_ADMIN_PERMISSIONS: MenuPermission[] = [
   { menuKey: "pipelines", menuLabel: "Pipelines", isVisible: true, tabs: [], canCreate: true, canView: true, canEdit: true, canDelete: true },
   { menuKey: "builds", menuLabel: "Builds", isVisible: true, tabs: [], canCreate: true, canView: true, canEdit: true, canDelete: true },
   { menuKey: "access-control", menuLabel: "Access Control", isVisible: true, tabs: [
-    { key: "users", label: "Users", isVisible: true },
-    { key: "groups", label: "Groups", isVisible: true },
-    { key: "roles", label: "Roles", isVisible: true },
-    { key: "hierarchy", label: "Hierarchy", isVisible: true },
+    { key: "users", label: "Users", isVisible: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
+    { key: "groups", label: "Groups", isVisible: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
+    { key: "roles", label: "Roles", isVisible: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
+    { key: "hierarchy", label: "Hierarchy", isVisible: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
   ], canCreate: true, canView: true, canEdit: true, canDelete: true },
   { menuKey: "account-settings", menuLabel: "Account Settings", isVisible: true, tabs: [
-    { key: "enterprise", label: "Enterprise", isVisible: true },
-    { key: "accounts", label: "Accounts", isVisible: true },
-    { key: "global-settings", label: "Global Settings", isVisible: true },
+    { key: "enterprise", label: "Enterprise", isVisible: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
+    { key: "accounts", label: "Accounts", isVisible: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
+    { key: "global-settings", label: "Global Settings", isVisible: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
   ], canCreate: true, canView: true, canEdit: true, canDelete: true },
   { menuKey: "security", menuLabel: "Security & Governance", isVisible: true, tabs: [], canCreate: true, canView: true, canEdit: true, canDelete: true },
   { menuKey: "monitoring", menuLabel: "Monitoring", isVisible: true, tabs: [], canCreate: true, canView: true, canEdit: true, canDelete: true },
@@ -308,8 +312,12 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
             const existingTab = existing.tabs.find((t) => t.key === tab.key);
             if (!existingTab) {
               existing.tabs.push(tab);
-            } else if (tab.isVisible) {
-              existingTab.isVisible = true;
+            } else {
+              if (tab.isVisible) existingTab.isVisible = true;
+              if (tab.canView) existingTab.canView = true;
+              if (tab.canCreate) existingTab.canCreate = true;
+              if (tab.canEdit) existingTab.canEdit = true;
+              if (tab.canDelete) existingTab.canDelete = true;
             }
           });
         }
@@ -350,24 +358,44 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
       return tab?.isVisible ?? true;
     };
 
-    const canCreate = (menuKey: string): boolean => {
+    const canCreate = (menuKey: string, tabKey?: string): boolean => {
       const perm = permissions.find((p) => p.menuKey === menuKey);
-      return perm?.canCreate ?? false;
+      if (!perm) return false;
+      if (tabKey) {
+        const tab = perm.tabs.find((t) => t.key === tabKey);
+        return tab?.canCreate ?? perm.canCreate ?? false;
+      }
+      return perm.canCreate ?? false;
     };
 
-    const canView = (menuKey: string): boolean => {
+    const canView = (menuKey: string, tabKey?: string): boolean => {
       const perm = permissions.find((p) => p.menuKey === menuKey);
-      return perm?.canView ?? false;
+      if (!perm) return false;
+      if (tabKey) {
+        const tab = perm.tabs.find((t) => t.key === tabKey);
+        return tab?.canView ?? perm.canView ?? false;
+      }
+      return perm.canView ?? false;
     };
 
-    const canEdit = (menuKey: string): boolean => {
+    const canEdit = (menuKey: string, tabKey?: string): boolean => {
       const perm = permissions.find((p) => p.menuKey === menuKey);
-      return perm?.canEdit ?? false;
+      if (!perm) return false;
+      if (tabKey) {
+        const tab = perm.tabs.find((t) => t.key === tabKey);
+        return tab?.canEdit ?? perm.canEdit ?? false;
+      }
+      return perm.canEdit ?? false;
     };
 
-    const canDelete = (menuKey: string): boolean => {
+    const canDelete = (menuKey: string, tabKey?: string): boolean => {
       const perm = permissions.find((p) => p.menuKey === menuKey);
-      return perm?.canDelete ?? false;
+      if (!perm) return false;
+      if (tabKey) {
+        const tab = perm.tabs.find((t) => t.key === tabKey);
+        return tab?.canDelete ?? perm.canDelete ?? false;
+      }
+      return perm.canDelete ?? false;
     };
 
     const getMenuPermission = (menuKey: string): MenuPermission | undefined => {

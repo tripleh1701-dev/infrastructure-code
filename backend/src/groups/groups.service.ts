@@ -18,7 +18,7 @@ export interface Group {
 export class GroupsService {
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
-  async findAll(accountId?: string): Promise<Group[]> {
+  async findAll(accountId?: string, enterpriseId?: string, productId?: string): Promise<Group[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
       'GSI1PK = :pk',
@@ -29,6 +29,12 @@ export class GroupsService {
 
     if (accountId) {
       groups = groups.filter((g) => (g as any).accountId === accountId);
+    }
+    if (enterpriseId) {
+      groups = groups.filter((g) => (g as any).enterpriseId === enterpriseId);
+    }
+    if (productId) {
+      groups = groups.filter((g) => !(g as any).productId || (g as any).productId === productId);
     }
 
     // Deduplicate by name – keep the first occurrence per unique name

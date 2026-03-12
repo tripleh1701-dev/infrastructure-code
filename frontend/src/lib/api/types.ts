@@ -32,7 +32,7 @@ export interface Account {
   id: string;
   name: string;
   masterAccountName: string;
-  cloudType: 'public' | 'private' | 'hybrid';
+  cloudType: 'public' | 'private';
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -60,7 +60,7 @@ export interface AccountWithDetails extends Account {
 export interface CreateAccountInput {
   name: string;
   masterAccountName: string;
-  cloudType: 'public' | 'private' | 'hybrid';
+  cloudType: 'public' | 'private';
   addresses: Omit<AccountAddress, 'id' | 'accountId' | 'createdAt'>[];
   technicalUser: Omit<TechnicalUser, 'id' | 'accountId' | 'createdAt' | 'updatedAt'>;
 }
@@ -354,7 +354,7 @@ export interface ProvisioningEvent {
 export interface BackendProvisioningStatus {
   accountId: string;
   accountName: string;
-  cloudType: 'public' | 'private' | 'hybrid';
+  cloudType: 'public' | 'private';
   status: ProvisioningStatus;
   message: string;
   progress: number;
@@ -379,7 +379,7 @@ export interface BackendProvisioningJob {
   id: string;
   accountId: string;
   accountName: string;
-  cloudType: 'public' | 'private' | 'hybrid';
+  cloudType: 'public' | 'private';
   status: ProvisioningStatus;
   message: string;
   progress: number;

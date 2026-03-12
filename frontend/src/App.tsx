@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { EnterpriseProvider } from "@/contexts/EnterpriseContext";
 import { AccountProvider } from "@/contexts/AccountContext";
+import { ProductProvider } from "@/contexts/ProductContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PermissionProvider } from "@/contexts/PermissionContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -34,6 +35,7 @@ const App = () => (
       <AuthProvider>
         <AccountProvider>
           <EnterpriseProvider>
+            <ProductProvider>
             <PermissionProvider>
               <ThemeProvider>
               <TooltipProvider>
@@ -71,6 +73,7 @@ const App = () => (
               </TooltipProvider>
               </ThemeProvider>
             </PermissionProvider>
+            </ProductProvider>
           </EnterpriseProvider>
         </AccountProvider>
       </AuthProvider>

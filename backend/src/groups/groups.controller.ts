@@ -27,9 +27,13 @@ export class GroupsController {
   constructor(private readonly groupsService: GroupsService) {}
 
   @Get()
-  async findAll(@Query('accountId') accountId?: string) {
+  async findAll(
+    @Query('accountId') accountId?: string,
+    @Query('enterpriseId') enterpriseId?: string,
+    @Query('productId') productId?: string,
+  ) {
     try {
-      return await this.groupsService.findAll(accountId);
+      return await this.groupsService.findAll(accountId, enterpriseId, productId);
     } catch (error: any) {
       this.logger.error(`Failed to fetch groups for account ${accountId}: ${error.message}`, error.stack);
       return [];

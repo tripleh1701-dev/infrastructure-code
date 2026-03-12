@@ -8,6 +8,10 @@ export interface RolePermissionTab {
   key: string;
   label: string;
   isVisible: boolean;
+  canView?: boolean;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export interface RolePermission {

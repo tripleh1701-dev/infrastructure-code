@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { WorkstreamMultiSelect } from "@/components/access-control/WorkstreamMultiSelect";
 import { format, addDays } from "date-fns";
 
@@ -199,7 +200,7 @@ const formSchema = z.object({
   name: z.string().min(1, "Credential name is required").max(100, "Name must be less than 100 characters"),
   description: z.string().max(500, "Description must be less than 500 characters").optional(),
   workstream_ids: z.array(z.string()).min(1, "At least one workstream is required"),
-  product_id: z.string().min(1, "Product is required"),
+  product_id: z.string().optional(),
   service_id: z.string().min(1, "Service is required"),
   status: z.enum(["active", "pending", "expired", "revoked"]),
   expires_at: z.string().optional(),
@@ -224,6 +225,7 @@ export function EditCredentialDialog({
 }: EditCredentialDialogProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const { updateCredential } = useCredentials(selectedAccount?.id, selectedEnterprise?.id);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -374,7 +376,7 @@ export function EditCredentialDialog({
         name: data.name,
         description: data.description || null,
         workstream_ids: data.workstream_ids,
-        product_id: data.product_id || null,
+        product_id: selectedProduct?.id || data.product_id || null,
         service_id: data.service_id || null,
         status: data.status,
         expires_at: data.expires_at ? new Date(data.expires_at).toISOString() : null,
@@ -601,53 +603,8 @@ export function EditCredentialDialog({
                   )}
                 />
 
-                {/* Products & Services */}
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                    <FormField
-                      control={form.control}
-                      name="product_id"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="flex items-center gap-1.5">
-                            <Box className="w-3.5 h-3.5 text-muted-foreground" />
-                            Product <span className="text-destructive">*</span>
-                          </FormLabel>
-                          <Select 
-                            onValueChange={field.onChange} 
-                            value={field.value}
-                            disabled={isLoadingLicensedData || products.length === 0}
-                          >
-                            <FormControl>
-                              <SelectTrigger className={cn(
-                                "bg-background transition-all duration-200",
-                                field.value && "ring-1 ring-primary/20 border-primary/30"
-                              )}>
-                                {isLoadingLicensedData ? (
-                                  <div className="flex items-center gap-2 text-muted-foreground">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Loading...</span>
-                                  </div>
-                                ) : (
-                                  <SelectValue placeholder={products.length === 0 ? "No licensed products" : "Select product"} />
-                                )}
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent position="popper">
-                              {products.map(p => (
-                                <SelectItem key={p.id} value={p.id}>
-                                  <div className="flex items-center gap-2">
-                                    <Box className="w-3.5 h-3.5 text-primary" />
-                                    {p.name}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
+                {/* Service */}
+                <div className="grid grid-cols-1 gap-4 pt-4 border-t">
                     <FormField
                       control={form.control}
                       name="service_id"

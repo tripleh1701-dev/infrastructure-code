@@ -180,7 +180,7 @@ describe("useAccounts (external API mode)", () => {
         id: "acc-1",
         name: "Updated",
         master_account_name: "M",
-        cloud_type: "hybrid",
+        cloud_type: "private",
         addresses: [],
         technical_users: [{
           first_name: "A",

@@ -64,7 +64,6 @@ interface EditAccountFormProps {
 const cloudTypes = [
   { value: "public", label: "Public Cloud", icon: "☁️" },
   { value: "private", label: "Private Cloud", icon: "🔒" },
-  { value: "hybrid", label: "Hybrid Cloud", icon: "🔄" },
 ] as const;
 
 const passwordRequirements = [

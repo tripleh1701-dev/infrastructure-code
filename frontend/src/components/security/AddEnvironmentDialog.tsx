@@ -35,6 +35,7 @@ import { useEnvironments, type CreateEnvironmentInput, type EnvironmentConnector
 import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { supabase } from "@/integrations/supabase/client";
 import { isExternalApi } from "@/lib/api/config";
 import { httpClient } from "@/lib/api/http-client";
@@ -46,7 +47,7 @@ const formSchema = z.object({
   name: z.string().min(1, "Environment Name is required").max(100),
   description: z.string().max(500).optional(),
   workstream_id: z.string().min(1, "Workstream is required"),
-  product_id: z.string().min(1, "Product is required"),
+  product_id: z.string().optional(),
   service_id: z.string().min(1, "Service is required"),
   connector_name: z.string().optional(),
   connectivity_status: z.string().optional(),
@@ -67,6 +68,7 @@ export function AddEnvironmentDialog({
 }: AddEnvironmentDialogProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const accountId = selectedAccount?.id;
   const enterpriseId = selectedEnterprise?.id;
 
@@ -210,7 +212,7 @@ export function AddEnvironmentDialog({
         account_id: accountId,
         enterprise_id: enterpriseId,
         workstream_id: data.workstream_id || undefined,
-        product_id: data.product_id || undefined,
+        product_id: selectedProduct?.id || data.product_id || undefined,
         service_id: data.service_id || undefined,
         connector_name: data.connector_name || undefined,
         connectivity_status: data.connectivity_status || "unknown",
@@ -283,16 +285,6 @@ export function AddEnvironmentDialog({
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
                     <SelectContent className="z-[200] bg-popover border shadow-lg">{workstreams.map((ws) => (<SelectItem key={ws.id} value={ws.id}>{ws.name}</SelectItem>))}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="product_id" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-1.5 text-xs">Product <span className="text-destructive">*</span></FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
-                    <SelectContent className="z-[200] bg-popover border shadow-lg">{products.map((p) => (<SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>))}</SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>

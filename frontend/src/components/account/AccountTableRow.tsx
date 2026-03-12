@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountWithDetails } from "@/hooks/useAccounts";
+import { getCountryFlag } from "@/lib/data/countries";
 import { useLicenses, LicenseWithDetails } from "@/hooks/useLicenses";
 import { AccountExpandedRow } from "./AccountExpandedRow";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -116,9 +117,7 @@ export function AccountTableRow({
                 "w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold",
                 account.cloud_type === "public" 
                   ? "bg-gradient-to-br from-[#0171EC] to-[#05E9FE]" 
-                  : account.cloud_type === "private"
-                  ? "bg-gradient-to-br from-violet-500 to-purple-400"
-                  : "bg-gradient-to-br from-emerald-500 to-teal-400"
+                  : "bg-gradient-to-br from-violet-500 to-purple-400"
               )}
             >
               {account.cloud_type === "public" ? (
@@ -138,17 +137,16 @@ export function AccountTableRow({
             "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium",
             account.cloud_type === "public" 
               ? "bg-[#0171EC]/10 text-[#0171EC] border border-[#0171EC]/30" 
-              : account.cloud_type === "private"
-              ? "bg-violet-500/10 text-violet-600 border border-violet-500/30"
-              : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+              : "bg-violet-500/10 text-violet-600 border border-violet-500/30"
           )}>
             {account.cloud_type === "public" ? <Cloud className="w-3 h-3" /> : <Server className="w-3 h-3" />}
             {getCloudTypeLabel(account.cloud_type)}
           </span>
         </td>
         <td className="px-5 py-4">
-          {primaryAddress ? (
+        {primaryAddress ? (
             <div className="flex items-center gap-1.5 text-sm text-[#64748b]">
+              <span className="text-base leading-none">{getCountryFlag(primaryAddress.country) || ""}</span>
               <MapPin className="w-3.5 h-3.5" />
               <span>{primaryAddress.city}, {primaryAddress.country}</span>
               {(account.addresses?.length ?? 0) > 1 && (

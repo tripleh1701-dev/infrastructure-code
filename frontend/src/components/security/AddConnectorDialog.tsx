@@ -91,6 +91,7 @@ import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useCredentials, type Credential } from "@/hooks/useCredentials";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { WorkstreamMultiSelect } from "@/components/access-control/WorkstreamMultiSelect";
 import type { LucideIcon } from "lucide-react";
 
@@ -226,7 +227,7 @@ const formSchema = z.object({
   name: z.string().min(1, "Connector name is required").max(100),
   description: z.string().max(500).optional(),
   workstream_ids: z.array(z.string()).min(1, "At least one workstream is required"),
-  product_id: z.string().min(1, "Product is required"),
+  product_id: z.string().optional(),
   service_id: z.string().min(1, "Service is required"),
   category: z.string().optional(),
   connector: z.string().optional(),
@@ -255,6 +256,7 @@ export function AddConnectorDialog({
 }: AddConnectorDialogProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const { workstreams } = useWorkstreams(selectedAccount?.id, selectedEnterprise?.id);
   const { credentials } = useCredentials(selectedAccount?.id, selectedEnterprise?.id);
 
@@ -500,6 +502,7 @@ export function AddConnectorDialog({
       // For now, we'll just call the onSave callback
       onSave?.({
         ...data,
+        product_id: selectedProduct?.id || data.product_id || "",
         category: selectedCategory,
         connector: selectedConnector,
         url: connectivityUrl,
@@ -519,7 +522,7 @@ export function AddConnectorDialog({
   // Step validation
   const watchedName = form.watch("name");
   const watchedWorkstreamIds = form.watch("workstream_ids");
-  const watchedProductId = form.watch("product_id");
+  const watchedProductId = selectedProduct?.id || form.watch("product_id");
   const watchedServiceId = form.watch("service_id");
 
   const stepValidation = useMemo(() => {
@@ -764,35 +767,8 @@ export function AddConnectorDialog({
         )}
       />
 
-      {/* Product & Service */}
-      <div className="grid grid-cols-2 gap-4">
-        <FormField
-          control={form.control}
-          name="product_id"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-sm font-medium flex items-center gap-2">
-                <Box className="w-4 h-4 text-blue-500" />
-                Product <span className="text-destructive">*</span>
-              </FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger className="bg-background/50">
-                    <SelectValue placeholder="Select product" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      {/* Service */}
+      <div className="grid grid-cols-1 gap-4">
 
         <FormField
           control={form.control}

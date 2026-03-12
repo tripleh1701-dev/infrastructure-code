@@ -208,7 +208,7 @@ describe("ProvisioningController", () => {
       expect(data).toMatchObject({
         accountId: expect.any(String),
         accountName: expect.any(String),
-        cloudType: expect.stringMatching(/^(public|private|hybrid)$/),
+        cloudType: expect.stringMatching(/^(public|private)$/),
         status: expect.any(String),
         message: expect.any(String),
         progress: expect.any(Number),
