@@ -51,6 +51,10 @@ const mockCognitoProvisioning = {
   createUser: jest.fn().mockResolvedValue({ created: true, cognitoSub: 'sub-123' }),
 };
 
+const mockNotificationService = {
+  sendEmail: jest.fn().mockResolvedValue({}),
+};
+
 const mockConfigService = {
   get: jest.fn((key: string) => {
     const config: Record<string, string> = {
@@ -67,6 +71,7 @@ function createService(): AccountsService {
     mockDynamoDbRouter as any,
     mockAccountProvisioner as any,
     mockCognitoProvisioning as any,
+    mockNotificationService as any,
     mockConfigService as any,
   );
 }
