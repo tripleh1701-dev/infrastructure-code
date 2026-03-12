@@ -57,24 +57,66 @@ export class UsersService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async findAll(): Promise<User[]> {
+  async findAll(): Promise<any[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
       'GSI1PK = :pk',
       { ':pk': 'ENTITY#USER' },
     );
 
-    return (result.Items || []).map((item: Record<string, any>) => this.mapToUser(item));
+    const users = (result.Items || []).map((item: Record<string, any>) => this.mapToUser(item));
+    return this.enrichUsersWithGroupsAndWorkstreams(users);
   }
 
-  async findByAccount(accountId: string): Promise<User[]> {
+  async findByAccount(accountId: string): Promise<any[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI2',
       'GSI2PK = :pk',
       { ':pk': `ACCOUNT#${accountId}#USERS` },
     );
 
-    return (result.Items || []).map((item: Record<string, any>) => this.mapToUser(item));
+    const users = (result.Items || []).map((item: Record<string, any>) => this.mapToUser(item));
+    return this.enrichUsersWithGroupsAndWorkstreams(users);
+  }
+
+  /**
+   * Enrich a list of users with their group and workstream assignments.
+   * This enables the frontend to display roles (derived from groups) and workstreams inline.
+   */
+  private async enrichUsersWithGroupsAndWorkstreams(users: User[]): Promise<any[]> {
+    return Promise.all(
+      users.map(async (user) => {
+        try {
+          const [groups, workstreamIds] = await Promise.all([
+            this.getUserGroups(user.id),
+            this.getWorkstreams(user.id),
+          ]);
+
+          // Resolve workstream names
+          const workstreams = await Promise.all(
+            workstreamIds.map(async (wsId) => {
+              try {
+                const wsResult = await this.dynamoDb.get({
+                  Key: { PK: `WORKSTREAM#${wsId}`, SK: 'METADATA' },
+                });
+                return {
+                  id: wsId,
+                  workstreamId: wsId,
+                  workstreamName: wsResult.Item?.name || 'Unknown',
+                };
+              } catch {
+                return { id: wsId, workstreamId: wsId, workstreamName: 'Unknown' };
+              }
+            }),
+          );
+
+          return { ...user, groups, workstreams };
+        } catch (error: any) {
+          this.logger.warn(`Failed to enrich user ${user.id}: ${error.message}`);
+          return { ...user, groups: [], workstreams: [] };
+        }
+      }),
+    );
   }
 
   async findOne(id: string): Promise<User & { workstreams: string[] }> {

@@ -238,7 +238,7 @@ function generateControlPlaneData() {
   // ============================================
   const accounts = [
     { id: SMOKE_IDS.ACCOUNT_1, name: 'smoke-test Acme Corp', masterAccountName: 'smoke-test Acme Master', cloudType: 'public' },
-    { id: SMOKE_IDS.ACCOUNT_2, name: 'smoke-test TechStart', masterAccountName: 'smoke-test TechStart Main', cloudType: 'hybrid' },
+    { id: SMOKE_IDS.ACCOUNT_2, name: 'smoke-test TechStart', masterAccountName: 'smoke-test TechStart Main', cloudType: 'private' },
     { id: SMOKE_IDS.ACCOUNT_3, name: 'smoke-test GlobalFin', masterAccountName: 'smoke-test GF Master', cloudType: 'private' },
   ];
 

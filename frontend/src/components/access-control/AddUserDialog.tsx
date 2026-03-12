@@ -138,7 +138,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
       if (formData.password) {
         if (isExternalApi()) {
           const { data: authResult, error: authError } = await httpClient.post<{ success: boolean; error?: string; userId?: string }>(
-            "/api/users/provision",
+            "/users/provision",
             {
               email: formData.email,
               password: formData.password,

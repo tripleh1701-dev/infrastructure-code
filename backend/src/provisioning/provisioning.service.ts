@@ -102,7 +102,7 @@ export class ProvisioningService {
       id: uuidv4(),
       accountId: dto.accountId,
       accountName: dto.accountName,
-      cloudType: dto.cloudType === 'hybrid' ? 'private' : dto.cloudType,
+      cloudType: dto.cloudType,
       status: 'pending',
       message: 'Initializing provisioning...',
       progress: 0,
@@ -167,7 +167,7 @@ export class ProvisioningService {
       throw new BadRequestException('Cannot deprovision while provisioning is in progress');
     }
 
-    const cloudType: CloudType = job?.cloudType || 'public';
+    const cloudType: CloudType = (job?.cloudType as CloudType) || 'public';
 
     try {
       await this.accountProvisioner.deprovisionAccount(accountId);
@@ -225,7 +225,7 @@ export class ProvisioningService {
    */
   private async executeProvisioning(dto: CreateProvisioningDto, job: ProvisioningJobDto): Promise<void> {
     const startTime = Date.now();
-    const resolvedCloudType = dto.cloudType === 'hybrid' ? 'private' : dto.cloudType;
+    const resolvedCloudType: CloudType = dto.cloudType;
 
     try {
       // Update status to in_progress

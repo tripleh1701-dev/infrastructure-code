@@ -8,7 +8,7 @@ export class ProvisioningResourceDto {
 export class ProvisioningStatusDto {
   accountId: string;
   accountName: string;
-  cloudType: 'public' | 'private' | 'hybrid';
+  cloudType: 'public' | 'private';
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
   message: string;
   progress: number;
@@ -25,7 +25,7 @@ export class ProvisioningJobDto {
   id: string;
   accountId: string;
   accountName: string;
-  cloudType: 'public' | 'private' | 'hybrid';
+  cloudType: 'public' | 'private';
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
   message: string;
   progress: number;
