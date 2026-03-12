@@ -102,7 +102,7 @@ describe("useBuilds (external API mode)", () => {
       await result.current.updateBuildJob.mutateAsync({ id: "bj-1", status: "INACTIVE" });
     });
 
-    expect(buildsService.updateBuildJob).toHaveBeenCalledWith("bj-1", { status: "INACTIVE" });
+    expect(buildsService.updateBuildJob).toHaveBeenCalledWith("bj-1", { status: "INACTIVE" }, "acc-1");
   });
 
   it("deletes a build job", async () => {
@@ -116,7 +116,7 @@ describe("useBuilds (external API mode)", () => {
       await result.current.deleteBuildJob.mutateAsync("bj-1");
     });
 
-    expect(buildsService.deleteBuildJob).toHaveBeenCalledWith("bj-1");
+    expect(buildsService.deleteBuildJob).toHaveBeenCalledWith("bj-1", "acc-1");
   });
 
   it("fetches executions for a build job", async () => {
@@ -176,7 +176,7 @@ describe("useBuilds (external API mode)", () => {
       build_job_id: "bj-1",
       build_number: "43",
       branch: "main",
-    });
+    }, "acc-1");
   });
 
   it("exposes accountId and enterpriseId from context", async () => {

@@ -112,7 +112,7 @@ describe("useConnectors (external API mode)", () => {
       await result.current.updateConnector.mutateAsync({ id: "conn-1", name: "Jira Updated" });
     });
 
-    expect(httpClient.put).toHaveBeenCalledWith("/connectors/conn-1", { name: "Jira Updated" });
+    expect(httpClient.put).toHaveBeenCalledWith("/connectors/conn-1", { name: "Jira Updated" }, { params: { accountId: "acc-1" } });
   });
 
   it("deletes a connector via DELETE", async () => {
@@ -126,7 +126,7 @@ describe("useConnectors (external API mode)", () => {
       await result.current.deleteConnector.mutateAsync("conn-1");
     });
 
-    expect(httpClient.delete).toHaveBeenCalledWith("/connectors/conn-1");
+    expect(httpClient.delete).toHaveBeenCalledWith("/connectors/conn-1", { params: { accountId: "acc-1" } });
   });
 
   it("throws on fetch error", async () => {

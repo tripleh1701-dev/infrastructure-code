@@ -154,7 +154,7 @@ describe("connectorsService.update", () => {
 
     const result = await connectorsService.update("c1", { name: "Updated", health: "warning" });
 
-    expect(mockedPut).toHaveBeenCalledWith("/connectors/c1", { name: "Updated", health: "warning" });
+    expect(mockedPut).toHaveBeenCalledWith("/connectors/c1", { name: "Updated", health: "warning" }, { params: { accountId: undefined } });
     expect(result.name).toBe("Updated");
   });
 
@@ -170,7 +170,7 @@ describe("connectorsService.delete", () => {
   it("calls delete endpoint", async () => {
     mockedDelete.mockResolvedValue({ error: null });
     await connectorsService.delete("c1");
-    expect(mockedDelete).toHaveBeenCalledWith("/connectors/c1");
+    expect(mockedDelete).toHaveBeenCalledWith("/connectors/c1", { params: { accountId: undefined } });
   });
 
   it("throws on error", async () => {

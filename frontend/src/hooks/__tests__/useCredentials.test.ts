@@ -176,7 +176,8 @@ describe("useCredentials (external API mode)", () => {
 
     expect(httpClient.patch).toHaveBeenCalledWith(
       "/credentials/cred-1",
-      expect.objectContaining({ name: "Updated Key", status: "active" })
+      expect.objectContaining({ name: "Updated Key", status: "active" }),
+      { params: { accountId: "acc-1" } }
     );
   });
 
@@ -199,7 +200,7 @@ describe("useCredentials (external API mode)", () => {
 
     expect(httpClient.post).toHaveBeenCalledWith("/credentials/cred-1/rotate", {
       credentials: { newKey: "rotated-value" },
-    });
+    }, { params: { accountId: "acc-1" } });
   });
 
   it("deletes a credential via DELETE", async () => {
@@ -216,7 +217,7 @@ describe("useCredentials (external API mode)", () => {
       await result.current.deleteCredential.mutateAsync("cred-1");
     });
 
-    expect(httpClient.delete).toHaveBeenCalledWith("/credentials/cred-1");
+    expect(httpClient.delete).toHaveBeenCalledWith("/credentials/cred-1", { params: { accountId: "acc-1" } });
   });
 
   it("throws on create error", async () => {
