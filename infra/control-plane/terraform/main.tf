@@ -196,6 +196,7 @@ module "lambda" {
   environment_variables = {
     COGNITO_USER_POOL_ID             = module.cognito.user_pool_id
     COGNITO_CLIENT_ID                = module.cognito.client_id
+    COGNITO_REGION                   = var.aws_region
     COGNITO_DOMAIN                   = module.cognito.domain
     ACCOUNT_REGISTRY_TABLE_NAME      = module.account_registry_dynamodb.table_name
     CREATE_ACCOUNT_SFN_ARN           = module.step_functions.create_account_state_machine_arn

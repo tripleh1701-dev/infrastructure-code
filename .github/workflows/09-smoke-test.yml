@@ -426,7 +426,7 @@ jobs:
           # Helper function for API calls
           test_endpoint() {
             local METHOD="$1"
-            local PATH="$2"
+            local ENDPOINT_PATH="$2"
             local EXPECTED="$3"
             local DESCRIPTION="$4"
             local NEEDS_AUTH="${5:-true}"
@@ -437,7 +437,7 @@ jobs:
 
             if [ "$NEEDS_AUTH" == "true" ] && [ "$HAS_TOKEN" != "true" ]; then
               SKIPPED=$((SKIPPED + 1))
-              RESULTS="${RESULTS}\n| ${DESCRIPTION} | ⏭️ Skipped | No auth token | \`${METHOD} ${PATH}\` |"
+              RESULTS="${RESULTS}\n| ${DESCRIPTION} | ⏭️ Skipped | No auth token | \`${METHOD} ${ENDPOINT_PATH}\` |"
               return
             fi
 
@@ -460,7 +460,7 @@ jobs:
               DELETE) CURL_ARGS+=(-X DELETE) ;;
             esac
 
-            HTTP_CODE=$(curl "${CURL_ARGS[@]}" "${API_URL}/api${PATH}" 2>/dev/null || echo "000")
+            HTTP_CODE=$(curl "${CURL_ARGS[@]}" "${API_URL}/api${ENDPOINT_PATH}" 2>/dev/null || echo "000")
             RESPONSE_BODY=$(cat /tmp/response.json 2>/dev/null || echo "{}")
 
             # Check if status matches expected (support comma-separated list)
@@ -475,7 +475,7 @@ jobs:
 
             if [ "$MATCH" == "true" ]; then
               PASSED=$((PASSED + 1))
-              RESULTS="${RESULTS}\n| ${DESCRIPTION} | ✅ ${HTTP_CODE} | OK | \`${METHOD} ${PATH}\` |"
+              RESULTS="${RESULTS}\n| ${DESCRIPTION} | ✅ ${HTTP_CODE} | OK | \`${METHOD} ${ENDPOINT_PATH}\` |"
 
               # Capture ID if requested
               if [ -n "$CAPTURE_ID" ]; then
@@ -489,7 +489,7 @@ jobs:
               FAILED=$((FAILED + 1))
               ERR_MSG=$(echo "$RESPONSE_BODY" | jq -r '.error.message // .message // "Unknown error"' 2>/dev/null)
               ERR_MSG="${ERR_MSG:0:80}"
-              RESULTS="${RESULTS}\n| ${DESCRIPTION} | ❌ ${HTTP_CODE} | ${ERR_MSG} | \`${METHOD} ${PATH}\` |"
+              RESULTS="${RESULTS}\n| ${DESCRIPTION} | ❌ ${HTTP_CODE} | ${ERR_MSG} | \`${METHOD} ${ENDPOINT_PATH}\` |"
             fi
           }
 
