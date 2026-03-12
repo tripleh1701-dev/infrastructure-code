@@ -5,6 +5,7 @@ import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { DynamoDBRouterService } from '../common/dynamodb/dynamodb-router.service';
 import { AccountProvisionerService, ProvisioningConfig } from '../common/dynamodb/account-provisioner.service';
 import { CognitoUserProvisioningService } from '../auth/cognito-user-provisioning.service';
+import { NotificationService } from '../common/notifications/notification.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
 import { CloudType } from '../common/types/cloud-type';
@@ -74,6 +75,7 @@ export class AccountsService {
     private readonly dynamoDbRouter: DynamoDBRouterService,
     private readonly accountProvisioner: AccountProvisionerService,
     private readonly cognitoProvisioning: CognitoUserProvisioningService,
+    private readonly notificationService: NotificationService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -420,6 +422,30 @@ export class AccountsService {
             this.logger.log(
               `Cognito user created for technical user ${dto.technicalUser.email} (sub: ${cognitoResult.cognitoSub})`,
             );
+
+            // Send credential email via SES for public account users
+            if (cognitoResult.temporaryPassword) {
+              try {
+                const notifResult = await this.notificationService.sendCredentialProvisionedEmail(
+                  {
+                    email: dto.technicalUser.email,
+                    firstName: dto.technicalUser.firstName,
+                    lastName: dto.technicalUser.lastName,
+                  },
+                  cognitoResult.temporaryPassword,
+                  dto.name, // account name
+                );
+                if (notifResult.sent) {
+                  this.logger.log(`Credential email sent to ${dto.technicalUser.email} (messageId: ${notifResult.messageId})`);
+                } else {
+                  this.logger.warn(`Credential email not sent to ${dto.technicalUser.email}: ${notifResult.reason}`);
+                }
+              } catch (emailError: any) {
+                this.logger.error(
+                  `Failed to send credential email to ${dto.technicalUser.email}: ${emailError.message}`,
+                );
+              }
+            }
           } else if (cognitoResult.updated) {
             this.logger.log(
               `Cognito user already existed for ${dto.technicalUser.email}, attributes updated`,

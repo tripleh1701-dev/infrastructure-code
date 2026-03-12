@@ -78,8 +78,8 @@ This platform is a **multi-tenant DevOps SaaS application** deployed across **tw
 │  │                        PUBLIC CLOUD MODEL                              │  │
 │  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
 │  │  │                    Shared DynamoDB Table: app_data               │  │  │
-│  │  │  PK: ACCT#abc | SK: METADATA         → Account ABC data        │  │  │
-│  │  │  PK: ACCT#abc | SK: LICENSE#001      → ABC License 1           │  │  │
+│  │  │  PK: ACCT#ppp | SK: METADATA         → Account PPP data        │  │  │
+│  │  │  PK: ACCT#ppp | SK: LICENSE#001      → PPP License 1           │  │  │
 │  │  │  PK: ACCT#xyz | SK: METADATA         → Account XYZ data        │  │  │
 │  │  │  PK: ACCT#xyz | SK: LICENSE#001      → XYZ License 1           │  │  │
 │  │  │  ─────────────────────────────────────────────────────────────  │  │  │
@@ -144,7 +144,7 @@ AppModule
 
 The application header maintains a persistent context breadcrumb:
 
-- **Platform Admin**: Account selector → Enterprise selector (auto-selects ABC + Global)
+- **Platform Admin**: Account selector → Enterprise selector (auto-selects PPP + Global)
 - **Customer User**: Their assigned Account → Their assigned Enterprise (auto-selected)
 - All data queries are scoped to the active `accountId` + `enterpriseId`
 
@@ -445,7 +445,7 @@ AccountsService.create()
 
 #### Key Design Decisions
 
-- **Scoping**: Technical Group and Role are scoped to the new account's first license enterprise/product/service, mirroring how the bootstrap creates them for the ABC master account
+- **Scoping**: Technical Group and Role are scoped to the new account's first license enterprise/product/service, mirroring how the bootstrap creates them for the PPP master account
 - **View-Only Default**: The Technical Role grants `canView: true` with `canCreate/canEdit/canDelete: false` for all menus — a safe baseline that admins can escalate later
 - **Private Cloud Replication**: For private cloud accounts, group/role records and permissions are replicated to the dedicated DynamoDB table to maintain data locality
 - **Idempotency**: Each provisioning run generates fresh UUIDs, so re-running account creation does not conflict with existing groups/roles
@@ -755,8 +755,8 @@ The initial platform setup creates the foundational admin context:
 
 | Field | Value |
 |-------|-------|
-| Name | ABC DEF |
-| Email | admin@adminplatform.com |
+| Name | PPP Admin |
+| Email | tripleh1701@gmail.com |
 | Password | Adminuser@123 |
 | Status | Active |
 | Role | super_admin |
@@ -776,18 +776,18 @@ Platform Admin Group ──▶ Platform Admin Role ──▶ Full Permissions
 ### Bootstrap Sequence
 
 ```
- 1. Create Account: ABC (Public Cloud, ID: a0000000-0000-0000-0000-000000000001)
+ 1. Create Account: PPP (Public Cloud, ID: a0000000-0000-0000-0000-000000000001)
  2. Create Enterprise: Global
  3. Create Product: Global
  4. Create Service: Global
  5. Link Enterprise 'Global' → Product 'Global'
  6. Link Product 'Global' → Service 'Global'
- 7. Create License: ABC → Global Enterprise → Global Product → Global Service (100 users)
+ 7. Create License: PPP → Global Enterprise → Global Product → Global Service (100 users)
  8. Create Role: Platform Admin (full permissions, 0x7FFF)
  9. Create Role: Technical Role (view-only permissions)
 10. Create Group: Platform Admin → Platform Admin role
 11. Create Group: Technical Group → Technical Role
-12. Create Technical User: admin@adminplatform.com (DynamoDB + Cognito)
+12. Create Technical User: tripleh1701@gmail.com (DynamoDB + Cognito)
 13. Create Workstream: Global
 14. Create Workstream: Default
 ```
@@ -1390,7 +1390,7 @@ npm run build
 #### Step 2: Verify Authentication
 
 1. Open the deployed app in an incognito window
-2. Sign in with a known Cognito user (e.g., `admin@adminplatform.com`)
+2. Sign in with a known Cognito user (e.g., `tripleh1701@gmail.com`)
 3. Confirm JWT token appears in `Authorization: Bearer <token>` header on network requests
 4. Verify the `NewPasswordRequired` challenge flow works for first-time users
 5. Verify the `ForgotPassword` → 6-digit code → password reset flow works

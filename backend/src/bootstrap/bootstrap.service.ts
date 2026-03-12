@@ -9,7 +9,7 @@ import { CognitoBootstrapService } from './cognito-bootstrap.service';
  * Day-0 Bootstrap Service
  *
  * Initializes the platform with:
- * - Default "ABC" account (Public Cloud)
+ * - Default "PPP" account (Public Cloud)
  * - Global Enterprise, Product, Service
  * - Platform Admin user with super_admin role
  * - Platform Admin Group + Platform Role (full permissions)
@@ -105,13 +105,13 @@ export class BootstrapService implements OnModuleInit {
       await this.createGlobalEnterprise(now);
       details.push('Created Global Enterprise with Product/Service linkage');
 
-      // Step 3: Create ABC Account
-      await this.createABCAccount(now);
-      details.push('Created ABC Account (Public Cloud)');
+      // Step 3: Create PPP Account
+      await this.createPPPAccount(now);
+      details.push('Created PPP Account (Public Cloud)');
 
       // Step 4: Register account in SSM (provisioning)
       await this.registerAccountProvisioning();
-      details.push('Registered ABC Account in SSM Parameter Store');
+      details.push('Registered PPP Account in SSM Parameter Store');
 
       // Step 5: Create License
       await this.createLicense(now);
@@ -131,7 +131,7 @@ export class BootstrapService implements OnModuleInit {
 
       // Step 9: Create Platform Admin Technical User
       await this.createAdminUser(now);
-      details.push('Created admin technical user (admin@adminplatform.com)');
+      details.push('Created admin technical user (tripleh1701@gmail.com)');
 
       // Step 10: Assign user to Platform Admin Group
       await this.assignUserToGroup(now);
@@ -256,9 +256,9 @@ export class BootstrapService implements OnModuleInit {
   }
 
   /**
-   * Step 3: Create ABC Account with default address
+   * Step 3: Create PPP Account with default address
    */
-  private async createABCAccount(now: string): Promise<void> {
+  private async createPPPAccount(now: string): Promise<void> {
     await this.dynamoDb.transactWrite([
       {
         Put: {
@@ -270,8 +270,8 @@ export class BootstrapService implements OnModuleInit {
             GSI2PK: 'CLOUD_TYPE#PUBLIC',
             GSI2SK: `ACCOUNT#${FIXED_IDS.ACCOUNT}`,
             id: FIXED_IDS.ACCOUNT,
-            name: 'ABC',
-            masterAccountName: 'ABC',
+            name: 'PPP',
+            masterAccountName: 'PPP',
             cloudType: 'public',
             status: 'active',
             createdAt: now,
@@ -306,7 +306,7 @@ export class BootstrapService implements OnModuleInit {
     try {
       await this.accountProvisioner.provisionAccount({
         accountId: FIXED_IDS.ACCOUNT,
-        accountName: 'ABC',
+        accountName: 'PPP',
         cloudType: 'public',
       });
     } catch (error: any) {
@@ -338,8 +338,8 @@ export class BootstrapService implements OnModuleInit {
         numberOfUsers: 100,
         renewalNotify: true,
         noticeDays: 30,
-        contactFullName: 'ABC DEF',
-        contactEmail: 'admin@adminplatform.com',
+        contactFullName: 'PPP Admin',
+        contactEmail: 'tripleh1701@gmail.com',
         createdAt: now,
         updatedAt: now,
       },
@@ -572,9 +572,9 @@ export class BootstrapService implements OnModuleInit {
             id: FIXED_IDS.ADMIN_USER,
             accountId: FIXED_IDS.ACCOUNT,
             enterpriseId: FIXED_IDS.ENTERPRISE,
-            firstName: 'ABC',
-            lastName: 'DEF',
-            email: 'admin@adminplatform.com',
+            firstName: 'PPP',
+            lastName: 'Admin',
+            email: 'tripleh1701@gmail.com',
             assignedRole: 'Platform Role',
             assignedGroup: 'Platform Admin',
             startDate: now.split('T')[0],
@@ -598,9 +598,9 @@ export class BootstrapService implements OnModuleInit {
             id: FIXED_IDS.ADMIN_USER,
             accountId: FIXED_IDS.ACCOUNT,
             enterpriseId: FIXED_IDS.ENTERPRISE,
-            firstName: 'ABC',
-            lastName: 'DEF',
-            email: 'admin@adminplatform.com',
+            firstName: 'PPP',
+            lastName: 'Admin',
+            email: 'tripleh1701@gmail.com',
             assignedRole: 'Platform Role',
             assignedGroup: 'Platform Admin',
             startDate: now.split('T')[0],

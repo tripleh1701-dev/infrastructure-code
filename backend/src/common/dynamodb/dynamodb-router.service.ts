@@ -142,12 +142,8 @@ export class DynamoDBRouterService implements OnModuleInit {
 
     const result = await this.stsClient.send(new AssumeRoleCommand({
       RoleArn: this.dataPlaneRoleArn,
-      RoleSessionName: `router-${accountId}-${Date.now()}`,
+      RoleSessionName: `router-${accountId.substring(0, 20)}-${Date.now()}`,
       DurationSeconds: 3600, // 1 hour
-      Tags: [
-        { Key: 'AccountId', Value: accountId },
-        { Key: 'Service', Value: 'DynamoDBRouter' },
-      ],
     }));
 
     if (!result.Credentials) {
@@ -423,27 +419,23 @@ export class DynamoDBRouterService implements OnModuleInit {
 
   /**
    * Resolve the correct DynamoDB doc client for an account.
-   * Private accounts get a cross-account client; public accounts use the default.
+   * All customer accounts (both public and private) reside in the customer
+   * AWS account and require cross-account credentials via DATA_PLANE_ROLE_ARN.
+   * Only control-plane queries (shared table) use default credentials.
    */
   private async resolveDocClient(accountId: string): Promise<{ docClient: DynamoDBDocumentClient; tableName: string }> {
     const tableName = await this.resolveTableName(accountId);
     
-    // If it resolved to the shared table, use default client
+    // If it resolved to the shared (control-plane) table, use default client
     if (tableName === this.sharedTableName) {
       return { docClient: this.docClient, tableName };
     }
 
-    // Check cloud type — only private accounts may need cross-account credentials.
-    // Public customer accounts use a different table name but reside in the
-    // same (Platform Admin) AWS account, so default credentials suffice.
-    const cloudType = await this.getCloudType(accountId);
-    if (cloudType === 'private') {
-      const docClient = await this.getCrossAccountDocClient(accountId);
-      return { docClient, tableName };
-    }
-
-    // Public customer account — same AWS account, just a different table
-    return { docClient: this.docClient, tableName };
+    // Customer account table (both public and private cloud types) —
+    // always use cross-account credentials since the table lives in the
+    // customer's AWS account, not the platform admin account.
+    const docClient = await this.getCrossAccountDocClient(accountId);
+    return { docClient, tableName };
   }
 
   async get(accountId: string, params: Omit<GetCommandInput, 'TableName'>) {

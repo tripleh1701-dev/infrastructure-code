@@ -165,12 +165,8 @@ export class AccountProvisionerService {
 
     const result = await this.stsClient.send(new AssumeRoleCommand({
       RoleArn: this.dataPlaneRoleArn,
-      RoleSessionName: `provisioner-${accountId}-${Date.now()}`,
+      RoleSessionName: `provisioner-${accountId.substring(0, 20)}-${Date.now()}`,
       DurationSeconds: 3600,
-      Tags: [
-        { Key: 'AccountId', Value: accountId },
-        { Key: 'Service', Value: 'AccountProvisioner' },
-      ],
     }));
 
     if (!result.Credentials) {

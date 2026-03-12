@@ -91,7 +91,7 @@ resource "aws_iam_role_policy" "assume_customer" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = "sts:AssumeRole"
+      Action   = ["sts:AssumeRole", "sts:TagSession"]
       Resource = var.customer_account_role_arn
     }]
   })

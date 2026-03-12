@@ -152,8 +152,8 @@ jobs:
       failed: ${{ steps.verify.outputs.failed }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install backend dependencies
@@ -163,7 +163,7 @@ jobs:
           npm install
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -240,7 +240,7 @@ jobs:
           echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
           echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: bootstrap-verify-${{ needs.resolve.outputs.environment }}-${{ github.run_number }}
@@ -267,8 +267,8 @@ jobs:
       still_failed: ${{ steps.fix.outputs.still_failed }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install backend dependencies
@@ -278,7 +278,7 @@ jobs:
           npm install
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -319,7 +319,7 @@ jobs:
           echo "| 🔧 Fixed | $FIXED |" >> $GITHUB_STEP_SUMMARY
           echo "| ❌ Still failing | $STILL_FAILED |" >> $GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: bootstrap-fix-${{ needs.resolve.outputs.environment }}-${{ github.run_number }}
@@ -393,8 +393,8 @@ jobs:
       warn_count: ${{ steps.preflight.outputs.warn_count }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install backend dependencies
@@ -404,7 +404,7 @@ jobs:
           npm install
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -452,7 +452,7 @@ jobs:
           echo "| ❌ Fail | $FAIL |" >> $GITHUB_STEP_SUMMARY
           echo "| ⚠️ Warn | $WARN |" >> $GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: preflight-${{ needs.resolve.outputs.environment }}-${{ github.run_number }}
@@ -470,7 +470,7 @@ jobs:
     environment: ${{ needs.resolve.outputs.environment }}
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -557,8 +557,8 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.run_security == 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install backend dependencies

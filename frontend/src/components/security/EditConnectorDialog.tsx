@@ -143,7 +143,9 @@ export function EditConnectorDialog({
       const newHealth = result?.success ? "healthy" : "error";
 
       if (isExternalApi()) {
-        await httpClient.put(`/connectors/${connector.id}`, { health: newHealth });
+        await httpClient.put(`/connectors/${connector.id}`, { health: newHealth }, {
+          params: connector.account_id ? { accountId: connector.account_id } : undefined,
+        });
       } else {
         await (supabase.from("connectors" as any).update({ health: newHealth }).eq("id", connector.id) as any);
       }
@@ -159,7 +161,9 @@ export function EditConnectorDialog({
     } catch (err) {
       console.error("Connectivity test failed:", err);
       if (isExternalApi()) {
-        await httpClient.put(`/connectors/${connector.id}`, { health: "error" });
+        await httpClient.put(`/connectors/${connector.id}`, { health: "error" }, {
+          params: connector.account_id ? { accountId: connector.account_id } : undefined,
+        });
       } else {
         await (supabase.from("connectors" as any).update({ health: "error" }).eq("id", connector.id) as any);
       }

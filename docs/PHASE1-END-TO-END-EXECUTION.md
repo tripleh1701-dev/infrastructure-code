@@ -755,7 +755,7 @@ In Sandbox Mode, both sender and recipient must be verified:
 ```bash
 # Verify the bootstrap admin email
 aws ses verify-email-identity \
-  --email-address "admin@adminplatform.com" \
+  --email-address "tripleh1701@gmail.com" \
   --profile platform-admin --region us-east-1
 ```
 
@@ -763,7 +763,7 @@ aws ses verify-email-identity \
 
 ```bash
 aws ses get-identity-verification-attributes \
-  --identities "your-email@gmail.com" "admin@adminplatform.com" \
+  --identities "your-email@gmail.com" "tripleh1701@gmail.com" \
   --profile platform-admin --region us-east-1
 # Both should show: "VerificationStatus": "Success"
 ```
@@ -953,13 +953,13 @@ Expected output:
 [9/14]  ✅ Role 'Technical Role' created (permissions: view-only)
 [10/14] ✅ Group 'Platform Admin' created → Platform Admin role
 [11/14] ✅ Group 'Technical Group' created → Technical Role role
-[12/14] ✅ User 'admin@adminplatform.com' created in DynamoDB + Cognito
+[12/14] ✅ User 'tripleh1701@gmail.com' created in DynamoDB + Cognito
 [13/14] ✅ Workstream 'Global' created
 [14/14] ✅ Workstream 'Default' created
 
 🎉 Bootstrap complete! 14/14 steps succeeded.
 
-Admin credentials: admin@adminplatform.com / Adminuser@123
+Admin credentials: tripleh1701@gmail.com / Adminuser@123
 ```
 
 **✅ Checkpoint**: Platform bootstrapped with all core data.
@@ -1008,7 +1008,7 @@ COGNITO_POOL=$(terraform -chdir=terraform output -raw cognito_user_pool_id)
 
 aws cognito-idp admin-get-user \
   --user-pool-id $COGNITO_POOL \
-  --username admin@adminplatform.com \
+  --username tripleh1701@gmail.com \
   --profile platform-admin --region us-east-1
 ```
 
@@ -1064,7 +1064,7 @@ COGNITO_CLIENT=$(terraform -chdir=terraform output -raw cognito_client_id)
 TOKEN=$(aws cognito-idp initiate-auth \
   --auth-flow USER_PASSWORD_AUTH \
   --client-id $COGNITO_CLIENT \
-  --auth-parameters USERNAME=admin@adminplatform.com,PASSWORD=Adminuser@123 \
+  --auth-parameters USERNAME=tripleh1701@gmail.com,PASSWORD=Adminuser@123 \
   --query 'AuthenticationResult.AccessToken' \
   --output text \
   --profile platform-admin --region us-east-1)
@@ -1077,7 +1077,7 @@ echo "Token: ${TOKEN:0:50}..."
 ```bash
 # List accounts
 curl -s -H "Authorization: Bearer $TOKEN" $API_URL/api/accounts | jq .
-# Expected: {"data": [{"id": "a0000000-...", "name": "ABC", ...}]}
+# Expected: {"data": [{"id": "a0000000-...", "name": "PPP", ...}]}
 
 # List enterprises
 curl -s -H "Authorization: Bearer $TOKEN" $API_URL/api/enterprises | jq .
@@ -1264,7 +1264,7 @@ Expected:
 #### 20B.3 Test in Browser
 
 Open `http://localhost:5173` — you should see the login page. Log in with:
-- **Email**: `admin@adminplatform.com`
+- **Email**: `tripleh1701@gmail.com`
 - **Password**: `Adminuser@123`
 
 **✅ Checkpoint**: Frontend accessible and connecting to the AWS backend.

@@ -154,7 +154,7 @@ export const buildsService = {
     return data as BuildJob;
   },
 
-  async updateBuildJob(id: string, updates: Partial<CreateBuildJobInput & { pipeline_stages_state: any }>): Promise<BuildJob> {
+  async updateBuildJob(id: string, updates: Partial<CreateBuildJobInput & { pipeline_stages_state: any }>, accountId?: string): Promise<BuildJob> {
     if (isExternalApi()) {
       // Convert snake_case keys to camelCase for external API
       const camelCaseUpdates: Record<string, any> = {};
@@ -162,7 +162,9 @@ export const buildsService = {
         const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
         camelCaseUpdates[camelKey] = value;
       }
-      const { data, error } = await httpClient.put<BuildJob>(`/builds/jobs/${id}`, camelCaseUpdates);
+      const { data, error } = await httpClient.put<BuildJob>(`/builds/jobs/${id}`, camelCaseUpdates, {
+        params: accountId ? { accountId } : undefined,
+      });
       if (error) throw new Error(error.message);
       return this.mapApiToBuildJob(data);
     }
@@ -178,9 +180,11 @@ export const buildsService = {
     return data as BuildJob;
   },
 
-  async deleteBuildJob(id: string): Promise<void> {
+  async deleteBuildJob(id: string, accountId?: string): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.delete(`/builds/jobs/${id}`);
+      const { error } = await httpClient.delete(`/builds/jobs/${id}`, {
+        params: accountId ? { accountId } : undefined,
+      });
       if (error) throw new Error(error.message);
       return;
     }
@@ -195,9 +199,11 @@ export const buildsService = {
 
   // ── Build Executions ────────────────────────────────────────────────────────
 
-  async getExecutions(buildJobId: string): Promise<BuildExecution[]> {
+  async getExecutions(buildJobId: string, accountId?: string): Promise<BuildExecution[]> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.get<BuildExecution[]>(`/builds/jobs/${buildJobId}/executions`);
+      const { data, error } = await httpClient.get<BuildExecution[]>(`/builds/jobs/${buildJobId}/executions`, {
+        params: accountId ? { accountId } : undefined,
+      });
       if (error) throw new Error(error.message);
       return data || [];
     }
@@ -212,13 +218,15 @@ export const buildsService = {
     return (data || []) as BuildExecution[];
   },
 
-  async createExecution(input: CreateExecutionInput): Promise<BuildExecution> {
+  async createExecution(input: CreateExecutionInput, accountId?: string): Promise<BuildExecution> {
     if (isExternalApi()) {
       const { data, error } = await httpClient.post<BuildExecution>(`/builds/jobs/${input.build_job_id}/executions`, {
         buildNumber: input.build_number,
         branch: input.branch || "main",
         jiraNumber: input.jira_number || null,
         approvers: input.approvers || null,
+      }, {
+        params: accountId ? { accountId } : undefined,
       });
       if (error) throw new Error(error.message);
       return data!;
@@ -241,9 +249,11 @@ export const buildsService = {
     return data as BuildExecution;
   },
 
-  async updateExecution(id: string, updates: Partial<BuildExecution>): Promise<BuildExecution> {
+  async updateExecution(id: string, updates: Partial<BuildExecution>, accountId?: string): Promise<BuildExecution> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.put<BuildExecution>(`/builds/jobs/${(updates as any).build_job_id || 'unknown'}/executions/${id}`, updates);
+      const { data, error } = await httpClient.put<BuildExecution>(`/builds/jobs/${(updates as any).build_job_id || 'unknown'}/executions/${id}`, updates, {
+        params: accountId ? { accountId } : undefined,
+      });
       if (error) throw new Error(error.message);
       return data!;
     }

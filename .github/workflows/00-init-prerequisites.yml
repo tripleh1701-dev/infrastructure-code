@@ -116,7 +116,7 @@ jobs:
 
     steps:
       - name: Configure AWS (Platform Admin Account - static keys)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
@@ -403,7 +403,7 @@ jobs:
 
     steps:
       - name: Configure AWS (Customer Account - static keys)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_CUSTOMER }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_CUSTOMER }}
@@ -567,7 +567,7 @@ jobs:
     steps:
       # ── Apply cross-account S3 bucket policy (customer role now exists) ──
       - name: Configure AWS (Platform Admin Account)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}

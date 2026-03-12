@@ -188,9 +188,11 @@ export const connectorsService = {
     return connector as Connector;
   },
 
-  async update(id: string, updates: UpdateConnectorInput): Promise<Connector> {
+  async update(id: string, updates: UpdateConnectorInput, accountId?: string): Promise<Connector> {
     if (isExternalApi()) {
-      const { data, error } = await httpClient.put<Connector>(`/connectors/${id}`, updates);
+      const { data, error } = await httpClient.put<Connector>(`/connectors/${id}`, updates, {
+        params: { accountId },
+      });
       if (error) throw new Error(error.message);
       return data!;
     }
@@ -206,9 +208,11 @@ export const connectorsService = {
     return data as Connector;
   },
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, accountId?: string): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.delete(`/connectors/${id}`);
+      const { error } = await httpClient.delete(`/connectors/${id}`, {
+        params: { accountId },
+      });
       if (error) throw new Error(error.message);
       return;
     }

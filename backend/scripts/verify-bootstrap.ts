@@ -98,7 +98,7 @@ const FIXED_IDS = {
   ADDRESS: 'f1000000-0000-0000-0000-000000000001',
 };
 
-const ADMIN_EMAIL = 'admin@adminplatform.com';
+const ADMIN_EMAIL = 'tripleh1701@gmail.com';
 
 const MENU_ITEMS = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -312,14 +312,14 @@ async function verifyGlobalEnterprise() {
   record(cat, 'Product → Service linkage', serviceLink ? 'pass' : 'fail');
 }
 
-async function verifyABCAccount() {
-  const cat = 'ABC Account';
+async function verifyPPPAccount() {
+  const cat = 'PPP Account';
 
   const account = await getItem(`ACCOUNT#${FIXED_IDS.ACCOUNT}`, 'METADATA');
   if (account) {
-    record(cat, 'ABC Account exists', 'pass');
+    record(cat, 'PPP Account exists', 'pass');
     const fieldChecks: Array<{ field: string; expected: string }> = [
-      { field: 'name', expected: 'ABC' },
+      { field: 'name', expected: 'PPP' },
       { field: 'cloudType', expected: 'public' },
       { field: 'status', expected: 'active' },
     ];
@@ -331,7 +331,7 @@ async function verifyABCAccount() {
       }
     }
   } else {
-    record(cat, 'ABC Account exists', 'fail');
+    record(cat, 'PPP Account exists', 'fail');
     return;
   }
 
@@ -787,7 +787,7 @@ async function fixGlobalEnterprise() {
   }
 }
 
-async function fixABCAccount() {
+async function fixPPPAccount() {
   const now = new Date().toISOString();
   try {
     const ops: any[] = [];
@@ -799,7 +799,7 @@ async function fixABCAccount() {
             PK: `ACCOUNT#${FIXED_IDS.ACCOUNT}`, SK: 'METADATA',
             GSI1PK: 'ENTITY#ACCOUNT', GSI1SK: `ACCOUNT#${FIXED_IDS.ACCOUNT}`,
             GSI2PK: 'CLOUD_TYPE#PUBLIC', GSI2SK: `ACCOUNT#${FIXED_IDS.ACCOUNT}`,
-            id: FIXED_IDS.ACCOUNT, name: 'ABC', masterAccountName: 'ABC',
+            id: FIXED_IDS.ACCOUNT, name: 'PPP', masterAccountName: 'PPP',
             cloudType: 'public', status: 'active', createdAt: now, updatedAt: now,
           },
         },
@@ -820,10 +820,10 @@ async function fixABCAccount() {
     }
     if (ops.length > 0) {
       await transactWriteItems(ops);
-      recordFix('ABC Account + address', 'fixed');
+      recordFix('PPP Account + address', 'fixed');
     }
   } catch (err: any) {
-    recordFix('ABC Account + address', 'fail', err.message);
+    recordFix('PPP Account + address', 'fail', err.message);
   }
 }
 
@@ -852,7 +852,7 @@ async function fixLicense() {
         productId: FIXED_IDS.PRODUCT, serviceId: FIXED_IDS.SERVICE,
         startDate: now.split('T')[0], endDate: '2099-12-31', numberOfUsers: 100,
         renewalNotify: true, noticeDays: 30,
-        contactFullName: 'ABC DEF', contactEmail: ADMIN_EMAIL,
+        contactFullName: 'PPP Admin', contactEmail: ADMIN_EMAIL,
         createdAt: now, updatedAt: now,
       });
       recordFix('Global License', 'fixed');
@@ -1012,7 +1012,7 @@ async function fixAdminUser() {
             PK: `ACCOUNT#${FIXED_IDS.ACCOUNT}`, SK: `TECH_USER#${FIXED_IDS.ADMIN_USER}`,
             GSI1PK: 'ENTITY#TECH_USER', GSI1SK: `USER#${FIXED_IDS.ADMIN_USER}`,
             id: FIXED_IDS.ADMIN_USER, accountId: FIXED_IDS.ACCOUNT, enterpriseId: FIXED_IDS.ENTERPRISE,
-            firstName: 'ABC', lastName: 'DEF', email: ADMIN_EMAIL,
+            firstName: 'PPP', lastName: 'Admin', email: ADMIN_EMAIL,
             assignedRole: 'Platform Admin', assignedGroup: 'Platform Admin',
             startDate: now.split('T')[0], status: 'active', isTechnicalUser: true,
             createdAt: now, updatedAt: now,
@@ -1030,7 +1030,7 @@ async function fixAdminUser() {
             GSI1PK: 'ENTITY#USER', GSI1SK: `USER#${FIXED_IDS.ADMIN_USER}`,
             GSI2PK: `ACCOUNT#${FIXED_IDS.ACCOUNT}#USERS`, GSI2SK: `USER#${FIXED_IDS.ADMIN_USER}`,
             id: FIXED_IDS.ADMIN_USER, accountId: FIXED_IDS.ACCOUNT, enterpriseId: FIXED_IDS.ENTERPRISE,
-            firstName: 'ABC', lastName: 'DEF', email: ADMIN_EMAIL,
+            firstName: 'PPP', lastName: 'Admin', email: ADMIN_EMAIL,
             assignedRole: 'Platform Admin', assignedGroup: 'Platform Admin',
             startDate: now.split('T')[0], status: 'active', isTechnicalUser: true,
             createdAt: now, updatedAt: now,
@@ -1138,8 +1138,8 @@ async function fixCognito() {
   const customAttributes = [
     { Name: 'email', Value: ADMIN_EMAIL },
     { Name: 'email_verified', Value: 'true' },
-    { Name: 'given_name', Value: 'ABC' },
-    { Name: 'family_name', Value: 'DEF' },
+    { Name: 'given_name', Value: 'PPP' },
+    { Name: 'family_name', Value: 'Admin' },
     { Name: 'custom:account_id', Value: FIXED_IDS.ACCOUNT },
     { Name: 'custom:enterprise_id', Value: FIXED_IDS.ENTERPRISE },
     { Name: 'custom:role', Value: 'super_admin' },
@@ -1224,7 +1224,7 @@ async function fixCognito() {
 const FIX_MAP: Record<string, () => Promise<void>> = {
   'Master Data': fixMasterData,
   'Global Enterprise': fixGlobalEnterprise,
-  'ABC Account': fixABCAccount,
+  'PPP Account': fixPPPAccount,
   'SSM Registration': fixSSMRegistration,
   'License': fixLicense,
   'Groups': fixGroups,
@@ -1248,7 +1248,7 @@ async function runFixes(): Promise<void> {
 
   // Run fixes in dependency order
   const fixOrder = [
-    'Master Data', 'Global Enterprise', 'ABC Account', 'SSM Registration',
+    'Master Data', 'Global Enterprise', 'PPP Account', 'SSM Registration',
     'License', 'Groups', 'Roles', 'Role-Group Linkage',
     'Admin User', 'Workstreams', 'Cognito',
   ];
@@ -1375,7 +1375,7 @@ async function main() {
   await Promise.all([
     verifyMasterData(),
     verifyGlobalEnterprise(),
-    verifyABCAccount(),
+    verifyPPPAccount(),
     verifySSMRegistration(),
     verifyLicense(),
     verifyGroups(),

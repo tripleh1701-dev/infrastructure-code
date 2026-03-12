@@ -53,16 +53,23 @@ export class BuildsController {
   @Put('jobs/:id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager', 'user')
-  async updateJob(@Param('id') id: string, @Body() dto: UpdateBuildJobDto) {
-    return this.buildsService.updateJob(id, dto);
+  async updateJob(
+    @Param('id') id: string,
+    @Body() dto: UpdateBuildJobDto,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.buildsService.updateJob(id, dto, accountId);
   }
 
   @Delete('jobs/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager')
-  async removeJob(@Param('id') id: string) {
-    await this.buildsService.removeJob(id);
+  async removeJob(
+    @Param('id') id: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    await this.buildsService.removeJob(id, accountId);
   }
 
   // ─── BUILD EXECUTIONS ─────────────────────────────────────────────────────
@@ -79,8 +86,11 @@ export class BuildsController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
   @Roles('admin', 'manager', 'user')
-  async createExecution(@Body() dto: CreateBuildExecutionDto) {
-    return this.buildsService.createExecution(dto);
+  async createExecution(
+    @Body() dto: CreateBuildExecutionDto,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.buildsService.createExecution(dto, accountId);
   }
 
   @Post('jobs/:buildJobId/executions')
@@ -90,9 +100,10 @@ export class BuildsController {
   async createExecutionNested(
     @Param('buildJobId') buildJobId: string,
     @Body() dto: CreateBuildExecutionDto,
+    @Query('accountId') accountId?: string,
   ) {
     dto.buildJobId = buildJobId;
-    return this.buildsService.createExecution(dto);
+    return this.buildsService.createExecution(dto, accountId);
   }
 
   @Put('jobs/:buildJobId/executions/:executionId')

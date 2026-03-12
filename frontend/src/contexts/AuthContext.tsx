@@ -10,7 +10,7 @@ const BYPASS_AUTH = false;
 // Mock user for testing
 const MOCK_USER: CognitoAuthUser = {
   sub: "e0000000-0000-0000-0000-000000000001",
-  email: "admin@adminplatform.com",
+  email: "tripleh1701@gmail.com",
   emailVerified: true,
   accountId: null,
   enterpriseId: null,
@@ -121,8 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check if user is super_admin (admin@adminplatform.com)
-      const isAdmin = userEmail.toLowerCase() === "admin@adminplatform.com";
+      // Check if user is super_admin
+      const isAdmin = userEmail.toLowerCase() === "tripleh1701@gmail.com";
       setIsSuperAdmin(isAdmin);
 
       if (isAdmin) {

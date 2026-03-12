@@ -174,7 +174,7 @@ export const credentialsService = {
     return credential as unknown as Credential;
   },
 
-  async update(id: string, updates: UpdateCredentialInput): Promise<void> {
+  async update(id: string, updates: UpdateCredentialInput, accountId?: string): Promise<void> {
     if (isExternalApi()) {
       const payload: Record<string, unknown> = {};
       if (updates.name !== undefined) payload.name = updates.name;
@@ -187,7 +187,9 @@ export const credentialsService = {
       if (updates.expiry_notice_days !== undefined) payload.expiryNoticeDays = updates.expiry_notice_days;
       if (updates.expiry_notify !== undefined) payload.expiryNotify = updates.expiry_notify;
       if (updates.workstream_ids !== undefined) payload.workstreamIds = updates.workstream_ids;
-      const { error } = await httpClient.patch(`/credentials/${id}`, payload);
+      const { error } = await httpClient.patch(`/credentials/${id}`, payload, {
+        params: accountId ? { accountId } : undefined,
+      });
       if (error) throw new Error(error.message);
       return;
     }
@@ -224,9 +226,11 @@ export const credentialsService = {
     }
   },
 
-  async rotate(id: string, credentials: Record<string, unknown>): Promise<void> {
+  async rotate(id: string, credentials: Record<string, unknown>, accountId?: string): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.post(`/credentials/${id}/rotate`, { credentials });
+      const { error } = await httpClient.post(`/credentials/${id}/rotate`, { credentials }, {
+        params: accountId ? { accountId } : undefined,
+      });
       if (error) throw new Error(error.message);
       return;
     }
@@ -243,9 +247,11 @@ export const credentialsService = {
     if (error) throw error;
   },
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, accountId?: string): Promise<void> {
     if (isExternalApi()) {
-      const { error } = await httpClient.delete(`/credentials/${id}`);
+      const { error } = await httpClient.delete(`/credentials/${id}`, {
+        params: accountId ? { accountId } : undefined,
+      });
       if (error) throw new Error(error.message);
       return;
     }

@@ -871,7 +871,7 @@ In Sandbox Mode, **both sender AND recipient** must be verified. Verify the admi
 ```bash
 # Verify the default admin user email
 aws ses verify-email-identity \
-  --email-address "admin@adminplatform.com" \
+  --email-address "tripleh1701@gmail.com" \
   --profile platform-admin \
   --region us-east-1
 
@@ -895,7 +895,7 @@ aws ses list-identities \
 
 ```bash
 aws ses get-identity-verification-attributes \
-  --identities "noreply@your-domain.com" "admin@adminplatform.com" \
+  --identities "noreply@your-domain.com" "tripleh1701@gmail.com" \
   --profile platform-admin \
   --region us-east-1
 ```
@@ -907,7 +907,7 @@ Expected:
     "noreply@your-domain.com": {
       "VerificationStatus": "Success"
     },
-    "admin@adminplatform.com": {
+    "tripleh1701@gmail.com": {
       "VerificationStatus": "Success"
     }
   }
@@ -1143,7 +1143,7 @@ aws lambda update-function-configuration \
 
 ## 15. Run Day-0 Bootstrap
 
-The bootstrap creates the root platform data (ABC account, Global enterprise, admin user, roles, groups, etc.).
+The bootstrap creates the root platform data (PPP account, Global enterprise, admin user, roles, groups, etc.).
 
 ### 15.1 Dry Run First
 
@@ -1157,7 +1157,7 @@ This prints all 14 steps and 30+ DynamoDB items **without writing anything**. Re
 
 - Account UUID: `a0000000-0000-0000-0000-000000000001`
 - Enterprise UUID: `00000000-0000-0000-0000-000000000001`
-- Admin email: `admin@adminplatform.com`
+- Admin email: `tripleh1701@gmail.com`
 - License: 100 users, expires 2099-12-31
 
 ### 15.2 Execute Bootstrap (DynamoDB Only)
@@ -1181,7 +1181,7 @@ Expected output:
 
 🚀 Day-0 Bootstrap Starting...
 ──────────────────────────────
-[1/14] ✅ Account 'ABC' created (a0000000-0000-0000-0000-000000000001)
+[1/14] ✅ Account 'PPP' created (a0000000-0000-0000-0000-000000000001)
 [2/14] ✅ Enterprise 'Global' created
 [3/14] ✅ Product 'Global' created
 [4/14] ✅ Service 'Global' created
@@ -1192,7 +1192,7 @@ Expected output:
 [9/14] ✅ Role 'Technical Role' created (permissions: view-only)
 [10/14] ✅ Group 'Platform Admin' created → Platform Admin role
 [11/14] ✅ Group 'Technical Group' created → Technical Role role
-[12/14] ✅ User 'admin@adminplatform.com' created in DynamoDB + Cognito
+[12/14] ✅ User 'tripleh1701@gmail.com' created in DynamoDB + Cognito
 [13/14] ✅ Workstream 'Global' created
 [14/14] ✅ Workstream 'Default' created
 ──────────────────────────────
@@ -1201,14 +1201,14 @@ Expected output:
   Completed in 2.34s
 
   Summary of created entities:
-    • Account:      ABC (a0000000-0000-0000-0000-000000000001)
+    • Account:      PPP (a0000000-0000-0000-0000-000000000001)
     • Enterprise:   Global (00000000-0000-0000-0000-000000000001)
     • Product:      Global (00000000-0000-0000-0000-000000000002)
     • Service:      Global (00000000-0000-0000-0000-000000000003)
     • License:      100 users (f0000000-0000-0000-0000-000000000001)
     • Roles:        Platform Admin (full), Technical Role (view-only)
     • Groups:       Platform Admin → Platform Admin, Technical Group → Technical Role
-    • Admin:        admin@adminplatform.com / Adminuser@123
+    • Admin:        tripleh1701@gmail.com / Adminuser@123
     • Workstreams:  Global (e0000000-0000-0000-0000-000000000001), Default (e0000000-0000-0000-0000-000000000002)
 ```
 
@@ -1220,7 +1220,7 @@ npx ts-node scripts/bootstrap-day0.ts --with-cognito
 
 This additionally creates the admin user in Cognito with:
 
-- Email: `admin@adminplatform.com`
+- Email: `tripleh1701@gmail.com`
 - Password: `Adminuser@123` (permanent, no reset required)
 - Custom attributes: `custom:account_id`, `custom:role=super_admin`
 - Cognito group: `PlatformAdmins`
@@ -1235,7 +1235,7 @@ This additionally creates the admin user in Cognito with:
 npx ts-node scripts/verify-bootstrap.ts
 ```
 
-Expected output: All checks should show `✅ PASS` across categories (Master Data, Global Enterprise, ABC Account, SSM Registration, License, Groups, Roles, Role-Group Linkage, Admin User, Workstreams, Cognito).
+Expected output: All checks should show `✅ PASS` across categories (Master Data, Global Enterprise, PPP Account, SSM Registration, License, Groups, Roles, Role-Group Linkage, Admin User, Workstreams, Cognito).
 
 ### 16.2 Auto-Fix Mode (If Any Items Failed)
 
@@ -1246,7 +1246,7 @@ npx ts-node scripts/verify-bootstrap.ts --fix
 ### 16.3 Manual Verification — Check DynamoDB Items
 
 ```bash
-# Verify ABC account exists in the shared table
+# Verify PPP account exists in the shared table
 aws dynamodb get-item \
   --table-name dev_data \
   --key '{"PK": {"S": "ACCOUNT#a0000000-0000-0000-0000-000000000001"}, "SK": {"S": "METADATA"}}' \
@@ -1277,7 +1277,7 @@ Expected parameters:
 ```bash
 aws cognito-idp admin-get-user \
   --user-pool-id us-east-1_XXXXXXXXX \
-  --username admin@adminplatform.com \
+  --username tripleh1701@gmail.com \
   --profile platform-admin \
   --region us-east-1
 ```
@@ -1328,7 +1328,7 @@ npx ts-node scripts/pre-flight-check.ts --phase 1 --verbose
   ✅ CloudFront origin points to S3 bucket
 
 ── BOOTSTRAP DATA ─────────────────────────────────────────────
-  ✅ ABC Account exists (a0000000-...)
+  ✅ PPP Account exists (a0000000-...)
   ✅ Global Enterprise exists
   ✅ Enterprise → Product linkage
   ✅ Product → Service linkage
@@ -1338,11 +1338,11 @@ npx ts-node scripts/pre-flight-check.ts --phase 1 --verbose
   ✅ Technical Group exists
   ✅ Platform Admin role exists (full permissions)
   ✅ Technical Role exists (view-only)
-  ✅ Admin User exists (admin@adminplatform.com)
+  ✅ Admin User exists (tripleh1701@gmail.com)
   ✅ Global License exists (100 users)
   ✅ Global Workstream exists
   ✅ Default Workstream exists
-  ✅ SSM parameters registered for ABC account
+  ✅ SSM parameters registered for PPP account
 
 ── COGNITO USERS ──────────────────────────────────────────────
   ✅ Admin Cognito user exists
@@ -1399,7 +1399,7 @@ curl -s $API_URL/health | jq .
 TOKEN=$(aws cognito-idp initiate-auth \
   --auth-flow USER_PASSWORD_AUTH \
   --client-id $(terraform -chdir=terraform output -raw cognito_client_id) \
-  --auth-parameters USERNAME=admin@adminplatform.com,PASSWORD=Adminuser@123 \
+  --auth-parameters USERNAME=tripleh1701@gmail.com,PASSWORD=Adminuser@123 \
   --query 'AuthenticationResult.AccessToken' \
   --output text \
   --profile platform-admin \
@@ -1419,7 +1419,7 @@ curl -s -H "Authorization: Bearer $TOKEN" $API_URL/api/accounts | jq .
 #   "data": [
 #     {
 #       "id": "a0000000-0000-0000-0000-000000000001",
-#       "name": "ABC",
+#       "name": "PPP",
 #       "cloudType": "public",
 #       "status": "active"
 #     }

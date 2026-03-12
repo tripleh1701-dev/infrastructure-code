@@ -95,7 +95,7 @@ resource "aws_iam_role_policy" "assume_data_plane" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = "sts:AssumeRole"
+      Action   = ["sts:AssumeRole", "sts:TagSession"]
       Resource = var.data_plane_role_arn
     }]
   })

@@ -229,9 +229,9 @@ async function checkExistingBootstrap(): Promise<boolean> {
   }
 }
 
-// Step 1 — Create ABC Account + Address + SSM registration
+// Step 1 — Create PPP Account + Address + SSM registration
 async function step1_createAccount(now: string) {
-  log(1, `Account 'ABC' created (${FIXED_IDS.ACCOUNT})`);
+  log(1, `Account 'PPP' created (${FIXED_IDS.ACCOUNT})`);
   await transactWriteItems([
     {
       Put: {
@@ -243,8 +243,8 @@ async function step1_createAccount(now: string) {
           GSI2PK: 'CLOUD_TYPE#PUBLIC',
           GSI2SK: `ACCOUNT#${FIXED_IDS.ACCOUNT}`,
           id: FIXED_IDS.ACCOUNT,
-          name: 'ABC',
-          masterAccountName: 'ABC',
+          name: 'PPP',
+          masterAccountName: 'PPP',
           cloudType: 'public',
           status: 'active',
           createdAt: now,
@@ -378,8 +378,8 @@ async function step7_createLicense(now: string) {
     numberOfUsers: 100,
     renewalNotify: true,
     noticeDays: 30,
-    contactFullName: 'ABC DEF',
-    contactEmail: 'admin@adminplatform.com',
+    contactFullName: 'PPP Admin',
+    contactEmail: 'tripleh1701@gmail.com',
     createdAt: now,
     updatedAt: now,
   });
@@ -567,7 +567,7 @@ async function step11_createTechnicalGroup(now: string) {
 
 // Step 12 — Create Admin User + Cognito provisioning
 async function step12_createAdminUser(now: string) {
-  log(12, `User 'admin@adminplatform.com' created in DynamoDB + Cognito`);
+  log(12, `User 'tripleh1701@gmail.com' created in DynamoDB + Cognito`);
 
   await transactWriteItems([
     {
@@ -580,9 +580,9 @@ async function step12_createAdminUser(now: string) {
           id: FIXED_IDS.ADMIN_USER,
           accountId: FIXED_IDS.ACCOUNT,
           enterpriseId: FIXED_IDS.ENTERPRISE,
-          firstName: 'ABC',
-          lastName: 'DEF',
-          email: 'admin@adminplatform.com',
+          firstName: 'PPP',
+          lastName: 'Admin',
+          email: 'tripleh1701@gmail.com',
           assignedRole: 'Platform Admin',
           assignedGroup: 'Platform Admin',
           startDate: now.split('T')[0],
@@ -605,9 +605,9 @@ async function step12_createAdminUser(now: string) {
           id: FIXED_IDS.ADMIN_USER,
           accountId: FIXED_IDS.ACCOUNT,
           enterpriseId: FIXED_IDS.ENTERPRISE,
-          firstName: 'ABC',
-          lastName: 'DEF',
-          email: 'admin@adminplatform.com',
+          firstName: 'PPP',
+          lastName: 'Admin',
+          email: 'tripleh1701@gmail.com',
           assignedRole: 'Platform Admin',
           assignedGroup: 'Platform Admin',
           startDate: now.split('T')[0],
@@ -708,7 +708,7 @@ async function createCognitoUser() {
 
   if (DRY_RUN) return;
 
-  const email = 'admin@adminplatform.com';
+  const email = 'tripleh1701@gmail.com';
   const password = 'Adminuser@123';
 
   try {
@@ -836,17 +836,17 @@ async function main() {
     console.log(`  Completed in ${elapsed}s`);
     console.log('');
     console.log('  Summary of created entities:');
-    console.log(`    • Account:      ABC (${FIXED_IDS.ACCOUNT})`);
+    console.log(`    • Account:      PPP (${FIXED_IDS.ACCOUNT})`);
     console.log(`    • Enterprise:   Global (${FIXED_IDS.ENTERPRISE})`);
     console.log(`    • Product:      Global (${FIXED_IDS.PRODUCT})`);
     console.log(`    • Service:      Global (${FIXED_IDS.SERVICE})`);
     console.log(`    • License:      100 users (${FIXED_IDS.LICENSE})`);
     console.log(`    • Roles:        Platform Admin (full), Technical Role (view-only)`);
     console.log(`    • Groups:       Platform Admin → Platform Admin, Technical Group → Technical Role`);
-    console.log(`    • Admin:        admin@adminplatform.com / Adminuser@123`);
+    console.log(`    • Admin:        tripleh1701@gmail.com / Adminuser@123`);
     console.log(`    • Workstreams:  Global (${FIXED_IDS.GLOBAL_WORKSTREAM}), Default (${FIXED_IDS.DEFAULT_WORKSTREAM})`);
     if (WITH_COGNITO) {
-      console.log(`    • Cognito:      admin@adminplatform.com in pool ${COGNITO_USER_POOL_ID}`);
+      console.log(`    • Cognito:      tripleh1701@gmail.com in pool ${COGNITO_USER_POOL_ID}`);
     }
     console.log('');
   } catch (err: any) {

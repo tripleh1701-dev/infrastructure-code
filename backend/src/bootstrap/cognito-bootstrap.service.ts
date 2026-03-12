@@ -21,7 +21,7 @@ import {
  *
  * Actions performed:
  *  1. Create "PlatformAdmins" Cognito group (idempotent)
- *  2. Create admin user with email admin@adminplatform.com (idempotent)
+ *  2. Create admin user with email tripleh1701@gmail.com (idempotent)
  *  3. Set a permanent password (from env or default)
  *  4. Stamp custom attributes (account_id, enterprise_id, role)
  *  5. Assign user to the PlatformAdmins group
@@ -43,7 +43,7 @@ export class CognitoBootstrapService {
   private userPoolId: string;
 
   // Defaults aligned with Day-0 architecture
-  private readonly ADMIN_EMAIL = 'admin@adminplatform.com';
+  private readonly ADMIN_EMAIL = 'tripleh1701@gmail.com';
   private readonly COGNITO_GROUP_NAME = 'PlatformAdmins';
 
   constructor(private readonly configService: ConfigService) {
@@ -65,7 +65,7 @@ export class CognitoBootstrapService {
   /**
    * Provision the admin user and PlatformAdmins group in Cognito.
    *
-   * @param accountId  - Fixed ABC account UUID from FIXED_IDS
+   * @param accountId  - Fixed PPP account UUID from FIXED_IDS
    * @param enterpriseId - Fixed Global enterprise UUID from FIXED_IDS
    */
   async provisionAdminUser(
@@ -164,8 +164,8 @@ export class CognitoBootstrapService {
     const customAttributes = [
       { Name: 'email', Value: this.ADMIN_EMAIL },
       { Name: 'email_verified', Value: 'true' },
-      { Name: 'given_name', Value: 'ABC' },
-      { Name: 'family_name', Value: 'DEF' },
+      { Name: 'given_name', Value: 'PPP' },
+      { Name: 'family_name', Value: 'Admin' },
       { Name: 'custom:account_id', Value: accountId },
       { Name: 'custom:enterprise_id', Value: enterpriseId },
       { Name: 'custom:role', Value: 'super_admin' },

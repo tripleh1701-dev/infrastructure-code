@@ -191,7 +191,9 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
   const deleteConnector = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/connectors/${id}`);
+        const { error } = await httpClient.delete(`/connectors/${id}`, {
+          params: { accountId },
+        });
         if (error) throw new Error(error.message);
         return;
       }
@@ -214,7 +216,9 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
   const updateConnector = useMutation({
     mutationFn: async ({ id, ...input }: { id: string; name?: string; description?: string; url?: string; status?: string; credential_id?: string | null }) => {
       if (isExternalApi()) {
-        const { data, error } = await httpClient.put<ConnectorRecord>(`/connectors/${id}`, input);
+        const { data, error } = await httpClient.put<ConnectorRecord>(`/connectors/${id}`, input, {
+          params: { accountId },
+        });
         if (error) throw new Error(error.message);
         return data;
       }

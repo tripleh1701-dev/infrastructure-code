@@ -182,8 +182,8 @@ export class BuildsService {
     return this.mapToBuildJob(item);
   }
 
-  async updateJob(id: string, dto: UpdateBuildJobDto): Promise<BuildJob> {
-    const existing = await this.findOneJob(id);
+  async updateJob(id: string, dto: UpdateBuildJobDto, accountId?: string): Promise<BuildJob> {
+    const existing = await this.findOneJob(id, accountId);
     const isCustomer = await this.dynamoDbRouter.isCustomerAccount(existing.accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(existing.accountId);
 
@@ -234,8 +234,8 @@ export class BuildsService {
     return this.mapToBuildJob(result.Attributes!);
   }
 
-  async removeJob(id: string): Promise<void> {
-    const existing = await this.findOneJob(id);
+  async removeJob(id: string, accountId?: string): Promise<void> {
+    const existing = await this.findOneJob(id, accountId);
     const isCustomer = await this.dynamoDbRouter.isCustomerAccount(existing.accountId);
     const isPrivate = await this.dynamoDbRouter.isPrivateAccount(existing.accountId);
 
@@ -327,11 +327,11 @@ export class BuildsService {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
-  async createExecution(dto: CreateBuildExecutionDto): Promise<BuildExecution> {
+  async createExecution(dto: CreateBuildExecutionDto, accountId?: string): Promise<BuildExecution> {
     if (!dto.buildJobId) {
       throw new Error("buildJobId is required");
     }
-    const buildJob = await this.findOneJob(dto.buildJobId);
+    const buildJob = await this.findOneJob(dto.buildJobId, accountId);
     const isCustomer = await this.dynamoDbRouter.isCustomerAccount(buildJob.accountId);
 
     const id = uuidv4();

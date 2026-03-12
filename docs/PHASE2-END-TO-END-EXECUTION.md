@@ -52,7 +52,7 @@ npm run verify-bootstrap
 COGNITO_POOL=$(terraform -chdir=terraform output -raw cognito_user_pool_id)
 aws cognito-idp admin-get-user \
   --user-pool-id $COGNITO_POOL \
-  --username admin@adminplatform.com \
+  --username tripleh1701@gmail.com \
   --profile platform-admin --region us-east-1
 # Expected: User record returned
 

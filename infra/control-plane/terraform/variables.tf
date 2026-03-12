@@ -116,7 +116,7 @@ variable "alarm_email" {
 variable "credential_notification_enabled" {
   description = "Enable SES credential notification emails on user provisioning"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "ses_sender_email" {

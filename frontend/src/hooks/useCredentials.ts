@@ -256,7 +256,9 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
       if (workstream_ids !== undefined) updateData.workstream_ids = workstream_ids;
 
       if (isExternalApi()) {
-        const { error } = await httpClient.patch(`/credentials/${id}`, updateData);
+        const { error } = await httpClient.patch(`/credentials/${id}`, updateData, {
+          params: accountId ? { accountId } : undefined,
+        });
         if (error) throw new Error(error.message);
       } else {
         // Supabase-specific: handle workstream_id backward compat and credential_workstreams join table
@@ -327,6 +329,8 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
       if (isExternalApi()) {
         const { error } = await httpClient.post(`/credentials/${id}/rotate`, {
           credentials: credentialsData,
+        }, {
+          params: accountId ? { accountId } : undefined,
         });
         if (error) throw new Error(error.message);
         return;
@@ -355,7 +359,9 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
   const deleteCredential = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/credentials/${id}`);
+        const { error } = await httpClient.delete(`/credentials/${id}`, {
+          params: accountId ? { accountId } : undefined,
+        });
         if (error) throw new Error(error.message);
         return;
       }

@@ -136,10 +136,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -177,10 +177,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -251,7 +251,7 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-${{ needs.resolve.outputs.workspace }}-${{ steps.hash.outputs.hash }}
           path: dist/
@@ -272,13 +272,13 @@ jobs:
 
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: frontend-${{ needs.resolve.outputs.workspace }}-${{ needs.build.outputs.build-hash }}
           path: dist/

@@ -434,12 +434,12 @@ async function phase1_cognito() {
   const adminUsers = await safeExec(async () =>
     cognitoClient!.send(new ListUsersCommand({
       UserPoolId: COGNITO_USER_POOL_ID,
-      Filter: 'email = "admin@adminplatform.com"',
+      Filter: 'email = "tripleh1701@gmail.com"',
       Limit: 1,
     })),
   );
   const adminExists = (adminUsers?.Users?.length || 0) > 0;
-  record(1, cat, 'Admin user (admin@adminplatform.com) exists', adminExists ? 'pass' : 'fail');
+  record(1, cat, 'Admin user (tripleh1701@gmail.com) exists', adminExists ? 'pass' : 'fail');
 
   // 1g. Cognito groups exist
   for (const groupName of ['PlatformAdmin', 'TechnicalGroup']) {
@@ -459,9 +459,9 @@ async function phase1_ssmRegistration() {
   const cat = 'P1: SSM Parameters';
 
   const params = [
-    { path: `${SSM_PREFIX}/${FIXED_IDS.ACCOUNT}/dynamodb/table-name`, label: 'ABC account table-name' },
-    { path: `${SSM_PREFIX}/${FIXED_IDS.ACCOUNT}/cloud-type`, label: 'ABC account cloud-type' },
-    { path: `${SSM_PREFIX}/${FIXED_IDS.ACCOUNT}/provisioning-status`, label: 'ABC account provisioning-status' },
+    { path: `${SSM_PREFIX}/${FIXED_IDS.ACCOUNT}/dynamodb/table-name`, label: 'PPP account table-name' },
+    { path: `${SSM_PREFIX}/${FIXED_IDS.ACCOUNT}/cloud-type`, label: 'PPP account cloud-type' },
+    { path: `${SSM_PREFIX}/${FIXED_IDS.ACCOUNT}/provisioning-status`, label: 'PPP account provisioning-status' },
   ];
 
   for (const { path, label } of params) {
@@ -477,7 +477,7 @@ async function phase1_bootstrapEntities() {
 
   // Check core bootstrap entities
   const checks: Array<{ pk: string; sk: string; label: string; critical: boolean }> = [
-    { pk: `ACCOUNT#${FIXED_IDS.ACCOUNT}`, sk: 'METADATA', label: 'ABC Account', critical: true },
+    { pk: `ACCOUNT#${FIXED_IDS.ACCOUNT}`, sk: 'METADATA', label: 'PPP Account', critical: true },
     { pk: `ENTERPRISE#${FIXED_IDS.ENTERPRISE}`, sk: 'METADATA', label: 'Global Enterprise', critical: true },
     { pk: `PRODUCT#${FIXED_IDS.PRODUCT}`, sk: 'METADATA', label: 'Global Product', critical: true },
     { pk: `SERVICE#${FIXED_IDS.SERVICE}`, sk: 'METADATA', label: 'Global Service', critical: true },

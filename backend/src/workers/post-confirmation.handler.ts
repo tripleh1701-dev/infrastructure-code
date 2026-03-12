@@ -96,7 +96,7 @@ export async function handler(event: PostConfirmationEvent): Promise<PostConfirm
     const now = new Date().toISOString();
     const userId = uuidv4();
     const emailPrefix = email.split('@')[0];
-    const isAdmin = email.toLowerCase() === 'admin@adminplatform.com';
+    const isAdmin = email.toLowerCase() === 'tripleh1701@gmail.com';
     const assignedRole = isAdmin ? 'Platform Admin' : 'Viewer';
     const assignedGroup = isAdmin ? 'Platform Admin' : 'Default';
 

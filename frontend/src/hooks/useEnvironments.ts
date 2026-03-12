@@ -206,9 +206,9 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
         if (input.entity !== undefined) payload.entity = input.entity;
         if (input.connector_icon_name !== undefined) payload.connectorIconName = input.connector_icon_name;
         if (input.connectors !== undefined) payload.connectors = input.connectors;
-        const { data, error } = await httpClient.put<any>(`/environments/${id}`, payload);
-        if (error) throw new Error(error.message);
-        return mapExternalEnvironment(data);
+        const { data, error } = await httpClient.put<any>(`/environments/${id}`, payload, {
+          params: accountId ? { accountId } : undefined,
+        });
       }
 
       const { data, error } = await (supabase
@@ -232,8 +232,9 @@ export function useEnvironments(accountId?: string, enterpriseId?: string) {
   const deleteEnvironment = useMutation({
     mutationFn: async (id: string) => {
       if (isExternalApi()) {
-        const { error } = await httpClient.delete(`/environments/${id}`);
-        if (error) throw new Error(error.message);
+        const { error } = await httpClient.delete(`/environments/${id}`, {
+          params: accountId ? { accountId } : undefined,
+        });
         return;
       }
 

@@ -221,7 +221,7 @@ describe("buildsService.deleteBuildJob", () => {
   it("calls delete endpoint", async () => {
     mockedDelete.mockResolvedValue({ error: null });
     await buildsService.deleteBuildJob("j1");
-    expect(mockedDelete).toHaveBeenCalledWith("/builds/jobs/j1");
+    expect(mockedDelete).toHaveBeenCalledWith("/builds/jobs/j1", { params: undefined });
   });
 
   it("throws on API error", async () => {
@@ -243,7 +243,7 @@ describe("buildsService.getExecutions", () => {
 
     const result = await buildsService.getExecutions("j1");
 
-    expect(mockedGet).toHaveBeenCalledWith("/builds/jobs/j1/executions");
+    expect(mockedGet).toHaveBeenCalledWith("/builds/jobs/j1/executions", { params: undefined });
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("e1");
   });
@@ -279,7 +279,7 @@ describe("buildsService.createExecution", () => {
       branch: "develop",
       jiraNumber: "PROJ-123",
       approvers: ["alice"],
-    });
+    }, { params: undefined });
     expect(result.id).toBe("ex1");
   });
 
@@ -314,7 +314,8 @@ describe("buildsService.updateExecution", () => {
 
     expect(mockedPut).toHaveBeenCalledWith(
       "/builds/jobs/j1/executions/ex1",
-      expect.objectContaining({ status: "success", duration: "2m" })
+      expect.objectContaining({ status: "success", duration: "2m" }),
+      { params: undefined },
     );
     expect(result.status).toBe("success");
   });

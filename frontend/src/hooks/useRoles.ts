@@ -303,7 +303,12 @@ export function useCreateRole() {
   return useMutation({
     mutationFn: async (data: CreateRoleData) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.post<any>('/roles', data);
+        const { workstreamIds, ...rest } = data;
+        const payload = {
+          ...rest,
+          workstreamId: workstreamIds && workstreamIds.length > 0 ? workstreamIds[0] : undefined,
+        };
+        const { data: result, error } = await httpClient.post<any>('/roles', payload);
         if (error) throw new Error(error.message);
         return result;
       }
@@ -357,7 +362,12 @@ export function useUpdateRole() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: CreateRoleData }) => {
       if (isExternalApi()) {
-        const { data: result, error } = await httpClient.put<any>(`/roles/${id}`, data);
+        const { workstreamIds, ...rest } = data;
+        const payload = {
+          ...rest,
+          workstreamId: workstreamIds && workstreamIds.length > 0 ? workstreamIds[0] : undefined,
+        };
+        const { data: result, error } = await httpClient.put<any>(`/roles/${id}`, payload);
         if (error) throw new Error(error.message);
         return result;
       }

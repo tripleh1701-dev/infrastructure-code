@@ -242,7 +242,7 @@ export function useBuilds() {
 
   const updateBuildJob = useMutation({
     mutationFn: async ({ id, ...updates }: { id: string } & Partial<CreateBuildJobInput & { pipeline_stages_state: any }>) => {
-      return buildsService.updateBuildJob(id, updates);
+      return buildsService.updateBuildJob(id, updates, accountId);
     },
     onSuccess: async (updatedJob) => {
       queryClient.invalidateQueries({ queryKey: ["build_jobs"] });
@@ -255,7 +255,7 @@ export function useBuilds() {
 
   const deleteBuildJob = useMutation({
     mutationFn: async (id: string) => {
-      return buildsService.deleteBuildJob(id);
+      return buildsService.deleteBuildJob(id, accountId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["build_jobs"] });
@@ -266,12 +266,12 @@ export function useBuilds() {
 
   // Executions
   const fetchExecutions = async (buildJobId: string): Promise<BuildExecution[]> => {
-    return buildsService.getExecutions(buildJobId);
+    return buildsService.getExecutions(buildJobId, accountId);
   };
 
   const createExecution = useMutation({
     mutationFn: async (input: { build_job_id: string; build_number: string; branch?: string; jira_number?: string; approvers?: string[] }) => {
-      return buildsService.createExecution(input);
+      return buildsService.createExecution(input, accountId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["build_executions"] });

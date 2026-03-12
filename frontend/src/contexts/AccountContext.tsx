@@ -4,10 +4,10 @@ import { httpClient } from "@/lib/api/http-client";
 import { isExternalApi } from "@/lib/api/config";
 import { useAuth } from "./AuthContext";
 
-// Admin Platform ABC Account ID - the actual account created in the database
-const ABC_ACCOUNT_ID = "a0000000-0000-0000-0000-000000000001";
-// Fallback to find ABC by name if UUID doesn't match
-const ABC_ACCOUNT_NAME = "ABC";
+// Admin Platform PPP Account ID - the actual account created in the database
+const PPP_ACCOUNT_ID = "a0000000-0000-0000-0000-000000000001";
+// Fallback to find PPP by name if UUID doesn't match
+const PPP_ACCOUNT_NAME = "PPP";
 
 interface Account {
   id: string;
@@ -54,10 +54,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
       if (!selectedAccount && accountList.length > 0) {
         if (isSuperAdmin) {
-          // Super admin defaults to ABC account
-          const abcAccountById = accountList.find(a => a.id === ABC_ACCOUNT_ID);
-          const abcAccountByName = accountList.find(a => a.name === ABC_ACCOUNT_NAME);
-          const defaultAccount = abcAccountById || abcAccountByName || accountList[0];
+          // Super admin defaults to PPP account
+          const pppAccountById = accountList.find(a => a.id === PPP_ACCOUNT_ID);
+          const pppAccountByName = accountList.find(a => a.name === PPP_ACCOUNT_NAME);
+          const defaultAccount = pppAccountById || pppAccountByName || accountList[0];
           setSelectedAccount({ id: defaultAccount.id, name: defaultAccount.name });
         } else {
           // Regular user defaults to their first accessible account
@@ -93,11 +93,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
         setAccounts(data || []);
 
-        // Set ABC account as default for super admin
+        // Set PPP account as default for super admin
         if (!selectedAccount && data && data.length > 0) {
-          const abcAccountById = data.find(a => a.id === ABC_ACCOUNT_ID);
-          const abcAccountByName = data.find(a => a.name === ABC_ACCOUNT_NAME);
-          const defaultAccount = abcAccountById || abcAccountByName || data[0];
+          const pppAccountById = data.find(a => a.id === PPP_ACCOUNT_ID);
+          const pppAccountByName = data.find(a => a.name === PPP_ACCOUNT_NAME);
+          const defaultAccount = pppAccountById || pppAccountByName || data[0];
           setSelectedAccount({ id: defaultAccount.id, name: defaultAccount.name });
         }
       } else if (userAccounts.length > 0) {

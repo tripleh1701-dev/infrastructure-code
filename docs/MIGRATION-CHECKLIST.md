@@ -123,7 +123,7 @@
 |---|------|--------|------------|---|
 | 41 | Bootstrap dry-run passes | `--dry-run` → 14 steps printed, no errors | [Step 16.1](./PHASE1-END-TO-END-EXECUTION.md#161-dry-run-first) | ☐ |
 | 42 | Bootstrap executed with Cognito | `--with-cognito` → 14/14 steps succeeded | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
-| 43 | Account `ABC` created | ID: `a0000000-0000-0000-0000-000000000001` | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
+| 43 | Account `PPP` created | ID: `a0000000-0000-0000-0000-000000000001` | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 | 44 | Enterprise `Global` created | ID: `00000000-0000-0000-0000-000000000001` | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 | 45 | Product `Global` created | ID: `00000000-0000-0000-0000-000000000002` | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 | 46 | Service `Global` created | ID: `00000000-0000-0000-0000-000000000003` | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
@@ -134,7 +134,7 @@
 | 51 | Role `Technical Role` created | View-only permissions | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 | 52 | Group `Platform Admin` created | Linked to Platform Admin role | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 | 53 | Group `Technical Group` created | Linked to Technical Role | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
-| 54 | Admin user `admin@adminplatform.com` created | In DynamoDB + Cognito | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
+| 54 | Admin user `tripleh1701@gmail.com` created | In DynamoDB + Cognito | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 | 55 | Workstream `Global` created | ID: `e0000000-0000-0000-0000-000000000001` | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 | 56 | Workstream `Default` created | ID: `e0000000-0000-0000-0000-000000000002` | [Step 16.2](./PHASE1-END-TO-END-EXECUTION.md#162-execute-bootstrap-dynamodb--cognito) | ☐ |
 
@@ -144,7 +144,7 @@
 |---|------|--------|------------|---|
 | 57 | `verify-bootstrap.ts` passes | All checks green | [Step 17.1](./PHASE1-END-TO-END-EXECUTION.md#171-run-verification-script) | ☐ |
 | 58 | `verify-bootstrap.ts --fix` auto-heals any drift | Re-run shows all green | [Step 17.2](./PHASE1-END-TO-END-EXECUTION.md#172-auto-fix-if-anything-failed) | ☐ |
-| 59 | DynamoDB items verified manually | ABC account METADATA item exists | [Step 17.3](./PHASE1-END-TO-END-EXECUTION.md#173-manual-verification--dynamodb) | ☐ |
+| 59 | DynamoDB items verified manually | PPP account METADATA item exists | [Step 17.3](./PHASE1-END-TO-END-EXECUTION.md#173-manual-verification--dynamodb) | ☐ |
 | 60 | SSM parameters verified | table-name, cloud-type, provisioning-status | [Step 17.4](./PHASE1-END-TO-END-EXECUTION.md#174-verify-ssm-parameters) | ☐ |
 | 61 | Cognito admin user verified | `admin-get-user` returns user | [Step 17.5](./PHASE1-END-TO-END-EXECUTION.md#175-verify-cognito-admin-user) | ☐ |
 | 62 | `pre-flight-check.ts --phase 1` passes | 30/30 checks green | [Step 18](./PHASE1-END-TO-END-EXECUTION.md#step-18-run-pre-flight-check) | ☐ |
@@ -155,7 +155,7 @@
 |---|------|--------|------------|---|
 | 63 | `GET /health` returns 200 | `curl` succeeds | [Step 19.2](./PHASE1-END-TO-END-EXECUTION.md#192-health-check-unauthenticated) | ☐ |
 | 64 | JWT token obtained via Cognito | `initiate-auth` returns access token | [Step 19.3](./PHASE1-END-TO-END-EXECUTION.md#193-get-jwt-token) | ☐ |
-| 65 | `GET /api/accounts` with Bearer token | Returns ABC account | [Step 19.4](./PHASE1-END-TO-END-EXECUTION.md#194-test-authenticated-endpoints) | ☐ |
+| 65 | `GET /api/accounts` with Bearer token | Returns PPP account | [Step 19.4](./PHASE1-END-TO-END-EXECUTION.md#194-test-authenticated-endpoints) | ☐ |
 | 66 | `GET /api/enterprises` returns Global enterprise | Correct ID + name | [Step 19.4](./PHASE1-END-TO-END-EXECUTION.md#194-test-authenticated-endpoints) | ☐ |
 | 67 | `GET /api/products` returns Global product | Correct ID + name | [Step 19.4](./PHASE1-END-TO-END-EXECUTION.md#194-test-authenticated-endpoints) | ☐ |
 
@@ -299,7 +299,7 @@
 | 1 | `amazon-cognito-identity-js` installed | `npm ls amazon-cognito-identity-js` | ☐ |
 | 2 | `cognito-client.ts` created and functional | Import resolves without errors | ☐ |
 | 3 | `AuthContext.tsx` refactored for dual-mode | `isExternalApi()` branch present | ☐ |
-| 4 | Login page works with Cognito | Sign in with `admin@adminplatform.com` returns JWT | ☐ |
+| 4 | Login page works with Cognito | Sign in with `tripleh1701@gmail.com` returns JWT | ☐ |
 | 5 | Forgot password flow works | Email → 6-digit code → new password | ☐ |
 | 6 | Token refresh works automatically | No forced re-login after token expiry | ☐ |
 
@@ -522,7 +522,7 @@ All 7 Supabase Edge Functions must have NestJS equivalents before cutover:
 | 33 | Frontend deployed to S3 + CloudFront invalidated | Pipeline succeeds | ☐ |
 | 34 | Production health check passes | `curl /health` → 200 | ☐ |
 | 35 | DNS updated (if custom domain) | `app.example.com` resolves to CloudFront | ☐ |
-| 36 | Admin login works | `admin@adminplatform.com` → dashboard loads | ☐ |
+| 36 | Admin login works | `tripleh1701@gmail.com` → dashboard loads | ☐ |
 | 37 | Sample CRUD operation succeeds | Create → edit → delete a test entity | ☐ |
 
 ### 6.4 Post-Cutover (First 24 Hours)

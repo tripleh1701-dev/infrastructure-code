@@ -778,7 +778,7 @@ export class UsersService {
     const isSuperAdmin =
       caller.role === 'super_admin' ||
       caller.groups.includes('super_admin') ||
-      caller.email?.toLowerCase() === 'admin@adminplatform.com';
+      caller.email?.toLowerCase() === 'tripleh1701@gmail.com';
 
     if (isSuperAdmin) {
       // Super admins see every account

@@ -122,10 +122,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure AWS Credentials (Platform Admin)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -185,10 +185,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure AWS Credentials (Platform Admin)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -293,7 +293,7 @@ jobs:
 
     steps:
       - name: Configure AWS Credentials (Platform Admin)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}

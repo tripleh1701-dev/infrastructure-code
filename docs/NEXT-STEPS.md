@@ -633,7 +633,7 @@ VITE_APP_ENVIRONMENT=dev
 cp .env.aws .env.local
 npm run dev
 
-# Test login with admin@adminplatform.com / Adminuser@123
+# Test login with tripleh1701@gmail.com / Adminuser@123
 # Verify:
 # ✅ Login returns Cognito JWT
 # ✅ Dashboard loads account data from NestJS API
@@ -991,7 +991,7 @@ curl -s -o /dev/null -w "%{http_code}" "https://app.example.com"
 
 # ─── Step 6: Test login with production admin ────────────────
 # Open https://app.example.com in browser
-# Login with admin@adminplatform.com / Adminuser@123
+# Login with tripleh1701@gmail.com / Adminuser@123
 # Verify dashboard loads with migrated data
 ```
 

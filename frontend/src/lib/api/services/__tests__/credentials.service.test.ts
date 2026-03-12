@@ -169,7 +169,7 @@ describe("credentialsService.rotate", () => {
 
     await credentialsService.rotate("cr1", { token: "rotated" });
 
-    expect(mockedPost).toHaveBeenCalledWith("/credentials/cr1/rotate", { credentials: { token: "rotated" } });
+    expect(mockedPost).toHaveBeenCalledWith("/credentials/cr1/rotate", { credentials: { token: "rotated" } }, { params: undefined });
   });
 
   it("throws on error", async () => {
@@ -184,7 +184,7 @@ describe("credentialsService.delete", () => {
   it("calls delete endpoint", async () => {
     mockedDelete.mockResolvedValue({ error: null });
     await credentialsService.delete("cr1");
-    expect(mockedDelete).toHaveBeenCalledWith("/credentials/cr1");
+    expect(mockedDelete).toHaveBeenCalledWith("/credentials/cr1", { params: undefined });
   });
 
   it("throws on error", async () => {
