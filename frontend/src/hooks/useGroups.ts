@@ -32,7 +32,7 @@ export interface Group {
 export function useGroups(accountId?: string | null, enterpriseId?: string | null, productId?: string | null) {
   return useQuery({
     queryKey: ["groups", accountId, enterpriseId, productId],
-    enabled: !!accountId,
+    enabled: isExternalApi() ? true : !!accountId,
     queryFn: async () => {
       if (isExternalApi()) {
         // Fetch groups and roles in parallel since backend doesn't store group-role associations
