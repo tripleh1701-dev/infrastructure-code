@@ -199,22 +199,8 @@ jobs:
           if [ -n "${HOSTED_ZONE_ID}" ] && [ -n "${TOKENS}" ]; then
             echo "Applying DKIM records in Route53 hosted zone ${HOSTED_ZONE_ID}"
             for token in ${TOKENS}; do
-              cat > /tmp/route53-ses-change.json <<JSON
-{
-  "Comment":"SES DKIM automation from workflow 04",
-  "Changes":[
-    {
-      "Action":"UPSERT",
-      "ResourceRecordSet":{
-        "Name":"${token}._domainkey.${DOMAIN}.",
-        "Type":"CNAME",
-        "TTL":300,
-        "ResourceRecords":[{"Value":"${token}.dkim.amazonses.com"}]
-      }
-    }
-  ]
-}
-JSON
+              printf '{"Comment":"SES DKIM automation from workflow 04","Changes":[{"Action":"UPSERT","ResourceRecordSet":{"Name":"%s._domainkey.%s.","Type":"CNAME","TTL":300,"ResourceRecords":[{"Value":"%s.dkim.amazonses.com"}]}}]}' \
+                "${token}" "${DOMAIN}" "${token}" > /tmp/route53-ses-change.json
               aws route53 change-resource-record-sets \
                 --hosted-zone-id "${HOSTED_ZONE_ID}" \
                 --change-batch file:///tmp/route53-ses-change.json >/dev/null

@@ -272,6 +272,52 @@ export class UsersController {
     }
   }
 
+  /**
+   * POST /api/users/:id/reset-password
+   * Resets a user's Cognito password without sending an email.
+   * Returns the new temporary password for the admin to share manually.
+   */
+  @Post(':id/reset-password')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    this.logger.log(`Reset password requested for user ${id}`);
+
+    try {
+      const user = await this.usersService.findOne(id);
+      if (!user) {
+        return { success: false, error: 'User not found' };
+      }
+
+      const email = user.email;
+      if (!email) {
+        return { success: false, error: 'User has no email address' };
+      }
+
+      const result = await this.cognitoProvisioning.resetUserPassword(email);
+      if (!result.success) {
+        return { success: false, error: result.reason || 'Failed to reset password in Cognito' };
+      }
+
+      this.logger.log(`Password reset successfully for user ${email}`);
+
+      return {
+        success: true,
+        temporaryPassword: result.temporaryPassword,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to reset password for user ${id}: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message || 'Failed to reset password',
+      };
+    }
+  }
+
   @Get()
   async findAll(@Query('accountId') accountId?: string) {
     if (accountId) {

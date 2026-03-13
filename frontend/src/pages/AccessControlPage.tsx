@@ -10,8 +10,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -44,6 +55,7 @@ import {
   RefreshCw,
   Activity,
   Key,
+  RotateCw,
   Layers,
   AlertTriangle,
   Filter,
@@ -226,6 +238,8 @@ export default function AccessControlPage() {
   const [editingUser, setEditingUser] = useState<AccessControlUser | null>(null);
   const [deletingUser, setDeletingUser] = useState<AccessControlUser | null>(null);
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
+  const [resettingPasswordUser, setResettingPasswordUser] = useState<AccessControlUser | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   
   // Resend credentials handler
   const handleResendCredentials = async (user: AccessControlUser) => {
@@ -262,6 +276,40 @@ export default function AccessControlPage() {
       toast.error(`Failed to resend credentials: ${err.message}`);
     } finally {
       setResendingUserId(null);
+    }
+  };
+
+  // Reset password handler
+  const handleResetPassword = async () => {
+    if (!resettingPasswordUser) return;
+    if (!isExternalApi()) {
+      toast.info("Reset Password is available in AWS mode only.");
+      setResettingPasswordUser(null);
+      return;
+    }
+    setIsResettingPassword(true);
+    try {
+      const { data, error } = await httpClient.post<{ success: boolean; temporaryPassword?: string; error?: string }>(
+        `/users/${resettingPasswordUser.id}/reset-password`,
+        {}
+      );
+      if (error) {
+        toast.error(`Failed to reset password: ${error.message}`);
+        return;
+      }
+      if (!data?.success) {
+        toast.error(data?.error || "Failed to reset password");
+        return;
+      }
+      toast.success(`Password reset successfully for ${resettingPasswordUser.email}`);
+      if (data.temporaryPassword) {
+        toast.info(`New password: ${data.temporaryPassword}`, { duration: 20000 });
+      }
+    } catch (err: any) {
+      toast.error(`Failed to reset password: ${err.message}`);
+    } finally {
+      setIsResettingPassword(false);
+      setResettingPasswordUser(null);
     }
   };
 
@@ -1248,6 +1296,15 @@ export default function AccessControlPage() {
                                     {resendingUserId === user.id ? "Sending..." : "Resend Credentials"}
                                   </DropdownMenuItem>
                                 )}
+                                {canEdit("access-control") && (
+                                  <DropdownMenuItem 
+                                    onClick={() => setResettingPasswordUser(user)}
+                                  >
+                                    <RotateCw className="w-4 h-4 mr-2" />
+                                    Reset Password
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
                                 {canDelete("access-control") && (
                                   <DropdownMenuItem 
                                     onClick={() => setDeletingUser(user)}
@@ -1331,6 +1388,16 @@ export default function AccessControlPage() {
                                   {resendingUserId === user.id ? "Sending..." : "Resend Credentials"}
                                 </DropdownMenuItem>
                               )}
+                              {canEdit("access-control") && (
+                                <DropdownMenuItem 
+                                  onClick={() => setResettingPasswordUser(user)}
+                                  className="rounded-lg"
+                                >
+                                  <RotateCw className="w-4 h-4 mr-2" />
+                                  Reset Password
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
                               {canDelete("access-control") && (
                                 <DropdownMenuItem 
                                   onClick={() => setDeletingUser(user)}
@@ -1774,6 +1841,24 @@ export default function AccessControlPage() {
       {showAddRole && <AddRoleDialog open={showAddRole} onOpenChange={setShowAddRole} />}
       {editingRole && <EditRoleDialog open={!!editingRole} onOpenChange={(open) => !open && setEditingRole(null)} role={editingRole} />}
       {deletingRole && <DeleteRoleDialog open={!!deletingRole} onOpenChange={(open) => !open && setDeletingRole(null)} role={deletingRole} />}
+
+      {/* Reset Password Confirmation Dialog */}
+      <AlertDialog open={!!resettingPasswordUser} onOpenChange={(open) => !open && setResettingPasswordUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Password</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will generate a new password for <strong>{resettingPasswordUser?.email}</strong> and invalidate their current credentials. The new password will be displayed for you to share manually.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isResettingPassword}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetPassword} disabled={isResettingPassword}>
+              {isResettingPassword ? "Resetting..." : "Reset Password"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
     </TooltipProvider>
     </PermissionGate>
