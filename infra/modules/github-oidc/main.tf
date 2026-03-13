@@ -100,9 +100,7 @@ resource "aws_iam_role" "github_actions" {
   # NOTE: keep trust-policy reconciliation opt-in to avoid CI self-mutation
   # failures when the currently assumed role lacks iam:UpdateAssumeRolePolicy.
   lifecycle {
-    ignore_changes = var.manage_assume_role_policy ? [
-      description,
-    ] : [
+    ignore_changes = [
       description,
       assume_role_policy,
     ]
