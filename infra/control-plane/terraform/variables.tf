@@ -201,7 +201,7 @@ variable "enable_github_oidc" {
 variable "create_oidc_provider" {
   description = "Whether to create the GitHub OIDC provider (set false if it already exists in this account)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "tf_state_bucket" {
