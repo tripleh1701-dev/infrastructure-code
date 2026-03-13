@@ -54,6 +54,14 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
+# Import existing IAM Role (one-time state recovery)
+# -----------------------------------------------------------------------------
+import {
+  to = aws_iam_role.github_actions
+  id = local.name_prefix
+}
+
+# -----------------------------------------------------------------------------
 # IAM Role (assumed by GitHub Actions via OIDC)
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "github_actions" {
