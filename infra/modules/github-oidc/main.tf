@@ -97,8 +97,9 @@ resource "aws_iam_role" "github_actions" {
     ]
   })
 
-  # NOTE: keep trust-policy reconciliation opt-in to avoid CI self-mutation
-  # failures when the currently assumed role lacks iam:UpdateAssumeRolePolicy.
+  # NOTE: lifecycle.ignore_changes must be a static list expression in Terraform.
+  # Keep assume_role_policy ignored in CI to prevent self-mutation 403s when the
+  # currently assumed role does not have iam:UpdateAssumeRolePolicy.
   lifecycle {
     ignore_changes = [
       description,
