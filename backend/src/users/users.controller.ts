@@ -239,7 +239,7 @@ export class UsersController {
             user.accountId || 'Platform',
             {
               accountId: user.accountId || '',
-              accountName: user.accountName || user.accountId || 'Platform',
+              accountName: (user as any).accountName || user.accountId || 'Platform',
               userId: id,
             },
           );

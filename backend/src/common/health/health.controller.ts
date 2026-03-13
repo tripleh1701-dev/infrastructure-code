@@ -4,7 +4,7 @@ import { Public } from '../../auth/decorators/public.decorator';
 import { DynamoDBRouterService } from '../dynamodb/dynamodb-router.service';
 import {
   SESClient,
-  GetAccountCommand,
+  GetSendQuotaCommand,
   GetIdentityVerificationAttributesCommand,
 } from '@aws-sdk/client-ses';
 import {
@@ -135,14 +135,12 @@ export class HealthController {
       };
     }
 
-    // 3. SES account status (sandbox detection + quota)
+    // 3. SES account status (quota-based check)
     const accountStart = Date.now();
     try {
-      const account = await sesClient.send(new GetAccountCommand({}));
-      const sendingEnabled = account.SendingEnabled ?? false;
-      const isSandbox = account.EnforcementStatus === 'SANDBOX' ||
-        (account as any).Details?.ReviewDetails?.Status === 'Pending';
-      const quota = account.SendQuota;
+      const quota = await sesClient.send(new GetSendQuotaCommand({}));
+      const sendingEnabled = (quota.Max24HourSend ?? 0) > 0;
+      const isSandbox = (quota.Max24HourSend ?? 0) <= 200;
 
       checks['account_status'] = {
         status: sendingEnabled ? (isSandbox ? 'warn' : 'pass') : 'fail',
@@ -154,14 +152,10 @@ export class HealthController {
         duration_ms: Date.now() - accountStart,
         details: {
           sending_enabled: sendingEnabled,
-          enforcement_status: account.EnforcementStatus || 'unknown',
-          ...(quota
-            ? {
-                max_24hr_send: quota.Max24HourSend,
-                max_send_rate: quota.MaxSendRate,
-                sent_last_24hr: quota.SentLast24Hours,
-              }
-            : {}),
+          enforcement_status: isSandbox ? 'SANDBOX' : 'PRODUCTION',
+          max_24hr_send: quota.Max24HourSend,
+          max_send_rate: quota.MaxSendRate,
+          sent_last_24hr: quota.SentLast24Hours,
           action: isSandbox
             ? 'Request production access in the AWS SES console to send emails to unverified addresses.'
             : null,
