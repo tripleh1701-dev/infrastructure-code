@@ -55,6 +55,10 @@ env:
   TF_VAR_data_plane_dynamodb_name: ${{ secrets.DATA_PLANE_TABLE_NAME || '' }}
   TF_VAR_data_plane_region: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_VAR_cfn_execution_role_arn: ${{ secrets.CFN_EXECUTION_ROLE_ARN || '' }}
+  TF_VAR_github_org: ${{ vars.GITHUB_ORG || github.repository_owner }}
+  TF_VAR_github_repo: ${{ vars.GITHUB_REPO || github.event.repository.name }}
+  TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET || '' }}
+  TF_VAR_tf_lock_table: ${{ secrets.TF_LOCK_TABLE || '' }}
   TF_VAR_credential_notification_enabled: ${{ inputs.credential_notification_enabled || vars.CREDENTIAL_NOTIFICATION_ENABLED || 'true' }}
   TF_VAR_ses_sender_email: ${{ inputs.ses_sender_email || vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
   TF_VAR_platform_login_url: ${{ inputs.platform_login_url || vars.PLATFORM_LOGIN_URL || '' }}
@@ -159,6 +163,12 @@ jobs:
           terraform apply -auto-approve
           echo "### Infrastructure Synced" >> $GITHUB_STEP_SUMMARY
           echo "Lambda environment variables and API Gateway configuration updated." >> $GITHUB_STEP_SUMMARY
+
+      - name: Refresh AWS Credentials (after IAM policy sync)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: SES Auto Bootstrap (identity + production request)
         run: |
