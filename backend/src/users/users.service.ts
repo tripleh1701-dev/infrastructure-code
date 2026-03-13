@@ -136,7 +136,7 @@ export class UsersService {
     };
   }
 
-  async create(dto: CreateUserDto): Promise<User & { licenseCapacity: LicenseCapacity }> {
+  async create(dto: CreateUserDto): Promise<User & { licenseCapacity: LicenseCapacity; credentialEmailSent?: boolean; fallbackPassword?: string }> {
     // Enforce license limits before creating the user
     const capacity = await this.licenseEnforcement.validateUserCreation(dto.accountId);
 
