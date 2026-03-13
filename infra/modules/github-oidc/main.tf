@@ -82,10 +82,13 @@ resource "aws_iam_role" "github_actions" {
     ]
   })
 
-  # Prevent self-locking CI loops when the role lacks UpdateAssumeRolePolicy during bootstrap.
-  # Trust policy updates should be done once with elevated credentials, not from this role itself.
+  # Prevent self-locking CI loops when the role lacks self-mutation permissions during bootstrap.
+  # Trust/description updates should be done once with elevated credentials, not from this role itself.
   lifecycle {
-    ignore_changes = [assume_role_policy]
+    ignore_changes = [
+      assume_role_policy,
+      description,
+    ]
   }
 
   tags = merge(var.tags, {
@@ -133,10 +136,11 @@ resource "aws_iam_role_policy" "platform_admin" {
         Action = [
           "iam:CreateRole",
           "iam:DeleteRole",
-          "iam:GetRole",
-          "iam:UpdateRole",
-          "iam:UpdateAssumeRolePolicy",
-          "iam:PassRole",
+           "iam:GetRole",
+           "iam:UpdateRole",
+           "iam:UpdateRoleDescription",
+           "iam:UpdateAssumeRolePolicy",
+           "iam:PassRole",
           "iam:TagRole",
           "iam:UntagRole",
           "iam:ListRoleTags",
