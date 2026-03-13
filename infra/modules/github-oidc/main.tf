@@ -169,6 +169,7 @@ resource "aws_iam_role_policy" "terraform_provisioning" {
           "iam:DeletePolicyVersion",
           "iam:CreateOpenIDConnectProvider",
           "iam:GetOpenIDConnectProvider",
+          "iam:ListOpenIDConnectProviders",
           "iam:DeleteOpenIDConnectProvider",
           "iam:TagOpenIDConnectProvider",
           "iam:UpdateOpenIDConnectProviderThumbprint",
