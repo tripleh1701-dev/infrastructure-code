@@ -82,6 +82,12 @@ resource "aws_iam_role" "github_actions" {
     ]
   })
 
+  # Prevent self-locking CI loops when the role lacks UpdateAssumeRolePolicy during bootstrap.
+  # Trust policy updates should be done once with elevated credentials, not from this role itself.
+  lifecycle {
+    ignore_changes = [assume_role_policy]
+  }
+
   tags = merge(var.tags, {
     Name = local.name_prefix
   })
