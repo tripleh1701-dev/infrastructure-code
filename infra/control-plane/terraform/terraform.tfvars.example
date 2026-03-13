@@ -16,9 +16,10 @@ lambda_timeout      = 30
 lambda_package_path = "lambda-placeholder.zip"
 
 # Data Plane (set after data-plane bootstrap)
-data_plane_role_arn      = ""
-data_plane_dynamodb_name = ""
-data_plane_region        = "us-east-1"
+data_plane_role_arn       = ""
+data_plane_dynamodb_name  = ""
+data_plane_region         = "us-east-1"
+cross_account_external_id = "license-portal-xaccount-2026"
 
 # Monitoring
 alarm_email = ""
@@ -29,3 +30,6 @@ ses_sender_email                = "noreply@yourdomain.com"      # Must be SES-ve
 platform_name                   = "Trumpet DevOps"
 platform_support_email          = "support@yourdomain.com"
 platform_login_url              = ""                            # Auto-derived from CloudFront if blank
+
+# ---- Admin ----
+admin_email                     = "admin@yourdomain.com"        # Cognito admin user for smoke test verification

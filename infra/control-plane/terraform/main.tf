@@ -178,9 +178,10 @@ module "lambda" {
   package_path                    = var.lambda_package_path
   control_plane_dynamodb_arn      = module.control_plane_dynamodb.table_arn
   control_plane_dynamodb_name     = module.control_plane_dynamodb.table_name
-  data_plane_role_arn             = var.data_plane_role_arn
-  data_plane_dynamodb_name        = var.data_plane_dynamodb_name
-  data_plane_region               = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
+  data_plane_role_arn              = var.data_plane_role_arn
+  data_plane_dynamodb_name         = var.data_plane_dynamodb_name
+  data_plane_region                = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
+  cross_account_external_id        = var.cross_account_external_id
   data_plane_dynamodb_arn_patterns = [
     "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*",
     "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/account-admin-public-${var.environment}"
@@ -211,6 +212,7 @@ module "lambda" {
     CFN_TEMPLATE_BUCKET              = module.frontend.bucket_name
     PIPELINE_EXECUTOR_FUNCTION       = module.pipeline_executor.function_name
     CFN_EXECUTION_ROLE_ARN           = var.cfn_execution_role_arn
+    ADMIN_EMAIL                      = var.admin_email
   }
 
   account_registry_dynamodb_arn = module.account_registry_dynamodb.table_arn
@@ -262,6 +264,8 @@ module "create_infra_worker" {
     DATA_PLANE_TABLE_NAME       = var.data_plane_dynamodb_name
     PUBLIC_ACCOUNT_TABLE_NAME   = var.data_plane_dynamodb_name
     DATA_PLANE_REGION           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
+    CROSS_ACCOUNT_EXTERNAL_ID   = var.cross_account_external_id
+    DATA_PLANE_EXTERNAL_ID      = var.cross_account_external_id
     SSM_PREFIX                  = local.ssm_prefix
     CFN_TEMPLATE_BUCKET         = module.frontend.bucket_name
     CFN_EXECUTION_ROLE_ARN      = var.cfn_execution_role_arn
@@ -299,6 +303,8 @@ module "delete_infra_worker" {
     DATA_PLANE_ROLE_ARN         = var.data_plane_role_arn
     DATA_PLANE_TABLE_NAME       = var.data_plane_dynamodb_name
     DATA_PLANE_REGION           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
+    CROSS_ACCOUNT_EXTERNAL_ID   = var.cross_account_external_id
+    DATA_PLANE_EXTERNAL_ID      = var.cross_account_external_id
     SSM_PREFIX                  = local.ssm_prefix
   }
 
@@ -334,6 +340,8 @@ module "poll_infra_worker" {
     ACCOUNT_REGISTRY_TABLE_NAME = module.account_registry_dynamodb.table_name
     DATA_PLANE_ROLE_ARN         = var.data_plane_role_arn
     DATA_PLANE_REGION           = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
+    CROSS_ACCOUNT_EXTERNAL_ID   = var.cross_account_external_id
+    DATA_PLANE_EXTERNAL_ID      = var.cross_account_external_id
     SSM_PREFIX                  = local.ssm_prefix
   }
 

@@ -73,6 +73,7 @@ import { WorkstreamSummary } from "@/components/workstream/WorkstreamSummary";
 import { useAccountGlobalAccess } from "@/hooks/useAccountGlobalAccess";
 import { ProvisioningStatusBanner } from "@/components/account/ProvisioningStatusBanner";
 import { NotificationPreferences } from "@/components/notifications/NotificationPreferences";
+import { SesDiagnosticsCard } from "@/components/settings/SesDiagnosticsCard";
 import { PermissionGate } from "@/components/auth/PermissionGate";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
@@ -152,7 +153,10 @@ export default function AccountSettingsPage() {
   // Check if selected account has Global enterprise license (grants access to all data)
   const { hasGlobalAccess } = useAccountGlobalAccess(selectedAccount?.id);
 
-  const [activeTab, setActiveTab] = useState("enterprise");
+  // Read ?tab= query param to allow deep-linking (e.g. from SES health banner)
+  const [searchParams] = useState(() => new URLSearchParams(window.location.search));
+  const initialTab = searchParams.get("tab") || "enterprise";
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [enterpriseView, setEnterpriseView] = useState<EnterpriseView>("list");
   const [editingEnterprise, setEditingEnterprise] = useState<EnterpriseWithDetails | null>(null);
   const [showAddEnterprise, setShowAddEnterprise] = useState(false);
@@ -848,6 +852,9 @@ export default function AccountSettingsPage() {
 
           {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
+            {/* SES Email Diagnostics */}
+            <SesDiagnosticsCard />
+
             {/* Provisioning Notification Preferences */}
             <NotificationPreferences />
 

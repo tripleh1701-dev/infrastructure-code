@@ -206,9 +206,13 @@ export class AccountsService {
     if (dto.cloudType === 'private') {
       const dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
       const cfnExecutionRoleArn = this.configService.get<string>('CFN_EXECUTION_ROLE_ARN');
+      const crossAccountExternalId =
+        this.configService.get<string>('CROSS_ACCOUNT_EXTERNAL_ID')
+        || this.configService.get<string>('DATA_PLANE_EXTERNAL_ID');
       const missing: string[] = [];
       if (!dataPlaneRoleArn) missing.push('DATA_PLANE_ROLE_ARN');
       if (!cfnExecutionRoleArn) missing.push('CFN_EXECUTION_ROLE_ARN');
+      if (!crossAccountExternalId) missing.push('CROSS_ACCOUNT_EXTERNAL_ID');
       if (missing.length > 0) {
         this.logger.error(
           `Preflight failed for ${dto.cloudType} account: missing ${missing.join(', ')}. ` +

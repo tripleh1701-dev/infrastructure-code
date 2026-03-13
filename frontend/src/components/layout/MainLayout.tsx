@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu } from "lucide-react";
 import { Sidebar } from "./Sidebar";
+import { SesHealthBanner } from "./SesHealthBanner";
 import trumpetLogo from "@/assets/trumpet-logo.png";
 import { useMultiTenantCacheClear } from "@/hooks/useMultiTenantCacheClear";
+import { SesHealthContext, useSesHealthProvider } from "@/hooks/useSesHealth";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -31,12 +33,16 @@ export function MainLayout({ children }: MainLayoutProps) {
   // Clear cache when account/enterprise selection changes
   const { isTransitioning } = useMultiTenantCacheClear();
 
+  // SES health check (auto-runs on mount for AWS mode)
+  const sesHealth = useSesHealthProvider();
+
   // Close mobile drawer on route change / resize to desktop
   useEffect(() => {
     if (!isMobile) setMobileOpen(false);
   }, [isMobile]);
 
   return (
+    <SesHealthContext.Provider value={sesHealth}>
     <div className="min-h-screen min-h-dvh bg-background">
       {/* Mobile overlay backdrop */}
       <AnimatePresence>
@@ -107,6 +113,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               : "calc(100% - var(--sidebar-width-expanded))"
         }}
       >
+        <SesHealthBanner />
         {children}
         
         {/* Context Transition Overlay */}
@@ -215,5 +222,6 @@ export function MainLayout({ children }: MainLayoutProps) {
         </AnimatePresence>
       </motion.main>
     </div>
+    </SesHealthContext.Provider>
   );
 }

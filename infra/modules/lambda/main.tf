@@ -337,6 +337,8 @@ resource "aws_lambda_function" "main" {
       DATA_PLANE_TABLE_NAME        = var.data_plane_dynamodb_name
       PUBLIC_ACCOUNT_TABLE_NAME    = var.data_plane_dynamodb_name
       DATA_PLANE_REGION            = var.data_plane_region
+      CROSS_ACCOUNT_EXTERNAL_ID    = var.cross_account_external_id
+      DATA_PLANE_EXTERNAL_ID       = var.cross_account_external_id
       SSM_PREFIX                   = "/${var.project_name}/${var.environment}"
     })
   }

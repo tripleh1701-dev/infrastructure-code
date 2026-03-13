@@ -265,11 +265,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     if (BYPASS_AUTH) return { error: null };
+    const normalizedEmail = email.trim().toLowerCase();
+
     if (!isExternalApi()) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       return { error: error ? new Error(error.message) : null };
     }
-    const { error } = await cognitoAuth.signIn(email, password);
+    const { error } = await cognitoAuth.signIn(normalizedEmail, password);
     return { error };
   };
 

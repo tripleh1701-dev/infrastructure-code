@@ -137,7 +137,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
       // Create the auth user via edge function (Supabase) or NestJS endpoint (external)
       if (formData.password) {
         if (isExternalApi()) {
-          const { data: authResult, error: authError } = await httpClient.post<{ success: boolean; error?: string; userId?: string }>(
+          const { data: authResult, error: authError } = await httpClient.post<{ success: boolean; error?: string; userId?: string; created?: boolean; emailSent?: boolean; emailError?: string; fallbackPassword?: string }>(
             "/users/provision",
             {
               email: formData.email,
@@ -157,6 +157,20 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
           if (!authResult?.success) {
             toast.error(authResult?.error || "Failed to create authentication user");
             return;
+          }
+
+          // Surface credential email delivery status
+          if (authResult?.emailSent === false) {
+            toast.warning(
+              "User created but credential email could not be sent. " +
+              (authResult?.emailError || "Check SES configuration.") +
+              " You can resend credentials from the user menu.",
+              { duration: 10000 }
+            );
+
+            if (authResult?.fallbackPassword) {
+              toast.info(`Temporary password: ${authResult.fallbackPassword}`, { duration: 15000 });
+            }
           }
 
           console.log("Auth user provisioned via NestJS:", authResult);

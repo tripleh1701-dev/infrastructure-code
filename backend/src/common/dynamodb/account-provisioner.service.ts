@@ -94,6 +94,7 @@ export class AccountProvisionerService {
   private readonly awsRegion: string;
   private readonly dataPlaneRoleArn: string | undefined;
   private readonly cfnExecutionRoleArn: string | undefined;
+  private readonly crossAccountExternalId: string | undefined;
 
   // Cache for assumed credentials (keyed by accountId)
   private assumedCredentialsCache = new Map<string, AssumedCredentials>();
@@ -109,6 +110,9 @@ export class AccountProvisionerService {
     this.templateBucket = this.configService.get('CFN_TEMPLATE_BUCKET', `${this.projectName}-cfn-templates`);
     this.dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
     this.cfnExecutionRoleArn = this.configService.get<string>('CFN_EXECUTION_ROLE_ARN');
+    this.crossAccountExternalId =
+      this.configService.get<string>('CROSS_ACCOUNT_EXTERNAL_ID')
+      || this.configService.get<string>('DATA_PLANE_EXTERNAL_ID');
 
     const credentials = resolveAwsCredentials(
       this.configService.get<string>('AWS_ACCESS_KEY_ID'),
@@ -167,6 +171,7 @@ export class AccountProvisionerService {
       RoleArn: this.dataPlaneRoleArn,
       RoleSessionName: `provisioner-${accountId.substring(0, 20)}-${Date.now()}`,
       DurationSeconds: 3600,
+      ...(this.crossAccountExternalId ? { ExternalId: this.crossAccountExternalId } : {}),
     }));
 
     if (!result.Credentials) {
@@ -363,11 +368,14 @@ export class AccountProvisionerService {
     const stackName = `${this.projectName}-${this.environment}-account-${config.accountId}`;
     const expectedTableName = `${this.projectName}-${this.environment}-${config.accountId}`;
 
-    // Get cross-account clients for the CUSTOMER account
-    const customerCfnClient = await this.getCrossAccountCfnClient(config.accountId);
-    const customerSsmClient = await this.getCrossAccountSsmClient(config.accountId);
+    let customerCfnClient: CloudFormationClient;
+    let customerSsmClient: SSMClient;
 
     try {
+      // Get cross-account clients for the CUSTOMER account
+      customerCfnClient = await this.getCrossAccountCfnClient(config.accountId);
+      customerSsmClient = await this.getCrossAccountSsmClient(config.accountId);
+
       // Set provisioning status to creating (in Platform Admin SSM)
       await this.updateProvisioningStatus(config.accountId, 'creating');
 

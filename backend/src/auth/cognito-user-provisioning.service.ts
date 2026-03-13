@@ -135,14 +135,29 @@ export class CognitoUserProvisioningService {
       );
 
       const sub = existing.UserAttributes?.find((a: any) => a.Name === 'sub')?.Value || null;
-      this.logger.log(`Cognito user already exists: ${params.email} (sub: ${sub}), attributes updated`);
 
       // Ensure group membership if specified
       if (params.groupName) {
         await this.ensureGroupMembership(params.email, params.groupName);
       }
 
-      return { cognitoSub: sub, created: false, updated: true, skipped: false };
+      // If admin provided a password during reprovision, enforce it so login remains deterministic
+      if (params.temporaryPassword) {
+        await this.setPermanentPassword(params.email, params.temporaryPassword);
+        this.logger.log(
+          `Cognito user already exists: ${params.email} (sub: ${sub}), attributes updated and password reset`,
+        );
+      } else {
+        this.logger.log(`Cognito user already exists: ${params.email} (sub: ${sub}), attributes updated`);
+      }
+
+      return {
+        cognitoSub: sub,
+        created: false,
+        updated: true,
+        skipped: false,
+        temporaryPassword: params.temporaryPassword,
+      };
     } catch (error: any) {
       if (error.name !== 'UserNotFoundException') {
         this.logger.error(`Failed to check existing user ${params.email}: ${error.message}`);
@@ -167,14 +182,7 @@ export class CognitoUserProvisioningService {
       const sub = createResult.User?.Attributes?.find((a: any) => a.Name === 'sub')?.Value || null;
 
       // Set permanent password so user doesn't face forced-change on first login
-      await this.client!.send(
-        new AdminSetUserPasswordCommand({
-          UserPoolId: this.userPoolId,
-          Username: params.email,
-          Password: password,
-          Permanent: true,
-        }),
-      );
+      await this.setPermanentPassword(params.email, password);
 
       // Assign to group if specified
       if (params.groupName) {
@@ -379,6 +387,54 @@ export class CognitoUserProvisioningService {
       if (error.name !== 'UserNotFoundException') {
         this.logger.warn(`Failed to sync status for ${email}: ${error.message}`);
       }
+    }
+  }
+
+  // ─── RESET PASSWORD ───────────────────────────────────────────────────
+
+  /**
+   * Set a permanent Cognito password for a user.
+   */
+  private async setPermanentPassword(email: string, password: string): Promise<void> {
+    await this.client!.send(
+      new AdminSetUserPasswordCommand({
+        UserPoolId: this.userPoolId,
+        Username: email,
+        Password: password,
+        Permanent: true,
+      }),
+    );
+  }
+
+  /**
+   * Reset a user's password in Cognito by generating a new temporary password
+   * and setting it as permanent. Returns the new password for email delivery.
+   */
+  async resetUserPassword(email: string): Promise<{ success: boolean; temporaryPassword?: string; reason?: string }> {
+    if (!this.isConfigured()) {
+      return { success: false, reason: 'Cognito not configured' };
+    }
+
+    try {
+      // Verify user exists
+      await this.client!.send(
+        new AdminGetUserCommand({
+          UserPoolId: this.userPoolId,
+          Username: email,
+        }),
+      );
+
+      const password = this.generateTemporaryPassword();
+      await this.setPermanentPassword(email, password);
+
+      this.logger.log(`Password reset for Cognito user: ${email}`);
+      return { success: true, temporaryPassword: password };
+    } catch (error: any) {
+      if (error.name === 'UserNotFoundException') {
+        return { success: false, reason: 'User not found in Cognito' };
+      }
+      this.logger.error(`Failed to reset password for ${email}: ${error.message}`);
+      return { success: false, reason: error.message };
     }
   }
 

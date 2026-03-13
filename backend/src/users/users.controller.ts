@@ -149,8 +149,9 @@ export class UsersController {
         temporaryPassword: body.password,
       });
 
-      // Send credential email if user was newly created
-      if (result.created && result.temporaryPassword) {
+      // Send credential email whenever a password is available (new user or reprovisioned user)
+      let emailResult: { sent?: boolean; skipped?: boolean; reason?: string; messageId?: string } | null = null;
+      if (result.temporaryPassword) {
         try {
           const notifResult = await this.notificationService.sendCredentialProvisionedEmail(
             { email, firstName: body.firstName, lastName: body.lastName },
@@ -162,6 +163,7 @@ export class UsersController {
               userId: result.cognitoSub || '',
             },
           );
+          emailResult = { sent: notifResult.sent, skipped: notifResult.skipped, reason: notifResult.reason, messageId: notifResult.messageId };
           if (notifResult.sent) {
             this.logger.log(`Credential email sent to ${email} (msgId: ${notifResult.messageId})`);
           } else {
@@ -169,8 +171,11 @@ export class UsersController {
           }
         } catch (emailError: any) {
           this.logger.error(`Failed to send credential email to ${email}: ${emailError.message}`);
+          emailResult = { sent: false, reason: emailError.message };
         }
       }
+
+      const emailSent = emailResult?.sent ?? false;
 
       return {
         success: true,
@@ -178,12 +183,91 @@ export class UsersController {
         created: result.created,
         updated: result.updated,
         skipped: result.skipped,
+        emailSent,
+        emailSkipped: emailResult?.skipped ?? false,
+        emailError: emailResult?.reason,
+        fallbackPassword: emailSent ? undefined : result.temporaryPassword,
       };
     } catch (error: any) {
       this.logger.error(`Failed to provision auth user ${body.email}: ${error.message}`, error.stack);
       return {
         success: false,
         error: error.message || 'Failed to provision authentication user',
+      };
+    }
+  }
+
+  /**
+   * POST /api/users/:id/resend-credentials
+   * Regenerates a password and resends the credential email for an existing user.
+   */
+  @Post(':id/resend-credentials')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'super_admin')
+  @HttpCode(HttpStatus.OK)
+  async resendCredentials(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    this.logger.log(`Resend credentials requested for user ${id}`);
+
+    try {
+      const user = await this.usersService.findOne(id);
+      if (!user) {
+        return { success: false, error: 'User not found' };
+      }
+
+      const email = user.email;
+      if (!email) {
+        return { success: false, error: 'User has no email address' };
+      }
+
+      // Reset password in Cognito (generates a new temporary password)
+      const result = await this.cognitoProvisioning.resetUserPassword(email);
+      if (!result.success) {
+        return { success: false, error: result.reason || 'Failed to reset password in Cognito' };
+      }
+
+      // Send credential email with the new password
+      let emailSent = false;
+      let emailError: string | undefined;
+      if (result.temporaryPassword) {
+        try {
+          const notifResult = await this.notificationService.sendCredentialProvisionedEmail(
+            { email, firstName: user.firstName || '', lastName: user.lastName || '' },
+            result.temporaryPassword,
+            user.accountId || 'Platform',
+            {
+              accountId: user.accountId || '',
+              accountName: user.accountName || user.accountId || 'Platform',
+              userId: id,
+            },
+          );
+          emailSent = notifResult.sent ?? false;
+          if (!emailSent) {
+            emailError = notifResult.reason;
+            this.logger.warn(`Credential email not sent for ${email}: ${notifResult.reason}`);
+          } else {
+            this.logger.log(`Credential email resent to ${email} (msgId: ${notifResult.messageId})`);
+          }
+        } catch (err: any) {
+          emailError = err.message;
+          this.logger.error(`Failed to resend credential email to ${email}: ${err.message}`);
+        }
+      }
+
+      return {
+        success: true,
+        passwordReset: true,
+        emailSent,
+        emailError,
+        fallbackPassword: emailSent ? undefined : result.temporaryPassword,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to resend credentials for user ${id}: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message || 'Failed to resend credentials',
       };
     }
   }

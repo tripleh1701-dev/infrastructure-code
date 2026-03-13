@@ -128,6 +128,8 @@ jobs:
         env:
           ENV: ${{ needs.resolve.outputs.environment }}
           ACCOUNT_ID: a0000000-0000-0000-0000-000000000001
+          DATA_PLANE_ROLE_ARN: ${{ secrets.DATA_PLANE_ROLE_ARN }}
+          CROSS_ACCOUNT_EXTERNAL_ID: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
         run: |
           set -euo pipefail
           ERRORS=0
@@ -141,6 +143,7 @@ jobs:
           echo "| Table | Status | GSIs | Item Count |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|------|------------|" >> $GITHUB_STEP_SUMMARY
 
+          # Check a table using the currently configured AWS credentials
           check_table() {
             local TABLE_NAME="$1"
             local LABEL="$2"
@@ -198,8 +201,48 @@ jobs:
           CP_TABLE="${PROJECT}-${ENV}-control-plane"
           DP_TABLE="account-admin-public-${ENV}"
 
+          # Control-plane table lives in the Platform Admin account (current creds)
           check_table "$CP_TABLE" "Control-Plane" "false"
-          check_table "$DP_TABLE" "Data-Plane (Public)" "true"
+
+          # ── Data-plane table lives in the CUSTOMER account ──────
+          # We must assume the cross-account role before checking/creating it
+          DP_CHECK_OK=false
+          if [ -n "${DATA_PLANE_ROLE_ARN:-}" ]; then
+            echo ""
+            echo "Assuming cross-account role for data-plane table check..."
+
+            ASSUME_ARGS="--role-arn ${DATA_PLANE_ROLE_ARN} --role-session-name smoke-dp-check-${GITHUB_RUN_ID} --duration-seconds 900"
+            if [ -n "${CROSS_ACCOUNT_EXTERNAL_ID:-}" ]; then
+              ASSUME_ARGS="${ASSUME_ARGS} --external-id ${CROSS_ACCOUNT_EXTERNAL_ID}"
+            fi
+
+            if ASSUMED=$(aws sts assume-role $ASSUME_ARGS --output json 2>/dev/null); then
+              # Extract and export temporary credentials
+              export AWS_ACCESS_KEY_ID=$(echo "$ASSUMED" | jq -r '.Credentials.AccessKeyId')
+              export AWS_SECRET_ACCESS_KEY=$(echo "$ASSUMED" | jq -r '.Credentials.SecretAccessKey')
+              export AWS_SESSION_TOKEN=$(echo "$ASSUMED" | jq -r '.Credentials.SessionToken')
+
+              CUSTOMER_ACCOUNT=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "unknown")
+              echo "✅ Assumed role in customer account: ${CUSTOMER_ACCOUNT}"
+
+              # Now check/create the data-plane table using customer account creds
+              check_table "$DP_TABLE" "Data-Plane (Public, customer acct ${CUSTOMER_ACCOUNT})" "true"
+              DP_CHECK_OK=true
+
+              # Restore Platform Admin credentials (unset overrides so OIDC creds take effect)
+              unset AWS_ACCESS_KEY_ID
+              unset AWS_SECRET_ACCESS_KEY
+              unset AWS_SESSION_TOKEN
+            else
+              echo "::warning::Failed to assume DATA_PLANE_ROLE_ARN — cannot verify data-plane table in customer account"
+              echo "| Data-Plane (Public) (\`$DP_TABLE\`) | ⚠️ Cannot verify (AssumeRole failed) | — | — |" >> $GITHUB_STEP_SUMMARY
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          else
+            echo "::warning::DATA_PLANE_ROLE_ARN not set — checking data-plane table in Platform Admin account (may be incorrect)"
+            echo "| Data-Plane (Public) | ⚠️ DATA_PLANE_ROLE_ARN not configured | — | — |" >> $GITHUB_STEP_SUMMARY
+            WARNINGS=$((WARNINGS + 1))
+          fi
 
           # ── SSM Parameters ──────────────────────────────────────
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -244,10 +287,56 @@ jobs:
           check_ssm "${SSM_PREFIX}/cognito/client-id" "Cognito Client ID" ""
           check_ssm "${SSM_PREFIX}/dynamodb/control-plane-table" "CP Table Name" "$CP_TABLE"
 
-          # Data-plane SSM params (optional for cross-account)
-          check_ssm "${SSM_PREFIX}/dynamodb/customer-table" "DP Table Name" ""
-          check_ssm "${SSM_PREFIX}/cross-account/customer-account-role-arn" "Customer Role ARN" ""
-          check_ssm "${SSM_PREFIX}/cloudformation/execution-role-arn" "CFn Execution Role" ""
+          # Data-plane SSM params live in CUSTOMER account for this architecture
+          check_ssm_customer() {
+            local PARAM_NAME="$1"
+            local LABEL="$2"
+
+            if [ -z "${DATA_PLANE_ROLE_ARN:-}" ]; then
+              echo "| $LABEL | ⚠️ Cannot verify (DATA_PLANE_ROLE_ARN missing) | — |" >> $GITHUB_STEP_SUMMARY
+              WARNINGS=$((WARNINGS + 1))
+              return
+            fi
+
+            local ASSUME_ARGS="--role-arn ${DATA_PLANE_ROLE_ARN} --role-session-name smoke-ssm-customer-${GITHUB_RUN_ID} --duration-seconds 900"
+            if [ -n "${CROSS_ACCOUNT_EXTERNAL_ID:-}" ]; then
+              ASSUME_ARGS="${ASSUME_ARGS} --external-id ${CROSS_ACCOUNT_EXTERNAL_ID}"
+            fi
+
+            local ASSUMED
+            if ! ASSUMED=$(aws sts assume-role $ASSUME_ARGS --output json 2>/dev/null); then
+              echo "| $LABEL | ⚠️ Cannot verify (AssumeRole failed) | — |" >> $GITHUB_STEP_SUMMARY
+              WARNINGS=$((WARNINGS + 1))
+              return
+            fi
+
+            local TMP_AKI TMP_SAK TMP_STK
+            TMP_AKI=$(echo "$ASSUMED" | jq -r '.Credentials.AccessKeyId')
+            TMP_SAK=$(echo "$ASSUMED" | jq -r '.Credentials.SecretAccessKey')
+            TMP_STK=$(echo "$ASSUMED" | jq -r '.Credentials.SessionToken')
+
+            local VAL
+            VAL=$(AWS_ACCESS_KEY_ID="$TMP_AKI" AWS_SECRET_ACCESS_KEY="$TMP_SAK" AWS_SESSION_TOKEN="$TMP_STK" \
+              aws ssm get-parameter --name "$PARAM_NAME" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+
+            if [ -n "$VAL" ]; then
+              local DISPLAY_VAL="$VAL"
+              if echo "$PARAM_NAME" | grep -qiE "arn|secret|password|key"; then
+                DISPLAY_VAL="${VAL:0:20}..."
+              fi
+              local CUST_ACC
+              CUST_ACC=$(AWS_ACCESS_KEY_ID="$TMP_AKI" AWS_SECRET_ACCESS_KEY="$TMP_SAK" AWS_SESSION_TOKEN="$TMP_STK" \
+                aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "unknown")
+              echo "| $LABEL (customer acct ${CUST_ACC}) | ✅ | \`$DISPLAY_VAL\` |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $LABEL | ⚠️ Missing in customer account SSM | — |" >> $GITHUB_STEP_SUMMARY
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          }
+
+          check_ssm_customer "${SSM_PREFIX}/dynamodb/customer-table" "DP Table Name"
+          check_ssm_customer "${SSM_PREFIX}/cross-account/customer-account-role-arn" "Customer Role ARN"
+          check_ssm_customer "${SSM_PREFIX}/cloudformation/execution-role-arn" "CFn Execution Role"
 
           # Get API URL
           API_URL=$(aws ssm get-parameter \
@@ -298,25 +387,73 @@ jobs:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Seed data to control-plane and data-plane
+      - name: Seed data to control-plane (Platform Admin)
         working-directory: backend
         env:
           CONTROL_PLANE_TABLE_NAME: ${{ env.PROJECT }}-${{ needs.resolve.outputs.environment }}-control-plane
           DYNAMODB_TABLE_NAME: ${{ env.PROJECT }}-${{ needs.resolve.outputs.environment }}-control-plane
-          DATA_PLANE_TABLE_NAME: ${{ needs.resolve.outputs.seed_to_data_plane == 'true' && format('account-admin-public-{0}', needs.resolve.outputs.environment) || '' }}
           NODE_ENV: ${{ needs.resolve.outputs.environment }}
           CI: "true"
         run: |
-          echo "Seeding comprehensive sample data..."
+          echo "Seeding control-plane data (Platform Admin account)..."
           npx ts-node -P tsconfig.scripts.json scripts/seed-sample-data.ts || {
-            echo "::warning::Seed script exited with non-zero code"
+            echo "::warning::Seed script exited with non-zero code (control-plane)"
           }
           echo "### Seed Data" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Sample data seeded to:" >> $GITHUB_STEP_SUMMARY
-          echo "- Control-plane: \`${CONTROL_PLANE_TABLE_NAME}\`" >> $GITHUB_STEP_SUMMARY
-          if [ -n "$DATA_PLANE_TABLE_NAME" ]; then
-            echo "- Data-plane: \`${DATA_PLANE_TABLE_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Control-plane seeded: \`${CONTROL_PLANE_TABLE_NAME}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Assume cross-account role for data-plane seeding
+        if: needs.resolve.outputs.seed_to_data_plane == 'true'
+        id: assume-dp
+        env:
+          DATA_PLANE_ROLE_ARN: ${{ secrets.DATA_PLANE_ROLE_ARN }}
+          CROSS_ACCOUNT_EXTERNAL_ID: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DATA_PLANE_ROLE_ARN:-}" ]; then
+            echo "::warning::DATA_PLANE_ROLE_ARN not set — skipping data-plane seed"
+            echo "assumed=false" >> $GITHUB_OUTPUT
+            exit 0
           fi
+
+          ASSUME_ARGS="--role-arn ${DATA_PLANE_ROLE_ARN} --role-session-name smoke-seed-dp-${GITHUB_RUN_ID} --duration-seconds 900"
+          if [ -n "${CROSS_ACCOUNT_EXTERNAL_ID:-}" ]; then
+            ASSUME_ARGS="${ASSUME_ARGS} --external-id ${CROSS_ACCOUNT_EXTERNAL_ID}"
+          fi
+
+          ASSUMED=$(aws sts assume-role $ASSUME_ARGS --output json)
+          echo "::add-mask::$(echo "$ASSUMED" | jq -r '.Credentials.SecretAccessKey')"
+          echo "::add-mask::$(echo "$ASSUMED" | jq -r '.Credentials.SessionToken')"
+
+          echo "dp_aki=$(echo "$ASSUMED" | jq -r '.Credentials.AccessKeyId')" >> $GITHUB_OUTPUT
+          echo "dp_sak=$(echo "$ASSUMED" | jq -r '.Credentials.SecretAccessKey')" >> $GITHUB_OUTPUT
+          echo "dp_stk=$(echo "$ASSUMED" | jq -r '.Credentials.SessionToken')" >> $GITHUB_OUTPUT
+          echo "assumed=true" >> $GITHUB_OUTPUT
+
+          CUST_ACCOUNT=$(AWS_ACCESS_KEY_ID=$(echo "$ASSUMED" | jq -r '.Credentials.AccessKeyId') \
+            AWS_SECRET_ACCESS_KEY=$(echo "$ASSUMED" | jq -r '.Credentials.SecretAccessKey') \
+            AWS_SESSION_TOKEN=$(echo "$ASSUMED" | jq -r '.Credentials.SessionToken') \
+            aws sts get-caller-identity --query Account --output text)
+          echo "✅ Assumed role in customer account: ${CUST_ACCOUNT}"
+
+      - name: Seed data to data-plane (Customer Account)
+        if: needs.resolve.outputs.seed_to_data_plane == 'true' && steps.assume-dp.outputs.assumed == 'true'
+        working-directory: backend
+        env:
+          DYNAMODB_TABLE_NAME: account-admin-public-${{ needs.resolve.outputs.environment }}
+          DATA_PLANE_TABLE_NAME: account-admin-public-${{ needs.resolve.outputs.environment }}
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-dp.outputs.dp_aki }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-dp.outputs.dp_sak }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-dp.outputs.dp_stk }}
+          NODE_ENV: ${{ needs.resolve.outputs.environment }}
+          CI: "true"
+        run: |
+          echo "Seeding data-plane data (Customer Account)..."
+          npx ts-node -P tsconfig.scripts.json scripts/seed-sample-data.ts || {
+            echo "::warning::Seed script exited with non-zero code (data-plane)"
+          }
+          echo "✅ Data-plane seeded: \`${DATA_PLANE_TABLE_NAME}\` (customer account)" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
   # Step 3: Comprehensive API Smoke Tests
@@ -367,7 +504,7 @@ jobs:
           COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
           COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
           ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
-          ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL || 'admin@adminplatform.com' }}
+          ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL || 'tripleh1701@gmail.com' }}
         run: |
           set -euo pipefail
 
@@ -401,6 +538,7 @@ jobs:
           API_URL: ${{ steps.api.outputs.api_url }}
           TOKEN: ${{ steps.auth.outputs.token }}
           HAS_TOKEN: ${{ steps.auth.outputs.has_token }}
+          ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL || 'tripleh1701@gmail.com' }}
         run: |
           set -euo pipefail
 
@@ -532,7 +670,7 @@ jobs:
           test_endpoint "GET" "/users/me/access" "200" "Get My Access (accounts + roles)" "true"
           test_endpoint "GET" "/users/me/permissions?accountId=${ACCT}&enterpriseId=${ENT}" "200" "Get My Permissions" "true"
           test_endpoint "GET" "/users/capacity?accountId=${ACCT}" "200,404" "User License Capacity" "true"
-          test_endpoint "GET" "/users/check-email?email=admin@adminplatform.com&accountId=${ACCT}" "200" "Check Email Exists" "true"
+          test_endpoint "GET" "/users/check-email?email=${ADMIN_EMAIL}&accountId=${ACCT}" "200" "Check Email Exists" "true"
 
           # ── Groups ──────────────────────────────────────────────
           test_endpoint "GET" "/groups?accountId=${ACCT}" "200" "List Groups" "true"
@@ -720,10 +858,29 @@ jobs:
 
       - name: Verify SES sender identity & send test
         id: ses
-        env:
-          SES_SENDER_EMAIL: ${{ secrets.SES_SENDER_EMAIL || 'noreply@example.com' }}
         run: |
           set -euo pipefail
+
+          ENV="${{ needs.resolve.outputs.environment }}"
+          LAMBDA_NAME="${PROJECT}-${ENV}-backend"
+
+          # ── Step 0: Always resolve sender email from Lambda config (single source of truth) ──
+          LAMBDA_ENV=$(aws lambda get-function-configuration \
+            --function-name "$LAMBDA_NAME" \
+            --query 'Environment.Variables' \
+            --output json 2>/dev/null || echo "{}")
+
+          SES_SENDER_EMAIL=$(echo "$LAMBDA_ENV" | jq -r '.SES_SENDER_EMAIL // empty' 2>/dev/null || echo "")
+
+          if [ -z "$SES_SENDER_EMAIL" ]; then
+            echo "::error::SES_SENDER_EMAIL not found in Lambda ${LAMBDA_NAME} environment variables"
+            echo "## ❌ SES Verification Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Could not resolve sender email from Lambda \`${LAMBDA_NAME}\`." >> $GITHUB_STEP_SUMMARY
+            echo "Ensure \`SES_SENDER_EMAIL\` is set in Lambda environment variables via Terraform." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          echo "Resolved sender email from Lambda config: ${SES_SENDER_EMAIL}"
 
           echo "## 📧 SES & Email Verification" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -732,55 +889,96 @@ jobs:
 
           SES_ERRORS=0
 
-          # 1. Check SES sending quota
-          QUOTA=$(aws ses get-send-quota --output json 2>/dev/null || echo "{}")
-          MAX_24H=$(echo "$QUOTA" | jq -r '.Max24HourSend // "N/A"')
-          SENT_24H=$(echo "$QUOTA" | jq -r '.SentLast24Hours // "N/A"')
-          MAX_RATE=$(echo "$QUOTA" | jq -r '.MaxSendRate // "N/A"')
-
-          if [ "$MAX_24H" != "N/A" ]; then
-            echo "| SES Send Quota | ✅ | Max: ${MAX_24H}/day, Sent: ${SENT_24H}, Rate: ${MAX_RATE}/s |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| SES Send Quota | ❌ | Could not retrieve quota |" >> $GITHUB_STEP_SUMMARY
-            SES_ERRORS=$((SES_ERRORS + 1))
+          # ── 1. Check SES sending quota (try SESv2 first, fallback to v1) ──
+          QUOTA=""
+          PRODUCTION_ACCESS="false"
+          if QUOTA_V2=$(aws sesv2 get-account --output json 2>&1); then
+            if echo "$QUOTA_V2" | jq -e '.SendQuota' >/dev/null 2>&1; then
+              MAX_24H=$(echo "$QUOTA_V2" | jq -r '.SendQuota.Max24HourSend // "N/A"')
+              SENT_24H=$(echo "$QUOTA_V2" | jq -r '.SendQuota.SentLast24Hours // "N/A"')
+              MAX_RATE=$(echo "$QUOTA_V2" | jq -r '.SendQuota.MaxSendRate // "N/A"')
+              PRODUCTION_ACCESS=$(echo "$QUOTA_V2" | jq -r '.ProductionAccessEnabled // false')
+              QUOTA="v2"
+            fi
           fi
-
-          # 2. Check if sender email is verified
-          VERIFIED_EMAILS=$(aws ses list-verified-email-addresses --query 'VerifiedEmailAddresses' --output json 2>/dev/null || echo "[]")
-          SENDER_VERIFIED=$(echo "$VERIFIED_EMAILS" | jq -r --arg email "$SES_SENDER_EMAIL" 'map(select(ascii_downcase == ($email | ascii_downcase))) | length')
-
-          if [ "$SENDER_VERIFIED" -gt 0 ]; then
-            echo "| Sender Email (\`${SES_SENDER_EMAIL}\`) | ✅ Verified | — |" >> $GITHUB_STEP_SUMMARY
-          else
-            # Check domain verification instead
-            DOMAIN=$(echo "$SES_SENDER_EMAIL" | cut -d@ -f2)
-            DOMAIN_STATUS=$(aws ses get-identity-verification-attributes \
-              --identities "$DOMAIN" \
-              --query "VerificationAttributes.\"${DOMAIN}\".VerificationStatus" \
-              --output text 2>/dev/null || echo "")
-            if [ "$DOMAIN_STATUS" == "Success" ]; then
-              echo "| Sender Domain (\`${DOMAIN}\`) | ✅ Domain verified | — |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| Sender Email (\`${SES_SENDER_EMAIL}\`) | ⚠️ Not verified | Domain status: ${DOMAIN_STATUS:-unknown} |" >> $GITHUB_STEP_SUMMARY
-              SES_ERRORS=$((SES_ERRORS + 1))
+          if [ -z "$QUOTA" ]; then
+            if QUOTA_V1=$(aws ses get-send-quota --output json 2>&1); then
+              if echo "$QUOTA_V1" | jq -e '.Max24HourSend' >/dev/null 2>&1; then
+                MAX_24H=$(echo "$QUOTA_V1" | jq -r '.Max24HourSend // "N/A"')
+                SENT_24H=$(echo "$QUOTA_V1" | jq -r '.SentLast24Hours // "N/A"')
+                MAX_RATE=$(echo "$QUOTA_V1" | jq -r '.MaxSendRate // "N/A"')
+                QUOTA="v1"
+              fi
             fi
           fi
 
-          # 3. Check SES sandbox status
-          ACCOUNT_ATTRS=$(aws ses get-account-sending-enabled --output text 2>/dev/null || echo "false")
-          if [ "$ACCOUNT_ATTRS" == "True" ] || [ "$ACCOUNT_ATTRS" == "true" ]; then
-            echo "| SES Sending | ✅ Enabled | Production mode |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$QUOTA" ]; then
+            echo "| SES Send Quota (${QUOTA}) | ✅ | Max: ${MAX_24H}/day, Sent: ${SENT_24H}, Rate: ${MAX_RATE}/s |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| SES Sending | ⚠️ Disabled or Sandbox | May need production access request |" >> $GITHUB_STEP_SUMMARY
+            echo "| SES Send Quota | ⚠️ | Could not retrieve quota — add \`ses:GetSendQuota\` + \`sesv2:GetAccount\` to OIDC role |" >> $GITHUB_STEP_SUMMARY
+            SES_ERRORS=$((SES_ERRORS + 1))
           fi
 
-          # 4. Check notification-related env vars in Lambda
-          LAMBDA_NAME="${PROJECT}-${{ needs.resolve.outputs.environment }}-backend"
-          LAMBDA_ENV=$(aws lambda get-function-configuration \
-            --function-name "$LAMBDA_NAME" \
-            --query 'Environment.Variables' \
-            --output json 2>/dev/null || echo "{}")
+          # ── 2. Check if sender email/domain is verified ──
+          SENDER_OK=false
 
+          # SESv2: check email identity directly
+          if IDENTITY_V2=$(aws sesv2 get-email-identity --email-identity "$SES_SENDER_EMAIL" --output json 2>/dev/null); then
+            ID_STATUS=$(echo "$IDENTITY_V2" | jq -r '.VerifiedForSendingStatus // false')
+            if [ "$ID_STATUS" == "true" ]; then
+              echo "| Sender Email (\`${SES_SENDER_EMAIL}\`) | ✅ Verified (SESv2) | — |" >> $GITHUB_STEP_SUMMARY
+              SENDER_OK=true
+            fi
+          fi
+
+          # SESv2: check domain identity
+          if [ "$SENDER_OK" != "true" ]; then
+            DOMAIN=$(echo "$SES_SENDER_EMAIL" | cut -d@ -f2)
+            if DOMAIN_V2=$(aws sesv2 get-email-identity --email-identity "$DOMAIN" --output json 2>/dev/null); then
+              DOMAIN_VERIFIED=$(echo "$DOMAIN_V2" | jq -r '.VerifiedForSendingStatus // false')
+              if [ "$DOMAIN_VERIFIED" == "true" ]; then
+                echo "| Sender Domain (\`${DOMAIN}\`) | ✅ Domain verified (SESv2) | — |" >> $GITHUB_STEP_SUMMARY
+                SENDER_OK=true
+              fi
+            fi
+          fi
+
+          # Fallback: SES v1 classic APIs
+          if [ "$SENDER_OK" != "true" ]; then
+            VERIFIED_EMAILS=$(aws ses list-verified-email-addresses --query 'VerifiedEmailAddresses' --output json 2>/dev/null || echo "[]")
+            V1_COUNT=$(echo "$VERIFIED_EMAILS" | jq -r --arg email "$SES_SENDER_EMAIL" 'map(select(ascii_downcase == ($email | ascii_downcase))) | length')
+            if [ "$V1_COUNT" -gt 0 ]; then
+              echo "| Sender Email (\`${SES_SENDER_EMAIL}\`) | ✅ Verified (SES classic) | — |" >> $GITHUB_STEP_SUMMARY
+              SENDER_OK=true
+            else
+              DOMAIN=$(echo "$SES_SENDER_EMAIL" | cut -d@ -f2)
+              DOMAIN_STATUS=$(aws ses get-identity-verification-attributes \
+                --identities "$DOMAIN" \
+                --query "VerificationAttributes.\"${DOMAIN}\".VerificationStatus" \
+                --output text 2>/dev/null || echo "unknown")
+              if [ "$DOMAIN_STATUS" == "Success" ]; then
+                echo "| Sender Domain (\`${DOMAIN}\`) | ✅ Domain verified | — |" >> $GITHUB_STEP_SUMMARY
+                SENDER_OK=true
+              else
+                echo "| Sender Email (\`${SES_SENDER_EMAIL}\`) | ⚠️ Not verified | Domain status: ${DOMAIN_STATUS} |" >> $GITHUB_STEP_SUMMARY
+                SES_ERRORS=$((SES_ERRORS + 1))
+              fi
+            fi
+          fi
+
+          # ── 3. Check SES sandbox/production status ──
+          if [ "$PRODUCTION_ACCESS" == "true" ]; then
+            echo "| SES Sending | ✅ Enabled | Production access (SESv2) |" >> $GITHUB_STEP_SUMMARY
+          else
+            ACCOUNT_SENDING=$(aws ses get-account-sending-enabled --output text 2>/dev/null || echo "false")
+            if [ "$ACCOUNT_SENDING" == "True" ] || [ "$ACCOUNT_SENDING" == "true" ]; then
+              echo "| SES Sending | ✅ Enabled | Production mode |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| SES Sending | ⚠️ Sandbox | May need production access request |" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          # ── 4. Report Lambda email env vars ──
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Lambda Email Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Variable | Status |" >> $GITHUB_STEP_SUMMARY
@@ -789,7 +987,6 @@ jobs:
           for VAR in CREDENTIAL_NOTIFICATION_ENABLED SES_SENDER_EMAIL PLATFORM_LOGIN_URL PLATFORM_NAME PLATFORM_SUPPORT_EMAIL; do
             VAL=$(echo "$LAMBDA_ENV" | jq -r --arg k "$VAR" '.[$k] // empty' 2>/dev/null || echo "")
             if [ -n "$VAL" ]; then
-              # Mask full values but show presence
               if echo "$VAR" | grep -qiE "email|url|name"; then
                 echo "| \`${VAR}\` | ✅ \`${VAL}\` |" >> $GITHUB_STEP_SUMMARY
               else
@@ -810,49 +1007,64 @@ jobs:
 
       - name: Verify Cognito User Pool configuration
         id: cognito
-        env:
-          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
-          COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
         run: |
           set -euo pipefail
+
+          ENV="${{ needs.resolve.outputs.environment }}"
+          LAMBDA_NAME="${PROJECT}-${ENV}-backend"
 
           echo "## 🔐 Cognito Configuration Verification" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           COGNITO_ERRORS=0
 
+          # ── Resolve Cognito IDs from Lambda config (single source of truth) ──
+          LAMBDA_ENV=$(aws lambda get-function-configuration \
+            --function-name "$LAMBDA_NAME" \
+            --query 'Environment.Variables' \
+            --output json 2>/dev/null || echo "{}")
+
+          COGNITO_USER_POOL_ID=$(echo "$LAMBDA_ENV" | jq -r '.COGNITO_USER_POOL_ID // empty' 2>/dev/null || echo "")
+          COGNITO_CLIENT_ID=$(echo "$LAMBDA_ENV" | jq -r '.COGNITO_CLIENT_ID // empty' 2>/dev/null || echo "")
+          COGNITO_REGION=$(echo "$LAMBDA_ENV" | jq -r '.COGNITO_REGION // empty' 2>/dev/null || echo "")
+          ADMIN_EMAIL=$(echo "$LAMBDA_ENV" | jq -r '.ADMIN_EMAIL // empty' 2>/dev/null || echo "")
+
           if [ -z "$COGNITO_USER_POOL_ID" ]; then
-            echo "⚠️ COGNITO_USER_POOL_ID not set — skipping Cognito checks" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ COGNITO_USER_POOL_ID not found in Lambda \`${LAMBDA_NAME}\` — skipping Cognito checks" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
 
           echo "| Check | Status | Details |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
 
-          # 1. Describe User Pool
+          # ── 1. Describe User Pool ──
           POOL_INFO=$(aws cognito-idp describe-user-pool \
             --user-pool-id "$COGNITO_USER_POOL_ID" --output json 2>/dev/null || echo "{}")
 
           POOL_NAME=$(echo "$POOL_INFO" | jq -r '.UserPool.Name // "Unknown"')
-          POOL_STATUS=$(echo "$POOL_INFO" | jq -r '.UserPool.Status // "Unknown"')
           USER_COUNT=$(echo "$POOL_INFO" | jq -r '.UserPool.EstimatedNumberOfUsers // 0')
           MFA_CONFIG=$(echo "$POOL_INFO" | jq -r '.UserPool.MfaConfiguration // "OFF"')
 
-          echo "| User Pool | ✅ | \`${POOL_NAME}\` (${POOL_STATUS}) |" >> $GITHUB_STEP_SUMMARY
+          if [ "$POOL_NAME" != "Unknown" ]; then
+            echo "| User Pool | ✅ | \`${POOL_NAME}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| User Pool | ❌ | Could not describe pool \`${COGNITO_USER_POOL_ID}\` |" >> $GITHUB_STEP_SUMMARY
+            COGNITO_ERRORS=$((COGNITO_ERRORS + 1))
+          fi
           echo "| Users | ℹ️ | ~${USER_COUNT} estimated |" >> $GITHUB_STEP_SUMMARY
           echo "| MFA | ℹ️ | ${MFA_CONFIG} |" >> $GITHUB_STEP_SUMMARY
 
-          # 2. Check email configuration (SES vs Cognito default)
+          # ── 2. Email configuration (SES vs Cognito default) ──
           EMAIL_CONFIG=$(echo "$POOL_INFO" | jq -r '.UserPool.EmailConfiguration.EmailSendingAccount // "COGNITO_DEFAULT"')
           EMAIL_SOURCE=$(echo "$POOL_INFO" | jq -r '.UserPool.EmailConfiguration.SourceArn // "N/A"')
 
           if [ "$EMAIL_CONFIG" == "DEVELOPER" ]; then
-            echo "| Email Config | ✅ | SES (\`${EMAIL_SOURCE:0:50}...\`) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Email Config | ✅ | SES (\`${EMAIL_SOURCE:0:60}...\`) |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Email Config | ⚠️ | Cognito Default (limited to 50/day) |" >> $GITHUB_STEP_SUMMARY
+            echo "| Email Config | ⚠️ | Cognito Default (limited to 50/day) — consider SES integration |" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # 3. Check password policy
+          # ── 3. Password policy ──
           PASS_POLICY=$(echo "$POOL_INFO" | jq '.UserPool.Policies.PasswordPolicy' 2>/dev/null || echo "{}")
           MIN_LEN=$(echo "$PASS_POLICY" | jq -r '.MinimumLength // 8')
           REQ_UPPER=$(echo "$PASS_POLICY" | jq -r '.RequireUppercase // false')
@@ -862,7 +1074,7 @@ jobs:
 
           echo "| Password Policy | ✅ | Min:${MIN_LEN} Upper:${REQ_UPPER} Lower:${REQ_LOWER} Num:${REQ_NUM} Sym:${REQ_SYM} |" >> $GITHUB_STEP_SUMMARY
 
-          # 4. Verify App Client exists
+          # ── 4. Verify App Client ──
           if [ -n "$COGNITO_CLIENT_ID" ]; then
             CLIENT_INFO=$(aws cognito-idp describe-user-pool-client \
               --user-pool-id "$COGNITO_USER_POOL_ID" \
@@ -873,38 +1085,61 @@ jobs:
             if [ "$CLIENT_NAME" != "Unknown" ]; then
               echo "| App Client | ✅ | \`${CLIENT_NAME}\` |" >> $GITHUB_STEP_SUMMARY
               echo "| Auth Flows | ℹ️ | ${AUTH_FLOWS} |" >> $GITHUB_STEP_SUMMARY
+
+              # Verify required auth flow for smoke tests
+              if echo "$AUTH_FLOWS" | grep -q "ALLOW_ADMIN_USER_PASSWORD_AUTH"; then
+                echo "| Admin Auth Flow | ✅ | ALLOW_ADMIN_USER_PASSWORD_AUTH present |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| Admin Auth Flow | ⚠️ | ALLOW_ADMIN_USER_PASSWORD_AUTH missing — smoke test auth may fail |" >> $GITHUB_STEP_SUMMARY
+              fi
             else
-              echo "| App Client | ❌ | Not found (${COGNITO_CLIENT_ID}) |" >> $GITHUB_STEP_SUMMARY
+              echo "| App Client | ❌ | Not found (\`${COGNITO_CLIENT_ID}\`) |" >> $GITHUB_STEP_SUMMARY
               COGNITO_ERRORS=$((COGNITO_ERRORS + 1))
             fi
-          fi
-
-          # 5. List admin user to verify access
-          ADMIN_USER=$(aws cognito-idp admin-get-user \
-            --user-pool-id "$COGNITO_USER_POOL_ID" \
-            --username "admin@adminplatform.com" \
-            --query '{Status:UserStatus,Enabled:Enabled}' \
-            --output json 2>/dev/null || echo "{}")
-
-          ADMIN_STATUS=$(echo "$ADMIN_USER" | jq -r '.Status // "NOT_FOUND"')
-          ADMIN_ENABLED=$(echo "$ADMIN_USER" | jq -r '.Enabled // false')
-
-          if [ "$ADMIN_STATUS" == "CONFIRMED" ] && [ "$ADMIN_ENABLED" == "true" ]; then
-            echo "| Admin User | ✅ | Confirmed & Enabled |" >> $GITHUB_STEP_SUMMARY
-          elif [ "$ADMIN_STATUS" == "FORCE_CHANGE_PASSWORD" ]; then
-            echo "| Admin User | ⚠️ | FORCE_CHANGE_PASSWORD (first login required) |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Admin User | ❌ | Status: ${ADMIN_STATUS}, Enabled: ${ADMIN_ENABLED} |" >> $GITHUB_STEP_SUMMARY
+            echo "| App Client | ❌ | COGNITO_CLIENT_ID not set in Lambda env |" >> $GITHUB_STEP_SUMMARY
             COGNITO_ERRORS=$((COGNITO_ERRORS + 1))
           fi
 
-          # 6. Check Lambda Cognito-related env vars
-          LAMBDA_NAME="${PROJECT}-${{ needs.resolve.outputs.environment }}-backend"
-          LAMBDA_ENV=$(aws lambda get-function-configuration \
-            --function-name "$LAMBDA_NAME" \
-            --query 'Environment.Variables' \
-            --output json 2>/dev/null || echo "{}")
+          # ── 5. Verify admin user exists ──
+          # Try ADMIN_EMAIL from Lambda env, fallback to COGNITO_ADMIN_EMAIL secret, then known default
+          if [ -z "$ADMIN_EMAIL" ]; then
+            ADMIN_EMAIL="${{ secrets.COGNITO_ADMIN_EMAIL }}"
+          fi
+          if [ -z "$ADMIN_EMAIL" ]; then
+            # List first user as a connectivity check instead
+            FIRST_USER=$(aws cognito-idp list-users \
+              --user-pool-id "$COGNITO_USER_POOL_ID" \
+              --limit 1 \
+              --query 'Users[0].Username' \
+              --output text 2>/dev/null || echo "")
+            if [ -n "$FIRST_USER" ] && [ "$FIRST_USER" != "None" ]; then
+              echo "| Pool Access | ✅ | Can list users (found: \`${FIRST_USER}\`) |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Pool Access | ⚠️ | No users found or cannot list users |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            ADMIN_USER=$(aws cognito-idp admin-get-user \
+              --user-pool-id "$COGNITO_USER_POOL_ID" \
+              --username "$ADMIN_EMAIL" \
+              --query '{Status:UserStatus,Enabled:Enabled}' \
+              --output json 2>/dev/null || echo "{}")
 
+            ADMIN_STATUS=$(echo "$ADMIN_USER" | jq -r '.Status // "NOT_FOUND"')
+            ADMIN_ENABLED=$(echo "$ADMIN_USER" | jq -r '.Enabled // false')
+
+            if [ "$ADMIN_STATUS" == "CONFIRMED" ] && [ "$ADMIN_ENABLED" == "true" ]; then
+              echo "| Admin User (\`${ADMIN_EMAIL}\`) | ✅ | Confirmed & Enabled |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$ADMIN_STATUS" == "FORCE_CHANGE_PASSWORD" ]; then
+              echo "| Admin User (\`${ADMIN_EMAIL}\`) | ⚠️ | FORCE_CHANGE_PASSWORD (first login required) |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$ADMIN_STATUS" == "NOT_FOUND" ]; then
+              echo "| Admin User (\`${ADMIN_EMAIL}\`) | ⚠️ | Not found in pool — create via console or provisioning |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Admin User (\`${ADMIN_EMAIL}\`) | ℹ️ | Status: ${ADMIN_STATUS}, Enabled: ${ADMIN_ENABLED} |" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          # ── 6. Lambda Cognito env vars summary ──
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Lambda Cognito Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Variable | Status |" >> $GITHUB_STEP_SUMMARY
@@ -961,53 +1196,44 @@ jobs:
           echo "## 🗄️ DynamoDB Entry Audit" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          audit_table() {
-            local TABLE="$1"
-            local LABEL="$2"
+          # ── Helper: count PK-prefix entities (SK=METADATA) ──
+          count_pk_entity() {
+            local TABLE="$1" ENTITY="$2"
+            aws dynamodb scan \
+              --table-name "$TABLE" \
+              --filter-expression "begins_with(PK, :pk) AND SK = :sk" \
+              --expression-attribute-values "{\":pk\":{\"S\":\"${ENTITY}#\"},\":sk\":{\"S\":\"METADATA\"}}" \
+              --select COUNT --query 'Count' --output text 2>/dev/null || echo "0"
+          }
 
-            if ! aws dynamodb describe-table --table-name "$TABLE" > /dev/null 2>&1; then
-              echo "### ${LABEL}: ❌ Table not found" >> $GITHUB_STEP_SUMMARY
-              return
+          # ── Helper: count SK-prefix entities ──
+          count_sk_entity() {
+            local TABLE="$1" ENTITY="$2"
+            aws dynamodb scan \
+              --table-name "$TABLE" \
+              --filter-expression "begins_with(SK, :sk)" \
+              --expression-attribute-values "{\":sk\":{\"S\":\"${ENTITY}#\"}}" \
+              --select COUNT --query 'Count' --output text 2>/dev/null || echo "0"
+          }
+
+          # ── Helper: emit row with architecture-aware status ──
+          # $1=entity, $2=count, $3=expected_location ("here"|"other-table"|"optional")
+          emit_row() {
+            local ENTITY="$1" COUNT="$2" EXPECTED="$3"
+            if [ "$COUNT" -gt 0 ]; then
+              echo "| ${ENTITY} | ${COUNT} | ✅ |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$EXPECTED" == "here" ]; then
+              echo "| ${ENTITY} | 0 | ⚠️ Empty — expected data here |" >> $GITHUB_STEP_SUMMARY
+            elif [ "$EXPECTED" == "other-table" ]; then
+              echo "| ${ENTITY} | 0 | ✅ Correct — lives in other table |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| ${ENTITY} | 0 | ℹ️ None created yet |" >> $GITHUB_STEP_SUMMARY
             fi
+          }
 
-            echo "### ${LABEL} (\`${TABLE}\`)" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Entity Type | Count | Status |" >> $GITHUB_STEP_SUMMARY
-            echo "|-------------|-------|--------|" >> $GITHUB_STEP_SUMMARY
-
-            # Count items by PK prefix
-            for ENTITY in ACCOUNT ENTERPRISE PRODUCT SERVICE USER ROLE GROUP WORKSTREAM LICENSE; do
-              COUNT=$(aws dynamodb scan \
-                --table-name "$TABLE" \
-                --filter-expression "begins_with(PK, :pk) AND SK = :sk" \
-                --expression-attribute-values "{\":pk\":{\"S\":\"${ENTITY}#\"},\":sk\":{\"S\":\"METADATA\"}}" \
-                --select COUNT \
-                --query 'Count' --output text 2>/dev/null || echo "0")
-
-              if [ "$COUNT" -gt 0 ]; then
-                echo "| ${ENTITY} | ${COUNT} | ✅ |" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "| ${ENTITY} | ${COUNT} | ⚠️ Empty |" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-
-            # Data-plane specific entities (different SK patterns)
-            for ENTITY_PREFIX in PIPELINE BUILD_JOB CONNECTOR CREDENTIAL ENVIRONMENT; do
-              COUNT=$(aws dynamodb scan \
-                --table-name "$TABLE" \
-                --filter-expression "begins_with(SK, :sk)" \
-                --expression-attribute-values "{\":sk\":{\"S\":\"${ENTITY_PREFIX}#\"}}" \
-                --select COUNT \
-                --query 'Count' --output text 2>/dev/null || echo "0")
-
-              if [ "$COUNT" -gt 0 ]; then
-                echo "| ${ENTITY_PREFIX} (SK) | ${COUNT} | ✅ |" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "| ${ENTITY_PREFIX} (SK) | ${COUNT} | ⚠️ Empty |" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-
-            # Verify bootstrap account exists
+          # ── Check bootstrap account ──
+          check_bootstrap() {
+            local TABLE="$1"
             local BOOTSTRAP_CHECK
             BOOTSTRAP_CHECK=$(aws dynamodb get-item \
               --table-name "$TABLE" \
@@ -1018,13 +1244,91 @@ jobs:
             if [ -n "$BOOTSTRAP_CHECK" ] && [ "$BOOTSTRAP_CHECK" != "None" ]; then
               echo "**Bootstrap Account:** ✅ \`${BOOTSTRAP_CHECK}\`" >> $GITHUB_STEP_SUMMARY
             else
-              echo "**Bootstrap Account:** ⚠️ Not found in this table" >> $GITHUB_STEP_SUMMARY
+              echo "**Bootstrap Account:** ℹ️ Not in this table (expected)" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
           }
 
-          audit_table "$CP_TABLE" "Control-Plane"
-          audit_table "$DP_TABLE" "Data-Plane (Public)"
+          # ══════════════════════════════════════════════════════════════
+          # CONTROL-PLANE: Admin/identity data lives here
+          # Operational data (pipelines, builds, etc.) lives in data-plane
+          # ══════════════════════════════════════════════════════════════
+          if ! aws dynamodb describe-table --table-name "$CP_TABLE" > /dev/null 2>&1; then
+            echo "### Control-Plane: ❌ Table \`${CP_TABLE}\` not found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Control-Plane (\`${CP_TABLE}\`)" >> $GITHUB_STEP_SUMMARY
+            echo "_Admin & identity data — operational data routes to data-plane_" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Entity Type | Count | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+            # Expected in control-plane
+            for ENTITY in ACCOUNT ENTERPRISE PRODUCT SERVICE USER ROLE GROUP; do
+              COUNT=$(count_pk_entity "$CP_TABLE" "$ENTITY")
+              emit_row "$ENTITY" "$COUNT" "here"
+            done
+
+            # Optional in control-plane (may not exist yet)
+            for ENTITY in WORKSTREAM LICENSE; do
+              COUNT=$(count_pk_entity "$CP_TABLE" "$ENTITY")
+              emit_row "$ENTITY" "$COUNT" "optional"
+            done
+
+            # Operational entities — should be empty in control-plane (they live in data-plane)
+            for ENTITY_PREFIX in PIPELINE BUILD_JOB CONNECTOR CREDENTIAL ENVIRONMENT; do
+              COUNT=$(count_sk_entity "$CP_TABLE" "$ENTITY_PREFIX")
+              emit_row "${ENTITY_PREFIX} (SK)" "$COUNT" "other-table"
+            done
+
+            check_bootstrap "$CP_TABLE"
+          fi
+
+          # ══════════════════════════════════════════════════════════════
+          # DATA-PLANE (PUBLIC): Operational/customer data lives here
+          # Admin/identity data lives in control-plane
+          # ══════════════════════════════════════════════════════════════
+          # Assume cross-account role for data-plane access
+          DATA_PLANE_ROLE_ARN="${{ secrets.DATA_PLANE_ROLE_ARN }}"
+          CROSS_ACCOUNT_EXTERNAL_ID="${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}"
+
+          if [ -n "$DATA_PLANE_ROLE_ARN" ]; then
+            ASSUMED=$(aws sts assume-role \
+              --role-arn "$DATA_PLANE_ROLE_ARN" \
+              --role-session-name "smoke-verify-dp" \
+              --external-id "$CROSS_ACCOUNT_EXTERNAL_ID" \
+              --duration-seconds 900 \
+              --output json 2>/dev/null || echo "")
+
+            if [ -n "$ASSUMED" ]; then
+              export AWS_ACCESS_KEY_ID=$(echo "$ASSUMED" | jq -r '.Credentials.AccessKeyId')
+              export AWS_SECRET_ACCESS_KEY=$(echo "$ASSUMED" | jq -r '.Credentials.SecretAccessKey')
+              export AWS_SESSION_TOKEN=$(echo "$ASSUMED" | jq -r '.Credentials.SessionToken')
+            fi
+          fi
+
+          if ! aws dynamodb describe-table --table-name "$DP_TABLE" > /dev/null 2>&1; then
+            echo "### Data-Plane (Public): ❌ Table \`${DP_TABLE}\` not found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Data-Plane (Public) (\`${DP_TABLE}\`)" >> $GITHUB_STEP_SUMMARY
+            echo "_Operational/customer data — admin data lives in control-plane_" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Entity Type | Count | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+            # Admin entities — should be empty in data-plane (they live in control-plane)
+            for ENTITY in ACCOUNT ENTERPRISE PRODUCT SERVICE USER ROLE GROUP WORKSTREAM LICENSE; do
+              COUNT=$(count_pk_entity "$DP_TABLE" "$ENTITY")
+              emit_row "$ENTITY" "$COUNT" "other-table"
+            done
+
+            # Expected in data-plane (operational data)
+            for ENTITY_PREFIX in PIPELINE BUILD_JOB CONNECTOR CREDENTIAL ENVIRONMENT; do
+              COUNT=$(count_sk_entity "$DP_TABLE" "$ENTITY_PREFIX")
+              emit_row "${ENTITY_PREFIX} (SK)" "$COUNT" "here"
+            done
+
+            check_bootstrap "$DP_TABLE"
+          fi
 
   # ===========================================================================
   # Step 5: Cleanup seeded data

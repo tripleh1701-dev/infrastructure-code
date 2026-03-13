@@ -133,6 +133,8 @@ import { useProductContext } from "@/contexts/ProductContext";
 import { FilterContextIndicator } from "@/components/layout/FilterContextIndicator";
 import { usePermissions } from "@/contexts/PermissionContext";
 import { PermissionGate } from "@/components/auth/PermissionGate";
+import { isExternalApi } from "@/lib/api/config";
+import { httpClient } from "@/lib/api/http-client";
 
 // Animation variants
 const pageVariants = {
@@ -223,7 +225,43 @@ export default function AccessControlPage() {
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingUser, setEditingUser] = useState<AccessControlUser | null>(null);
   const [deletingUser, setDeletingUser] = useState<AccessControlUser | null>(null);
+  const [resendingUserId, setResendingUserId] = useState<string | null>(null);
   
+  // Resend credentials handler (AWS mode only)
+  const handleResendCredentials = async (user: AccessControlUser) => {
+    if (!isExternalApi()) return;
+    setResendingUserId(user.id);
+    try {
+      const { data, error } = await httpClient.post<{ success: boolean; emailSent?: boolean; emailError?: string; fallbackPassword?: string; error?: string }>(
+        `/users/${user.id}/resend-credentials`,
+        {}
+      );
+      if (error) {
+        toast.error(`Failed to resend credentials: ${error.message}`);
+        return;
+      }
+      if (!data?.success) {
+        toast.error(data?.error || "Failed to resend credentials");
+        return;
+      }
+      if (data.emailSent) {
+        toast.success(`New credentials sent to ${user.email}`);
+      } else {
+        toast.warning(
+          `Password reset but email could not be sent: ${data.emailError || "Check SES configuration"}`,
+          { duration: 8000 }
+        );
+        if (data.fallbackPassword) {
+          toast.info(`Temporary password: ${data.fallbackPassword}`, { duration: 15000 });
+        }
+      }
+    } catch (err: any) {
+      toast.error(`Failed to resend credentials: ${err.message}`);
+    } finally {
+      setResendingUserId(null);
+    }
+  };
+
   // Group dialogs
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
@@ -1198,6 +1236,15 @@ export default function AccessControlPage() {
                                     Edit
                                   </DropdownMenuItem>
                                 )}
+                                {isExternalApi() && canEdit("access-control") && (
+                                  <DropdownMenuItem 
+                                    onClick={() => handleResendCredentials(user)}
+                                    disabled={resendingUserId === user.id}
+                                  >
+                                    <Key className="w-4 h-4 mr-2" />
+                                    {resendingUserId === user.id ? "Sending..." : "Resend Credentials"}
+                                  </DropdownMenuItem>
+                                )}
                                 {canDelete("access-control") && (
                                   <DropdownMenuItem 
                                     onClick={() => setDeletingUser(user)}
@@ -1269,6 +1316,16 @@ export default function AccessControlPage() {
                                 <DropdownMenuItem onClick={() => setEditingUser(user)} className="rounded-lg">
                                   <Pencil className="w-4 h-4 mr-2" />
                                   Edit
+                                </DropdownMenuItem>
+                              )}
+                              {isExternalApi() && canEdit("access-control") && (
+                                <DropdownMenuItem 
+                                  onClick={() => handleResendCredentials(user)}
+                                  disabled={resendingUserId === user.id}
+                                  className="rounded-lg"
+                                >
+                                  <Key className="w-4 h-4 mr-2" />
+                                  {resendingUserId === user.id ? "Sending..." : "Resend Credentials"}
                                 </DropdownMenuItem>
                               )}
                               {canDelete("access-control") && (

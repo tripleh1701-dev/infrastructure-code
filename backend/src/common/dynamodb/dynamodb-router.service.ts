@@ -65,6 +65,7 @@ export class DynamoDBRouterService implements OnModuleInit {
   
   // Cross-account role ARN for data-plane access
   private dataPlaneRoleArn: string | undefined;
+  private crossAccountExternalId: string | undefined;
   private region: string;
 
   // Cache for private account table configs (TTL: 5 minutes)
@@ -105,6 +106,9 @@ export class DynamoDBRouterService implements OnModuleInit {
 
     // Cross-account role for accessing customer data-plane resources
     this.dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
+    this.crossAccountExternalId =
+      this.configService.get<string>('CROSS_ACCOUNT_EXTERNAL_ID')
+      || this.configService.get<string>('DATA_PLANE_EXTERNAL_ID');
     if (!this.dataPlaneRoleArn) {
       this.logger.warn('DATA_PLANE_ROLE_ARN not set — cross-account routing to private accounts will fall back to default credentials');
     }
@@ -144,6 +148,7 @@ export class DynamoDBRouterService implements OnModuleInit {
       RoleArn: this.dataPlaneRoleArn,
       RoleSessionName: `router-${accountId.substring(0, 20)}-${Date.now()}`,
       DurationSeconds: 3600, // 1 hour
+      ...(this.crossAccountExternalId ? { ExternalId: this.crossAccountExternalId } : {}),
     }));
 
     if (!result.Credentials) {

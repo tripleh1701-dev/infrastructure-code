@@ -27,6 +27,7 @@ export class ProvisioningService {
   private readonly projectName: string;
   private readonly awsRegion: string;
   private readonly dataPlaneRoleArn: string | undefined;
+  private readonly crossAccountExternalId: string | undefined;
 
   constructor(
     private configService: ConfigService,
@@ -38,6 +39,9 @@ export class ProvisioningService {
     this.environment = this.configService.get('NODE_ENV', 'dev');
     this.projectName = this.configService.get('PROJECT_NAME', 'app');
     this.dataPlaneRoleArn = this.configService.get<string>('DATA_PLANE_ROLE_ARN');
+    this.crossAccountExternalId =
+      this.configService.get<string>('CROSS_ACCOUNT_EXTERNAL_ID')
+      || this.configService.get<string>('DATA_PLANE_EXTERNAL_ID');
 
     const credentials = resolveAwsCredentials(
       this.configService.get<string>('AWS_ACCESS_KEY_ID'),
@@ -68,6 +72,7 @@ export class ProvisioningService {
       RoleArn: this.dataPlaneRoleArn,
       RoleSessionName: `provisioning-status-${Date.now()}`,
       DurationSeconds: 900,
+      ...(this.crossAccountExternalId ? { ExternalId: this.crossAccountExternalId } : {}),
     }));
 
     if (!result.Credentials) {

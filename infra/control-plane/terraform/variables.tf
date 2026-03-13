@@ -99,6 +99,12 @@ variable "data_plane_region" {
   default     = ""
 }
 
+variable "cross_account_external_id" {
+  description = "External ID required when assuming the customer data-plane role"
+  type        = string
+  default     = ""
+}
+
 variable "cfn_execution_role_arn" {
   description = "CloudFormation execution role ARN in the customer account for private-tier stack creation"
   type        = string
@@ -165,4 +171,10 @@ variable "provisioning_cloud_type_emails" {
   description = "Map of email → cloud types to filter. Example: { \"ops@co.com\" = [\"private\"] }"
   type        = map(list(string))
   default     = {}
+}
+
+variable "admin_email" {
+  description = "Platform admin email used for Cognito admin user verification in smoke tests"
+  type        = string
+  default     = ""
 }

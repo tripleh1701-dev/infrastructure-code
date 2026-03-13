@@ -101,6 +101,12 @@ variable "data_plane_region" {
   default     = ""
 }
 
+variable "cross_account_external_id" {
+  description = "External ID used when assuming DATA_PLANE_ROLE_ARN"
+  type        = string
+  default     = ""
+}
+
 variable "cognito_user_pool_arn" {
   description = "ARN of the Cognito user pool"
   type        = string
