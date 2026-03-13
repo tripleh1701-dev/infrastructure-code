@@ -655,7 +655,7 @@ import {
 # =============================================================================
 module "github_oidc" {
   source = "../../modules/github-oidc"
-  count  = var.enable_github_oidc && var.github_org != "" && var.github_repo != "" ? 1 : 0
+  count  = var.enable_github_oidc && trimspace(var.github_repo) != "" && (trimspace(var.github_org) != "" || length(split("/", trimspace(var.github_repo))) > 1) ? 1 : 0
 
   project_name         = var.project_name
   github_org           = var.github_org

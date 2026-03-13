@@ -117,10 +117,40 @@ jobs:
       api_url: ${{ steps.check.outputs.api_url }}
 
     steps:
-      - name: Configure AWS Credentials (Platform Admin)
+      - name: Checkout (for composite action)
+        uses: actions/checkout@v5
+
+      - name: "🔍 OIDC Preflight"
+        uses: ./.github/actions/oidc-preflight
+        id: oidc_preflight
+
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials (Platform Admin via static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Comprehensive SSM & DynamoDB verification
@@ -381,10 +411,33 @@ jobs:
           npm install --package-lock-only 2>/dev/null || true
           npm install
 
-      - name: Configure AWS Credentials (Platform Admin)
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials (Platform Admin via static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Seed data to control-plane (Platform Admin)
@@ -470,10 +523,33 @@ jobs:
     environment: ${{ needs.resolve.outputs.environment }}
 
     steps:
-      - name: Configure AWS Credentials (Platform Admin)
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials (Platform Admin via static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Resolve API Gateway URL
@@ -850,10 +926,33 @@ jobs:
     environment: ${{ needs.resolve.outputs.environment }}
 
     steps:
-      - name: Configure AWS Credentials (Platform Admin)
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials (Platform Admin via static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify SES sender identity & send test
@@ -1177,10 +1276,33 @@ jobs:
     environment: ${{ needs.resolve.outputs.environment }}
 
     steps:
-      - name: Configure AWS Credentials (Platform Admin)
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials (Platform Admin via static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Audit DynamoDB table contents
@@ -1346,10 +1468,33 @@ jobs:
     environment: ${{ needs.resolve.outputs.environment }}
 
     steps:
-      - name: Configure AWS Credentials (Platform Admin)
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials (Platform Admin via static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Remove all smoke-test seeded data

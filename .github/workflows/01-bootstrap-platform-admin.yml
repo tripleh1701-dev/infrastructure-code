@@ -36,6 +36,10 @@ env:
   TF_VAR_data_plane_dynamodb_name: ${{ secrets.DATA_PLANE_TABLE_NAME || '' }}
   TF_VAR_data_plane_region: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_VAR_cfn_execution_role_arn: ${{ secrets.CFN_EXECUTION_ROLE_ARN || '' }}
+  TF_VAR_github_org: ${{ github.repository_owner }}
+  TF_VAR_github_repo: ${{ github.repository }}
+  TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET || '' }}
+  TF_VAR_tf_lock_table: ${{ secrets.TF_LOCK_TABLE || '' }}
   TF_VAR_credential_notification_enabled: ${{ vars.CREDENTIAL_NOTIFICATION_ENABLED || 'true' }}
   TF_VAR_ses_sender_email: ${{ vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
   TF_VAR_platform_login_url: ${{ vars.PLATFORM_LOGIN_URL || '' }}
@@ -52,10 +56,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Configure AWS Credentials (Platform Admin)
+      - name: "🔍 OIDC Preflight"
+        uses: ./.github/actions/oidc-preflight
+        id: oidc_preflight
+
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials (Platform Admin via static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Install Dependencies

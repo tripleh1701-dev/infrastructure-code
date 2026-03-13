@@ -271,10 +271,40 @@ jobs:
       invalidation_id: ${{ steps.invalidate.outputs.invalidation_id }}
 
     steps:
-      - name: Configure AWS credentials
+      - name: Checkout (for composite action)
+        uses: actions/checkout@v5
+
+      - name: "🔍 OIDC Preflight"
+        uses: ./.github/actions/oidc-preflight
+        id: oidc_preflight
+
+      - name: Configure AWS credentials (OIDC)
+        id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.job }}
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Validate fallback static key availability
+        if: steps.aws_oidc.outcome != 'success'
+        env:
+          FALLBACK_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          FALLBACK_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+        run: |
+          if [ -z "${FALLBACK_AWS_ACCESS_KEY_ID}" ] || [ -z "${FALLBACK_AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::OIDC auth failed and fallback static keys are not configured."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (static fallback)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Download build artifact

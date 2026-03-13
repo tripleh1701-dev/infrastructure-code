@@ -55,6 +55,17 @@ locals {
   existing_oidc_provider = "arn:${local.partition}:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com"
   oidc_provider_arn      = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : local.existing_oidc_provider
   name_prefix            = "${var.project_name}-gh-platform-admin"
+
+  # Accept either "repo" or "owner/repo" inputs to avoid trust-policy drift.
+  github_repo_parts      = split("/", trimspace(var.github_repo))
+  github_repo_has_owner  = length(local.github_repo_parts) > 1
+  github_org_normalized  = local.github_repo_has_owner ? local.github_repo_parts[0] : trimspace(var.github_org)
+  github_repo_normalized = local.github_repo_has_owner ? local.github_repo_parts[length(local.github_repo_parts) - 1] : trimspace(var.github_repo)
+  github_repo_full       = "${local.github_org_normalized}/${local.github_repo_normalized}"
+  github_sub_claims = distinct(compact([
+    "repo:${local.github_repo_full}:*",
+    local.github_repo_has_owner ? "repo:${trimspace(var.github_repo)}:*" : null,
+  ]))
 }
 
 
@@ -79,7 +90,7 @@ resource "aws_iam_role" "github_actions" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
+            "token.actions.githubusercontent.com:sub" = local.github_sub_claims
           }
         }
       },
