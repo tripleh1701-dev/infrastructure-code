@@ -129,6 +129,7 @@ resource "aws_iam_role_policy" "platform_admin" {
           "iam:DeleteRole",
           "iam:GetRole",
           "iam:UpdateRole",
+          "iam:UpdateAssumeRolePolicy",
           "iam:PassRole",
           "iam:TagRole",
           "iam:UntagRole",
