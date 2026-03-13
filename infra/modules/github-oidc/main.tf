@@ -24,11 +24,10 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
-# Check if the GitHub OIDC provider already exists
-data "aws_iam_openid_connect_provider" "github" {
-  count = var.create_oidc_provider ? 0 : 1
-  url   = "https://token.actions.githubusercontent.com"
-}
+# NOTE:
+# This module must not use `data "aws_iam_openid_connect_provider"` lookups,
+# because that requires iam:ListOpenIDConnectProviders (often denied to CI roles).
+# For existing provider usage, derive the ARN deterministically from account/partition.
 
 # -----------------------------------------------------------------------------
 # GitHub OIDC Provider (created once per AWS account)
@@ -46,130 +45,18 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 locals {
-  oidc_provider_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
-  account_id        = data.aws_caller_identity.current.account_id
-  region            = data.aws_region.current.name
-  partition         = data.aws_partition.current.partition
-  name_prefix       = "${var.project_name}-gh-platform-admin"
+  account_id             = data.aws_caller_identity.current.account_id
+  region                 = data.aws_region.current.name
+  partition              = data.aws_partition.current.partition
+  existing_oidc_provider = "arn:${local.partition}:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com"
+  oidc_provider_arn      = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : local.existing_oidc_provider
+  name_prefix            = "${var.project_name}-gh-platform-admin"
 }
-
-# -----------------------------------------------------------------------------
-# IAM Role — GitHub Actions assumes this via OIDC
-# -----------------------------------------------------------------------------
-resource "aws_iam_role" "github_actions" {
-  name = local.name_prefix
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Federated = local.oidc_provider_arn
-        }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          }
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
-          }
-        }
-      }
-    ]
-  })
-
-  max_session_duration = 7200
-
-  tags = merge(var.tags, {
-    Name    = local.name_prefix
-    Purpose = "GitHub Actions CI/CD"
-  })
-}
-
-# -----------------------------------------------------------------------------
-# Policy: Terraform State Backend (S3 + DynamoDB locking)
-# -----------------------------------------------------------------------------
-resource "aws_iam_role_policy" "terraform_state" {
-  name = "${local.name_prefix}-terraform-state"
-  role = aws_iam_role.github_actions.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "S3StateBucket"
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket",
-          "s3:GetBucketVersioning",
-          "s3:GetBucketLocation",
-        ]
-        Resource = [
-          "arn:${local.partition}:s3:::${var.tf_state_bucket}",
-          "arn:${local.partition}:s3:::${var.tf_state_bucket}/*",
-        ]
-      },
-      {
-        Sid    = "DynamoDBLock"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:DescribeTable",
-          "dynamodb:CreateTable",
-        ]
-        Resource = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table/${var.tf_lock_table}"
-      },
-    ]
-  })
-}
-
-# -----------------------------------------------------------------------------
-# Policy: Terraform Provisioning (IAM, Lambda, API GW, Cognito, DynamoDB, VPC, etc.)
-# -----------------------------------------------------------------------------
-resource "aws_iam_role_policy" "terraform_provisioning" {
-  name = "${local.name_prefix}-terraform-provision"
-  role = aws_iam_role.github_actions.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "IAMManagement"
-        Effect = "Allow"
-        Action = [
-          "iam:CreateRole",
-          "iam:DeleteRole",
-          "iam:GetRole",
-          "iam:PassRole",
-          "iam:UpdateRole",
-          "iam:UpdateAssumeRolePolicy",
-          "iam:TagRole",
-          "iam:UntagRole",
-          "iam:ListRolePolicies",
-          "iam:ListAttachedRolePolicies",
-          "iam:ListInstanceProfilesForRole",
-          "iam:AttachRolePolicy",
-          "iam:DetachRolePolicy",
-          "iam:PutRolePolicy",
-          "iam:GetRolePolicy",
-          "iam:DeleteRolePolicy",
-          "iam:CreatePolicy",
-          "iam:DeletePolicy",
-          "iam:GetPolicy",
-          "iam:GetPolicyVersion",
-          "iam:ListPolicyVersions",
+...
           "iam:CreatePolicyVersion",
           "iam:DeletePolicyVersion",
           "iam:CreateOpenIDConnectProvider",
           "iam:GetOpenIDConnectProvider",
-          "iam:ListOpenIDConnectProviders",
           "iam:DeleteOpenIDConnectProvider",
           "iam:TagOpenIDConnectProvider",
           "iam:UpdateOpenIDConnectProviderThumbprint",
