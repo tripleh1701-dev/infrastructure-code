@@ -97,10 +97,10 @@ resource "aws_iam_role" "github_actions" {
 }
 
 # -----------------------------------------------------------------------------
-# Policy: Platform Admin (Terraform + infra management)
+# Policy 1: Terraform State + IAM Management
 # -----------------------------------------------------------------------------
-resource "aws_iam_role_policy" "platform_admin" {
-  name = "${local.name_prefix}-platform-admin"
+resource "aws_iam_role_policy" "terraform_and_iam" {
+  name = "${local.name_prefix}-terraform-iam"
   role = aws_iam_role.github_actions.id
 
   policy = jsonencode({
@@ -136,11 +136,11 @@ resource "aws_iam_role_policy" "platform_admin" {
         Action = [
           "iam:CreateRole",
           "iam:DeleteRole",
-           "iam:GetRole",
-           "iam:UpdateRole",
-           "iam:UpdateRoleDescription",
-           "iam:UpdateAssumeRolePolicy",
-           "iam:PassRole",
+          "iam:GetRole",
+          "iam:UpdateRole",
+          "iam:UpdateRoleDescription",
+          "iam:UpdateAssumeRolePolicy",
+          "iam:PassRole",
           "iam:TagRole",
           "iam:UntagRole",
           "iam:ListRoleTags",
@@ -167,6 +167,26 @@ resource "aws_iam_role_policy" "platform_admin" {
         ]
         Resource = "*"
       },
+      {
+        Sid    = "STSCallerIdentity"
+        Effect = "Allow"
+        Action = ["sts:GetCallerIdentity"]
+        Resource = "*"
+      },
+    ]
+  })
+}
+
+# -----------------------------------------------------------------------------
+# Policy 2: Compute + Networking (Lambda, API GW, VPC, Step Functions, Cognito)
+# -----------------------------------------------------------------------------
+resource "aws_iam_role_policy" "compute_networking" {
+  name = "${local.name_prefix}-compute-networking"
+  role = aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
       {
         Sid    = "LambdaManagement"
         Effect = "Allow"
@@ -216,24 +236,6 @@ resource "aws_iam_role_policy" "platform_admin" {
           "apigateway:TagResource",
         ]
         Resource = "*"
-      },
-      {
-        Sid    = "DynamoDBManagement"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:CreateTable",
-          "dynamodb:DeleteTable",
-          "dynamodb:DescribeTable",
-          "dynamodb:DescribeContinuousBackups",
-          "dynamodb:UpdateContinuousBackups",
-          "dynamodb:UpdateTable",
-          "dynamodb:ListTagsOfResource",
-          "dynamodb:TagResource",
-          "dynamodb:UntagResource",
-          "dynamodb:DescribeTimeToLive",
-          "dynamodb:UpdateTimeToLive",
-        ]
-        Resource = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table/${var.project_name}-*"
       },
       {
         Sid    = "CognitoManagement"
@@ -326,6 +328,38 @@ resource "aws_iam_role_policy" "platform_admin" {
         ]
         Resource = "arn:${local.partition}:states:${local.region}:${local.account_id}:stateMachine:${var.project_name}-*"
       },
+    ]
+  })
+}
+
+# -----------------------------------------------------------------------------
+# Policy 3: Observability + Data (SSM, CloudWatch, SNS, DynamoDB)
+# -----------------------------------------------------------------------------
+resource "aws_iam_role_policy" "observability_data" {
+  name = "${local.name_prefix}-observability-data"
+  role = aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "DynamoDBManagement"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:CreateTable",
+          "dynamodb:DeleteTable",
+          "dynamodb:DescribeTable",
+          "dynamodb:DescribeContinuousBackups",
+          "dynamodb:UpdateContinuousBackups",
+          "dynamodb:UpdateTable",
+          "dynamodb:ListTagsOfResource",
+          "dynamodb:TagResource",
+          "dynamodb:UntagResource",
+          "dynamodb:DescribeTimeToLive",
+          "dynamodb:UpdateTimeToLive",
+        ]
+        Resource = "arn:${local.partition}:dynamodb:${local.region}:${local.account_id}:table/${var.project_name}-*"
+      },
       {
         Sid    = "SSMParameters"
         Effect = "Allow"
@@ -394,14 +428,6 @@ resource "aws_iam_role_policy" "platform_admin" {
           "cloudwatch:DescribeAlarms",
           "cloudwatch:ListTagsForResource",
           "cloudwatch:TagResource",
-        ]
-        Resource = "*"
-      },
-      {
-        Sid    = "STSCallerIdentity"
-        Effect = "Allow"
-        Action = [
-          "sts:GetCallerIdentity",
         ]
         Resource = "*"
       },

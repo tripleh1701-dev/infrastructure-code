@@ -332,6 +332,15 @@ resource "aws_lambda_function" "main" {
   filename         = var.package_path
   source_code_hash = fileexists(var.package_path) ? filebase64sha256(var.package_path) : null
 
+  # Code is deployed by workflow 04; Terraform should manage infra/config only.
+  # Without this, infra syncs can overwrite backend code with placeholder artifacts.
+  lifecycle {
+    ignore_changes = [
+      filename,
+      source_code_hash,
+    ]
+  }
+
   reserved_concurrent_executions = var.reserved_concurrent_executions
 
   environment {

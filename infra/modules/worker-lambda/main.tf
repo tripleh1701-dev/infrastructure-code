@@ -108,7 +108,7 @@ resource "aws_iam_role_policy" "cloudformation" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["cloudformation:CreateStack", "cloudformation:DeleteStack", "cloudformation:DescribeStacks", "cloudformation:DescribeStackEvents", "cloudformation:UpdateStack"]
+        Action   = ["cloudformation:CreateStack", "cloudformation:DeleteStack", "cloudformation:DescribeStacks", "cloudformation:DescribeStackEvents", "cloudformation:DescribeStackResources", "cloudformation:UpdateStack"]
         Resource = "*"
       },
       {
@@ -250,6 +250,14 @@ resource "aws_lambda_function" "worker" {
 
   filename         = var.package_path
   source_code_hash = fileexists(var.package_path) ? filebase64sha256(var.package_path) : null
+
+  # Code is deployed by workflows; Terraform should manage infra/config only.
+  lifecycle {
+    ignore_changes = [
+      filename,
+      source_code_hash,
+    ]
+  }
 
   dynamic "vpc_config" {
     for_each = var.vpc_subnet_ids != null ? [1] : []
