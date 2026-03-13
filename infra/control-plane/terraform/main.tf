@@ -643,3 +643,20 @@ resource "aws_ssm_parameter" "delete_account_sfn" {
   overwrite = true
   tags      = local.common_tags
 }
+
+# =============================================================================
+# 11. GitHub Actions OIDC Role (CI/CD)
+# =============================================================================
+module "github_oidc" {
+  source = "../../modules/github-oidc"
+  count  = var.enable_github_oidc && var.github_org != "" && var.github_repo != "" ? 1 : 0
+
+  project_name         = var.project_name
+  github_org           = var.github_org
+  github_repo          = var.github_repo
+  create_oidc_provider = var.create_oidc_provider
+  tf_state_bucket      = var.tf_state_bucket
+  tf_lock_table        = var.tf_lock_table
+  data_plane_role_arn  = var.data_plane_role_arn
+  tags                 = local.common_tags
+}

@@ -117,3 +117,14 @@ output "platform_admin_account_id" {
 }
 
 data "aws_caller_identity" "current" {}
+
+# --- GitHub OIDC ---
+output "github_actions_role_arn" {
+  description = "ARN of the GitHub Actions OIDC role (use as PLATFORM_ADMIN_ROLE_ARN secret)"
+  value       = try(module.github_oidc[0].role_arn, "")
+}
+
+output "github_oidc_provider_arn" {
+  description = "ARN of the GitHub OIDC identity provider"
+  value       = try(module.github_oidc[0].oidc_provider_arn, "")
+}

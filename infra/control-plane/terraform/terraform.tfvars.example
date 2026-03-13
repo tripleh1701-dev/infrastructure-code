@@ -33,3 +33,11 @@ platform_login_url              = ""                            # Auto-derived f
 
 # ---- Admin ----
 admin_email                     = "admin@yourdomain.com"        # Cognito admin user for smoke test verification
+
+# ---- GitHub Actions OIDC ----
+enable_github_oidc   = true
+create_oidc_provider = true                     # Set false if OIDC provider already exists in this AWS account
+github_org           = "your-github-org"        # GitHub org or username
+github_repo          = "license-portal"         # Repository name
+tf_state_bucket      = "your-tf-state-bucket"   # S3 bucket for Terraform state
+tf_lock_table        = "your-tf-lock-table"     # DynamoDB table for Terraform lock

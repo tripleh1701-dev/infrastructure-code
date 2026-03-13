@@ -178,3 +178,40 @@ variable "admin_email" {
   type        = string
   default     = ""
 }
+
+# ---- GitHub OIDC ----
+variable "github_org" {
+  description = "GitHub organization or username that owns the repository"
+  type        = string
+  default     = ""
+}
+
+variable "github_repo" {
+  description = "GitHub repository name (e.g. 'license-portal')"
+  type        = string
+  default     = ""
+}
+
+variable "enable_github_oidc" {
+  description = "Whether to create the GitHub OIDC provider and IAM role for CI/CD"
+  type        = bool
+  default     = true
+}
+
+variable "create_oidc_provider" {
+  description = "Whether to create the GitHub OIDC provider (set false if it already exists in this account)"
+  type        = bool
+  default     = true
+}
+
+variable "tf_state_bucket" {
+  description = "S3 bucket name for Terraform state (used for OIDC role policy)"
+  type        = string
+  default     = ""
+}
+
+variable "tf_lock_table" {
+  description = "DynamoDB table name for Terraform state locking (used for OIDC role policy)"
+  type        = string
+  default     = ""
+}
