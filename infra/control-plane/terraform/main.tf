@@ -182,6 +182,7 @@ module "lambda" {
   data_plane_dynamodb_name         = var.data_plane_dynamodb_name
   data_plane_region                = var.data_plane_region != "" ? var.data_plane_region : var.aws_region
   cross_account_external_id        = var.cross_account_external_id
+  cross_account_role_arns          = ["arn:aws:iam::*:role/${var.project_name}-${var.environment}-customer-account-access"]
   data_plane_dynamodb_arn_patterns = [
     "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project_name}-${var.environment}-*",
     "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/account-admin-public-${var.environment}"

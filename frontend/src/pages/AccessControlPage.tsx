@@ -227,9 +227,12 @@ export default function AccessControlPage() {
   const [deletingUser, setDeletingUser] = useState<AccessControlUser | null>(null);
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
   
-  // Resend credentials handler (AWS mode only)
+  // Resend credentials handler
   const handleResendCredentials = async (user: AccessControlUser) => {
-    if (!isExternalApi()) return;
+    if (!isExternalApi()) {
+      toast.info("Resend Credentials is available in AWS mode only.");
+      return;
+    }
     setResendingUserId(user.id);
     try {
       const { data, error } = await httpClient.post<{ success: boolean; emailSent?: boolean; emailError?: string; fallbackPassword?: string; error?: string }>(
@@ -1236,7 +1239,7 @@ export default function AccessControlPage() {
                                     Edit
                                   </DropdownMenuItem>
                                 )}
-                                {isExternalApi() && canEdit("access-control") && (
+                                {canEdit("access-control") && (
                                   <DropdownMenuItem 
                                     onClick={() => handleResendCredentials(user)}
                                     disabled={resendingUserId === user.id}
@@ -1318,7 +1321,7 @@ export default function AccessControlPage() {
                                   Edit
                                 </DropdownMenuItem>
                               )}
-                              {isExternalApi() && canEdit("access-control") && (
+                              {canEdit("access-control") && (
                                 <DropdownMenuItem 
                                   onClick={() => handleResendCredentials(user)}
                                   disabled={resendingUserId === user.id}

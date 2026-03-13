@@ -41,7 +41,7 @@ interface SESWorkerResult {
 
 export async function handler(event: SESWorkerEvent): Promise<SESWorkerResult> {
   const region = process.env.AWS_REGION || 'us-east-1';
-  const isEnabled = process.env.CREDENTIAL_NOTIFICATION_ENABLED === 'true';
+  const isEnabled = (process.env.CREDENTIAL_NOTIFICATION_ENABLED ?? 'true') === 'true';
   const senderEmail = process.env.SES_SENDER_EMAIL || 'noreply@example.com';
   const loginUrl = process.env.PLATFORM_LOGIN_URL || 'https://portal.example.com/login';
   const platformName = process.env.PLATFORM_NAME || 'License Portal';

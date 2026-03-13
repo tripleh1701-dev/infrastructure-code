@@ -341,7 +341,7 @@ async function sendCredentialEmail(
   event: CreateAdminEvent,
   temporaryPassword: string,
 ): Promise<void> {
-  const enabled = process.env.CREDENTIAL_NOTIFICATION_ENABLED === 'true';
+  const enabled = (process.env.CREDENTIAL_NOTIFICATION_ENABLED ?? 'true') === 'true';
   if (!enabled) return;
 
   const senderEmail = process.env.SES_SENDER_EMAIL || 'noreply@example.com';

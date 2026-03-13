@@ -150,6 +150,8 @@ export class UsersService {
 
     // ── Step 1: Provision user in Cognito ──────────────────────────────
     let cognitoSub: string | null = null;
+    let credentialEmailSent = false;
+    let fallbackPassword: string | undefined;
 
     try {
       const cognitoResult = await this.cognitoProvisioning.createUser({
@@ -180,11 +182,14 @@ export class UsersService {
             },
           );
           if (notifResult.sent) {
+            credentialEmailSent = true;
             this.logger.log(`Credential email sent to ${dto.email} (msgId: ${notifResult.messageId}, audit: ${notifResult.auditId})`);
           } else if (notifResult.skipped) {
             this.logger.debug(`Credential email skipped for ${dto.email}: ${notifResult.reason}`);
+            fallbackPassword = cognitoResult.temporaryPassword;
           } else {
             this.logger.warn(`Credential email failed for ${dto.email}: ${notifResult.reason}`);
+            fallbackPassword = cognitoResult.temporaryPassword;
           }
         }
       } else if (cognitoResult.updated) {
@@ -254,6 +259,8 @@ export class UsersService {
 
     return {
       ...this.mapToUser(user),
+      credentialEmailSent,
+      fallbackPassword,
       licenseCapacity: {
         ...capacity,
         currentActiveUsers: capacity.currentActiveUsers + 1,

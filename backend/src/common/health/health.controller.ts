@@ -82,7 +82,7 @@ export class HealthController {
     this.logger.log('Running SES diagnostics');
     const region = this.configService.get<string>('AWS_REGION') || process.env.AWS_REGION || 'us-east-1';
     const senderEmail = this.configService.get<string>('SES_SENDER_EMAIL') || process.env.SES_SENDER_EMAIL || 'noreply@example.com';
-    const notificationsEnabled = (this.configService.get<string>('CREDENTIAL_NOTIFICATION_ENABLED') || process.env.CREDENTIAL_NOTIFICATION_ENABLED) === 'true';
+    const notificationsEnabled = (this.configService.get<string>('CREDENTIAL_NOTIFICATION_ENABLED') || process.env.CREDENTIAL_NOTIFICATION_ENABLED || 'true') === 'true';
 
     const sesClient = new SESClient({ region });
     const checks: Record<string, CheckResult> = {};
@@ -96,30 +96,37 @@ export class HealthController {
       duration_ms: 0,
     };
 
-    // 2. Sender identity verification
+    // 2. Sender identity verification (email OR domain)
     const verifyStart = Date.now();
+    const senderDomain = senderEmail.includes('@') ? senderEmail.split('@')[1] : senderEmail;
     try {
       const result = await sesClient.send(
         new GetIdentityVerificationAttributesCommand({
-          Identities: [senderEmail],
+          Identities: [senderEmail, senderDomain],
         }),
       );
-      const attr = result.VerificationAttributes?.[senderEmail];
-      const verificationStatus = attr?.VerificationStatus || 'NotFound';
-      const isVerified = verificationStatus === 'Success';
+      const emailStatus = result.VerificationAttributes?.[senderEmail]?.VerificationStatus || 'NotFound';
+      const domainStatus = result.VerificationAttributes?.[senderDomain]?.VerificationStatus || 'NotFound';
+      const isEmailVerified = emailStatus === 'Success';
+      const isDomainVerified = domainStatus === 'Success';
+      const isVerified = isEmailVerified || isDomainVerified;
 
       checks['sender_verification'] = {
         status: isVerified ? 'pass' : 'fail',
         message: isVerified
-          ? `Sender "${senderEmail}" is verified in SES`
-          : `Sender "${senderEmail}" is NOT verified (status: ${verificationStatus}). Emails will fail.`,
+          ? isEmailVerified
+            ? `Sender "${senderEmail}" is verified in SES`
+            : `Sender domain "${senderDomain}" is verified in SES`
+          : `Sender "${senderEmail}" and domain "${senderDomain}" are NOT verified. Emails will fail.`,
         duration_ms: Date.now() - verifyStart,
         details: {
           sender: senderEmail,
-          verification_status: verificationStatus,
+          domain: senderDomain,
+          sender_verification_status: emailStatus,
+          domain_verification_status: domainStatus,
           action: isVerified
             ? null
-            : 'Verify this email address or domain in the AWS SES console, or update SES_SENDER_EMAIL to a verified identity.',
+            : 'Verify this email address or domain in AWS SES, or update SES_SENDER_EMAIL to a verified identity.',
         },
       };
     } catch (error: any) {
@@ -129,6 +136,7 @@ export class HealthController {
         duration_ms: Date.now() - verifyStart,
         details: {
           sender: senderEmail,
+          domain: senderDomain,
           error: error.name,
           action: 'Check IAM permissions for ses:GetIdentityVerificationAttributes',
         },
@@ -168,7 +176,7 @@ export class HealthController {
         duration_ms: Date.now() - accountStart,
         details: {
           error: error.name,
-          action: 'Check IAM permissions for ses:GetAccount',
+          action: 'Check IAM permissions for ses:GetSendQuota',
         },
       };
     }

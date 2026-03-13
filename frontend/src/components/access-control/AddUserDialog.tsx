@@ -133,6 +133,11 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const handleSubmit = async () => {
     if (!isAllValid || isSubmitBlocked) return;
     
+    // Compute group/role names early so they're available for both provision and create
+    const primaryGroup = selectedGroups[0];
+    const primaryGroupName = primaryGroup?.name || "";
+    const primaryRoleName = primaryGroup?.roles?.[0]?.roleName || "Member";
+
     try {
       // Create the auth user via edge function (Supabase) or NestJS endpoint (external)
       if (formData.password) {
@@ -145,6 +150,10 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
               firstName: formData.firstName,
               lastName: formData.lastName,
               middleName: formData.middleName || undefined,
+              accountId: effectiveAccountId || undefined,
+              enterpriseId: effectiveEnterpriseId || undefined,
+              role: primaryRoleName || 'user',
+              groupName: primaryGroupName || undefined,
             }
           );
 
@@ -202,11 +211,6 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
           console.log("Auth user created/updated:", authResult);
         }
       }
-
-      // Get the first group's name for backward compatibility with assigned_group column
-      const primaryGroup = selectedGroups[0];
-      const primaryGroupName = primaryGroup?.name || "";
-      const primaryRoleName = primaryGroup?.roles?.[0]?.roleName || "Member";
 
       const result = await createUser.mutateAsync({
         firstName: formData.firstName,

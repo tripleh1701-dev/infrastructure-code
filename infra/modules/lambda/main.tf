@@ -85,7 +85,7 @@ resource "aws_iam_role_policy" "data_plane_dynamodb" {
   })
 }
 
-# Cross-account assume role for data-plane access
+# Cross-account assume role for data-plane access (default + customer-provisioned roles)
 resource "aws_iam_role_policy" "assume_data_plane" {
   count = var.data_plane_role_arn != "" ? 1 : 0
   name  = "${var.function_name}-assume-data-plane"
@@ -96,7 +96,10 @@ resource "aws_iam_role_policy" "assume_data_plane" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["sts:AssumeRole", "sts:TagSession"]
-      Resource = var.data_plane_role_arn
+      Resource = distinct(concat(
+        [var.data_plane_role_arn],
+        var.cross_account_role_arns
+      ))
     }]
   })
 }
@@ -193,7 +196,9 @@ resource "aws_iam_role_policy" "ses_send" {
       Effect = "Allow"
       Action = [
         "ses:SendEmail",
-        "ses:SendRawEmail"
+        "ses:SendRawEmail",
+        "ses:GetIdentityVerificationAttributes",
+        "ses:GetSendQuota"
       ]
       Resource = "*"
     }]

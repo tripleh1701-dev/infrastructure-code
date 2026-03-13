@@ -69,7 +69,7 @@ export class NotificationService {
     private readonly auditService: NotificationAuditService,
   ) {
     this.isEnabled =
-      this.configService.get('CREDENTIAL_NOTIFICATION_ENABLED', 'false') === 'true';
+      this.configService.get('CREDENTIAL_NOTIFICATION_ENABLED', 'true') === 'true';
 
     this.senderEmail = this.configService.get(
       'SES_SENDER_EMAIL',

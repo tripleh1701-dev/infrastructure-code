@@ -55,11 +55,11 @@ env:
   TF_VAR_data_plane_dynamodb_name: ${{ secrets.DATA_PLANE_TABLE_NAME || '' }}
   TF_VAR_data_plane_region: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_VAR_cfn_execution_role_arn: ${{ secrets.CFN_EXECUTION_ROLE_ARN || '' }}
-  TF_VAR_credential_notification_enabled: ${{ vars.CREDENTIAL_NOTIFICATION_ENABLED || 'true' }}
-  TF_VAR_ses_sender_email: ${{ vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
-  TF_VAR_platform_login_url: ${{ vars.PLATFORM_LOGIN_URL || '' }}
-  TF_VAR_platform_name: ${{ vars.PLATFORM_NAME || 'License Portal' }}
-  TF_VAR_platform_support_email: ${{ vars.PLATFORM_SUPPORT_EMAIL || 'support@example.com' }}
+  TF_VAR_credential_notification_enabled: ${{ inputs.credential_notification_enabled || vars.CREDENTIAL_NOTIFICATION_ENABLED || 'true' }}
+  TF_VAR_ses_sender_email: ${{ inputs.ses_sender_email || vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
+  TF_VAR_platform_login_url: ${{ inputs.platform_login_url || vars.PLATFORM_LOGIN_URL || '' }}
+  TF_VAR_platform_name: ${{ inputs.platform_name || vars.PLATFORM_NAME || 'License Portal' }}
+  TF_VAR_platform_support_email: ${{ inputs.platform_support_email || vars.PLATFORM_SUPPORT_EMAIL || 'support@example.com' }}
 
 jobs:
   # ===========================================================================
@@ -159,6 +159,137 @@ jobs:
           terraform apply -auto-approve
           echo "### Infrastructure Synced" >> $GITHUB_STEP_SUMMARY
           echo "Lambda environment variables and API Gateway configuration updated." >> $GITHUB_STEP_SUMMARY
+
+      - name: SES Auto Bootstrap (identity + production request)
+        run: |
+          set -euo pipefail
+
+          REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          SES_SENDER_EMAIL="${TF_VAR_ses_sender_email}"
+          PLATFORM_URL="${TF_VAR_platform_login_url}"
+
+          if [ -z "${SES_SENDER_EMAIL}" ] || [ "${SES_SENDER_EMAIL}" = "noreply@example.com" ]; then
+            echo "::error::SES_SENDER_EMAIL is missing or still default. Pass workflow input 'ses_sender_email' with a real sender address."
+            exit 1
+          fi
+
+          DOMAIN="${SES_SENDER_EMAIL#*@}"
+          echo "Configuring SES in account ${ACCOUNT_ID}, region ${REGION}, sender ${SES_SENDER_EMAIL}"
+
+          if ! aws sesv2 get-account --region "${REGION}" --output json > /tmp/ses-account.json 2>/tmp/ses-account.err; then
+            echo "::error::SES is unavailable in account ${ACCOUNT_ID} (${REGION}). Check PLATFORM_ADMIN_ROLE_ARN and region selection."
+            cat /tmp/ses-account.err || true
+            exit 1
+          fi
+
+          if ! aws sesv2 get-email-identity --region "${REGION}" --email-identity "${DOMAIN}" --output json > /tmp/ses-domain.json 2>/dev/null; then
+            echo "Creating SES domain identity for ${DOMAIN}"
+            aws sesv2 create-email-identity --region "${REGION}" --email-identity "${DOMAIN}" --output json > /tmp/ses-domain-create.json
+            aws sesv2 get-email-identity --region "${REGION}" --email-identity "${DOMAIN}" --output json > /tmp/ses-domain.json
+          fi
+
+          HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name "${DOMAIN}." --max-items 1 --output json 2>/dev/null \
+            | jq -r --arg d "${DOMAIN}." '.HostedZones[]? | select(.Name == $d) | .Id' \
+            | sed 's|/hostedzone/||' \
+            | head -n1 || true)
+
+          TOKENS=$(jq -r '.DkimAttributes.Tokens[]? // empty' /tmp/ses-domain.json)
+
+          if [ -n "${HOSTED_ZONE_ID}" ] && [ -n "${TOKENS}" ]; then
+            echo "Applying DKIM records in Route53 hosted zone ${HOSTED_ZONE_ID}"
+            for token in ${TOKENS}; do
+              cat > /tmp/route53-ses-change.json <<JSON
+{
+  "Comment":"SES DKIM automation from workflow 04",
+  "Changes":[
+    {
+      "Action":"UPSERT",
+      "ResourceRecordSet":{
+        "Name":"${token}._domainkey.${DOMAIN}.",
+        "Type":"CNAME",
+        "TTL":300,
+        "ResourceRecords":[{"Value":"${token}.dkim.amazonses.com"}]
+      }
+    }
+  ]
+}
+JSON
+              aws route53 change-resource-record-sets \
+                --hosted-zone-id "${HOSTED_ZONE_ID}" \
+                --change-batch file:///tmp/route53-ses-change.json >/dev/null
+            done
+          else
+            echo "::warning::Hosted zone not found (or no DKIM tokens) for ${DOMAIN}; external DNS update may be required."
+          fi
+
+          if ! aws sesv2 get-email-identity --region "${REGION}" --email-identity "${SES_SENDER_EMAIL}" --output json >/tmp/ses-sender.json 2>/dev/null; then
+            echo "Creating sender identity ${SES_SENDER_EMAIL} (verification email may be sent if domain isn't verified yet)"
+            aws sesv2 create-email-identity --region "${REGION}" --email-identity "${SES_SENDER_EMAIL}" --output json >/tmp/ses-sender-create.json || true
+          fi
+
+          PRODUCTION_ENABLED=$(jq -r '.ProductionAccessEnabled // false' /tmp/ses-account.json)
+          if [ "${PRODUCTION_ENABLED}" != "true" ]; then
+            REQUEST_URL="${PLATFORM_URL:-https://example.com}"
+            echo "Requesting SES production access..."
+            aws sesv2 put-account-details \
+              --region "${REGION}" \
+              --production-access-enabled \
+              --mail-type TRANSACTIONAL \
+              --website-url "${REQUEST_URL}" \
+              --contact-language EN \
+              --use-case-description "Transactional credential emails for automated account provisioning." \
+              --additional-contact-email-addresses "${SES_SENDER_EMAIL}" >/tmp/ses-production-request.json 2>/tmp/ses-production-request.err || true
+          fi
+
+          DOMAIN_STATUS=$(aws sesv2 get-email-identity --region "${REGION}" --email-identity "${DOMAIN}" --query 'VerifiedForSendingStatus' --output text 2>/dev/null || echo "false")
+          echo "### SES Auto Bootstrap" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| AWS Account | \`${ACCOUNT_ID}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| AWS Region | \`${REGION}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| SES Sender | \`${SES_SENDER_EMAIL}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain Identity | \`${DOMAIN}\` verified=\`${DOMAIN_STATUS}\` |" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${PRODUCTION_ENABLED}" = "true" ]; then
+            echo "| Production Access | already enabled |" >> $GITHUB_STEP_SUMMARY
+          elif [ -s /tmp/ses-production-request.err ]; then
+            echo "| Production Access | request attempted (check SES review status) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Production Access | request submitted |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: "Deploy Gate: SES Domain Verification"
+        if: inputs.environment == 'prod'
+        run: |
+          set -euo pipefail
+
+          REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
+          SES_SENDER_EMAIL="${TF_VAR_ses_sender_email}"
+          DOMAIN="${SES_SENDER_EMAIL#*@}"
+
+          echo "Checking SES domain verification for ${DOMAIN}..."
+
+          VERIFIED=$(aws sesv2 get-email-identity \
+            --region "${REGION}" \
+            --email-identity "${DOMAIN}" \
+            --query 'VerifiedForSendingStatus' \
+            --output text 2>/dev/null || echo "false")
+
+          echo "### SES Deploy Gate" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain | \`${DOMAIN}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Verified | \`${VERIFIED}\` |" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${VERIFIED}" != "True" ] && [ "${VERIFIED}" != "true" ]; then
+            echo "| Gate | **FAILED** — deploy blocked |" >> $GITHUB_STEP_SUMMARY
+            echo "::error::SES domain '${DOMAIN}' is NOT verified. Email delivery will fail. Complete DNS verification before deploying to production."
+            exit 1
+          fi
+
+          echo "| Gate | **PASSED** |" >> $GITHUB_STEP_SUMMARY
+          echo "SES domain '${DOMAIN}' is verified. Proceeding with deploy."
 
   # ===========================================================================
   # Step 2: Build and Deploy Lambda Code

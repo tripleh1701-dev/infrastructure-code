@@ -168,8 +168,13 @@ resource "aws_iam_role_policy" "ses" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+      Effect = "Allow"
+      Action = [
+        "ses:SendEmail",
+        "ses:SendRawEmail",
+        "ses:GetIdentityVerificationAttributes",
+        "ses:GetSendQuota"
+      ]
       Resource = "*"
     }]
   })

@@ -227,7 +227,7 @@ async function sendCredentialEmail(
   event: CognitoWorkerEvent,
   temporaryPassword: string,
 ): Promise<void> {
-  const enabled = process.env.CREDENTIAL_NOTIFICATION_ENABLED === 'true';
+  const enabled = (process.env.CREDENTIAL_NOTIFICATION_ENABLED ?? 'true') === 'true';
   if (!enabled) {
     logger.debug(`[${event.executionId}] Credential email skipped (CREDENTIAL_NOTIFICATION_ENABLED != true)`);
     return;

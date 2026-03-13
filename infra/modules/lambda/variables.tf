@@ -107,6 +107,12 @@ variable "cross_account_external_id" {
   default     = ""
 }
 
+variable "cross_account_role_arns" {
+  description = "Additional customer account role ARNs the Lambda may assume (e.g. for provisioning/deprovisioning)"
+  type        = list(string)
+  default     = []
+}
+
 variable "cognito_user_pool_arn" {
   description = "ARN of the Cognito user pool"
   type        = string
