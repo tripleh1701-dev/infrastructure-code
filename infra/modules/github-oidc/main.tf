@@ -97,9 +97,8 @@ resource "aws_iam_role" "github_actions" {
     ]
   })
 
-  # NOTE: lifecycle.ignore_changes must be a static list expression in Terraform.
-  # Keep assume_role_policy ignored in CI to prevent self-mutation 403s when the
-  # currently assumed role does not have iam:UpdateAssumeRolePolicy.
+  # NOTE: lifecycle.ignore_changes MUST stay a literal static list expression.
+  # Do not use conditionals/variables here (Terraform will fail validation).
   lifecycle {
     ignore_changes = [
       description,
@@ -559,16 +558,17 @@ resource "aws_iam_role_policy" "ses_bootstrap" {
         Resource = "*"
       },
       {
-        Sid    = "SESv2"
+        Sid    = "SESIdentityManagement"
         Effect = "Allow"
         Action = [
-          "sesv2:GetAccount",
-          "sesv2:GetEmailIdentity",
-          "sesv2:CreateEmailIdentity",
-          "sesv2:DeleteEmailIdentity",
-          "sesv2:PutAccountDetails",
-          "sesv2:PutEmailIdentityDkimSigningAttributes",
-          "sesv2:GetSendQuota",
+          # SES v2 API operations are authorized with the `ses:` IAM prefix.
+          "ses:GetAccount",
+          "ses:GetEmailIdentity",
+          "ses:CreateEmailIdentity",
+          "ses:DeleteEmailIdentity",
+          "ses:PutAccountDetails",
+          "ses:PutEmailIdentityDkimSigningAttributes",
+          "ses:GetSendQuota",
         ]
         Resource = "*"
       },
