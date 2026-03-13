@@ -645,6 +645,12 @@ resource "aws_ssm_parameter" "delete_account_sfn" {
 }
 
 # =============================================================================
+# One-time import: recover IAM role into state after file corruption
+import {
+  to = module.github_oidc[0].aws_iam_role.github_actions
+  id = "${var.project_name}-gh-platform-admin"
+}
+
 # 11. GitHub Actions OIDC Role (CI/CD)
 # =============================================================================
 module "github_oidc" {

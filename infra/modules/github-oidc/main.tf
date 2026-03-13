@@ -53,13 +53,6 @@ locals {
   name_prefix            = "${var.project_name}-gh-platform-admin"
 }
 
-# -----------------------------------------------------------------------------
-# Import existing IAM Role (one-time state recovery)
-# -----------------------------------------------------------------------------
-import {
-  to = aws_iam_role.github_actions
-  id = local.name_prefix
-}
 
 # -----------------------------------------------------------------------------
 # IAM Role (assumed by GitHub Actions via OIDC)
