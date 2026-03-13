@@ -97,12 +97,14 @@ resource "aws_iam_role" "github_actions" {
     ]
   })
 
-  # NOTE: assume_role_policy is NOT in lifecycle ignore_changes so Terraform can
-  # repair trust-policy drift (e.g. thumbprint rotation). Run the initial fix
-  # with elevated credentials if the OIDC role itself cannot authenticate.
+  # NOTE: keep trust-policy reconciliation opt-in to avoid CI self-mutation
+  # failures when the currently assumed role lacks iam:UpdateAssumeRolePolicy.
   lifecycle {
-    ignore_changes = [
+    ignore_changes = var.manage_assume_role_policy ? [
       description,
+    ] : [
+      description,
+      assume_role_policy,
     ]
   }
 

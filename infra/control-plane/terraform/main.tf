@@ -657,12 +657,13 @@ module "github_oidc" {
   source = "../../modules/github-oidc"
   count  = var.enable_github_oidc && trimspace(var.github_repo) != "" && (trimspace(var.github_org) != "" || length(split("/", trimspace(var.github_repo))) > 1) ? 1 : 0
 
-  project_name         = var.project_name
-  github_org           = var.github_org
-  github_repo          = var.github_repo
-  create_oidc_provider = var.create_oidc_provider
-  tf_state_bucket      = var.tf_state_bucket
-  tf_lock_table        = var.tf_lock_table
-  data_plane_role_arn  = var.data_plane_role_arn
-  tags                 = local.common_tags
+  project_name               = var.project_name
+  github_org                 = var.github_org
+  github_repo                = var.github_repo
+  create_oidc_provider       = var.create_oidc_provider
+  manage_assume_role_policy  = var.manage_github_oidc_assume_role_policy
+  tf_state_bucket            = var.tf_state_bucket
+  tf_lock_table              = var.tf_lock_table
+  data_plane_role_arn        = var.data_plane_role_arn
+  tags                       = local.common_tags
 }

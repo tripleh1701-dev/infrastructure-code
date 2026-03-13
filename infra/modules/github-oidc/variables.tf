@@ -19,6 +19,12 @@ variable "create_oidc_provider" {
   default     = true
 }
 
+variable "manage_assume_role_policy" {
+  description = "Whether Terraform should actively manage (update) the GitHub Actions role trust policy"
+  type        = bool
+  default     = false
+}
+
 variable "tf_state_bucket" {
   description = "S3 bucket name for Terraform state"
   type        = string

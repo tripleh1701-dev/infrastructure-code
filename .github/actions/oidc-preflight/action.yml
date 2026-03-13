@@ -31,18 +31,42 @@ runs:
           exit 0
         fi
 
-        # Decode JWT payload (base64url → base64 → json)
-        PAYLOAD=$(echo "${TOKEN}" | cut -d. -f2 | tr '_-' '/+' | fold -w 4 | sed '$ s/$/===/' | tr -d '\n' | base64 -d 2>/dev/null || echo '{}')
+        decode_base64url() {
+          local input="$1"
+          local rem=$(( ${#input} % 4 ))
+          if [ "$rem" -eq 2 ]; then input="${input}=="; fi
+          if [ "$rem" -eq 3 ]; then input="${input}="; fi
+          if [ "$rem" -eq 1 ]; then input="${input}==="; fi
+          echo "${input}" | tr '_-' '/+' | base64 -d 2>/dev/null || true
+        }
 
-        SUB=$(echo "${PAYLOAD}" | jq -r '.sub // "N/A"')
-        AUD=$(echo "${PAYLOAD}" | jq -r '.aud // "N/A"')
-        ISS=$(echo "${PAYLOAD}" | jq -r '.iss // "N/A"')
-        REPO=$(echo "${PAYLOAD}" | jq -r '.repository // "N/A"')
-        REF=$(echo "${PAYLOAD}" | jq -r '.ref // "N/A"')
-        SHA=$(echo "${PAYLOAD}" | jq -r '.sha // "N/A"')
-        WORKFLOW=$(echo "${PAYLOAD}" | jq -r '.workflow // "N/A"')
-        ENV=$(echo "${PAYLOAD}" | jq -r '.environment // "N/A"')
-        JOB_WORKFLOW_REF=$(echo "${PAYLOAD}" | jq -r '.job_workflow_ref // "N/A"')
+        # Decode JWT payload (base64url -> JSON)
+        PAYLOAD=$(decode_base64url "$(echo "${TOKEN}" | cut -d. -f2)")
+        if [ -z "${PAYLOAD}" ] || ! echo "${PAYLOAD}" | jq -e . >/dev/null 2>&1; then
+          PAYLOAD='{}'
+        fi
+
+        read_claim() {
+          local query="$1"
+          local value
+          value=$(echo "${PAYLOAD}" | jq -r "${query}" 2>/dev/null || true)
+          value=$(echo "${value}" | tr '\r\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')
+          if [ -z "${value}" ] || [ "${value}" = "null" ]; then
+            echo "N/A"
+          else
+            echo "${value}"
+          fi
+        }
+
+        SUB=$(read_claim '.sub // empty')
+        AUD=$(read_claim 'if (.aud|type) == "array" then (.aud | join(",")) else (.aud // empty) end')
+        ISS=$(read_claim '.iss // empty')
+        REPO=$(read_claim '.repository // empty')
+        REF=$(read_claim '.ref // empty')
+        SHA=$(read_claim '.sha // empty')
+        WORKFLOW=$(read_claim '.workflow // empty')
+        ENV=$(read_claim '.environment // empty')
+        JOB_WORKFLOW_REF=$(read_claim '.job_workflow_ref // empty')
 
         echo "### 🔍 OIDC Token Claims (Preflight)" >> $GITHUB_STEP_SUMMARY
         echo "| Claim | Value |" >> $GITHUB_STEP_SUMMARY
@@ -57,9 +81,17 @@ runs:
         echo "| \`environment\` | \`${ENV}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| \`job_workflow_ref\` | \`${JOB_WORKFLOW_REF}\` |" >> $GITHUB_STEP_SUMMARY
 
-        echo "sub=${SUB}" >> $GITHUB_OUTPUT
-        echo "aud=${AUD}" >> $GITHUB_OUTPUT
-        echo "repo=${REPO}" >> $GITHUB_OUTPUT
+        {
+          echo "sub<<__EOF__"
+          echo "${SUB}"
+          echo "__EOF__"
+          echo "aud<<__EOF__"
+          echo "${AUD}"
+          echo "__EOF__"
+          echo "repo<<__EOF__"
+          echo "${REPO}"
+          echo "__EOF__"
+        } >> "$GITHUB_OUTPUT"
 
         echo "Token sub claim: ${SUB}"
         echo "Token aud claim: ${AUD}"
