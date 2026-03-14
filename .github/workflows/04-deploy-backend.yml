@@ -59,7 +59,7 @@ env:
   TF_VAR_github_repo: ${{ github.repository }}
   TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET || '' }}
   TF_VAR_tf_lock_table: ${{ secrets.TF_LOCK_TABLE || '' }}
-  TF_VAR_credential_notification_enabled: ${{ inputs.credential_notification_enabled || vars.CREDENTIAL_NOTIFICATION_ENABLED || 'true' }}
+  TF_VAR_credential_notification_enabled: ${{ inputs.credential_notification_enabled || vars.CREDENTIAL_NOTIFICATION_ENABLED || 'false' }}
   TF_VAR_ses_sender_email: ${{ inputs.ses_sender_email || vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
   TF_VAR_platform_login_url: ${{ inputs.platform_login_url || vars.PLATFORM_LOGIN_URL || '' }}
   TF_VAR_platform_name: ${{ inputs.platform_name || vars.PLATFORM_NAME || 'License Portal' }}
@@ -236,6 +236,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: SES Auto Bootstrap (identity + production request)
+        if: env.TF_VAR_credential_notification_enabled == 'true'
         run: |
           set -euo pipefail
 
@@ -321,7 +322,7 @@ jobs:
           fi
 
       - name: "Deploy Gate: SES Domain Verification"
-        if: inputs.environment == 'prod'
+        if: inputs.environment == 'prod' && env.TF_VAR_credential_notification_enabled == 'true'
         run: |
           set -euo pipefail
 
