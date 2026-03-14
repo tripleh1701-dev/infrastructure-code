@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountWithDetails } from "@/hooks/useAccounts";
-import { getCountryFlag } from "@/lib/data/countries";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { useLicenses, LicenseWithDetails } from "@/hooks/useLicenses";
 import { AccountExpandedRow } from "./AccountExpandedRow";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -146,7 +146,7 @@ export function AccountTableRow({
         <td className="px-5 py-4">
         {primaryAddress ? (
             <div className="flex items-center gap-1.5 text-sm text-[#64748b]">
-              <span className="text-base leading-none">{getCountryFlag(primaryAddress.country) || ""}</span>
+              <CountryFlag country={primaryAddress.country} className="text-base" />
               <MapPin className="w-3.5 h-3.5" />
               <span>{primaryAddress.city}, {primaryAddress.country}</span>
               {(account.addresses?.length ?? 0) > 1 && (

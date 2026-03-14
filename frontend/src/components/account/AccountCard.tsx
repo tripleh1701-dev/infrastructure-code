@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AccountWithDetails } from "@/hooks/useAccounts";
-import { getCountryFlag } from "@/lib/data/countries";
+import { CountryFlag } from "@/components/ui/country-flag";
 
 interface AccountCardProps {
   account: AccountWithDetails;
@@ -149,7 +149,10 @@ export function AccountCard({
         {/* Description */}
         <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1 line-clamp-2">
           {primaryAddress 
-            ? `${getCountryFlag(primaryAddress.country)} Located in ${primaryAddress.city}, ${primaryAddress.country}${(account.addresses?.length ?? 0) > 1 ? ` (+${(account.addresses?.length ?? 0) - 1} more)` : ''}.`
+            ? <>
+                <CountryFlag country={primaryAddress.country} className="inline-block mr-1" />
+                {`Located in ${primaryAddress.city}, ${primaryAddress.country}${(account.addresses?.length ?? 0) > 1 ? ` (+${(account.addresses?.length ?? 0) - 1} more)` : ''}.`}
+              </>
             : "No location configured."
           }
           {expiringCount > 0 && ` ${expiringCount} license${expiringCount > 1 ? 's' : ''} expiring soon.`}
