@@ -82,6 +82,12 @@ variable "customer_account_role_arn" {
   default = ""
 }
 
+variable "cross_account_role_arns" {
+  description = "Additional customer account role ARNs the worker may assume (supports wildcards for multi-tenant)"
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_cloudformation" {
   type    = bool
   default = false

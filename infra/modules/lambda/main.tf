@@ -87,7 +87,7 @@ resource "aws_iam_role_policy" "data_plane_dynamodb" {
 
 # Cross-account assume role for data-plane access (default + customer-provisioned roles)
 resource "aws_iam_role_policy" "assume_data_plane" {
-  count = var.data_plane_role_arn != "" ? 1 : 0
+  count = (var.data_plane_role_arn != "" || length(var.cross_account_role_arns) > 0) ? 1 : 0
   name  = "${var.function_name}-assume-data-plane"
   role  = aws_iam_role.lambda.id
 
@@ -96,10 +96,10 @@ resource "aws_iam_role_policy" "assume_data_plane" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["sts:AssumeRole", "sts:TagSession"]
-      Resource = distinct(concat(
-        [var.data_plane_role_arn],
+      Resource = distinct(compact(concat(
+        var.data_plane_role_arn != "" ? [var.data_plane_role_arn] : [],
         var.cross_account_role_arns
-      ))
+      )))
     }]
   })
 }

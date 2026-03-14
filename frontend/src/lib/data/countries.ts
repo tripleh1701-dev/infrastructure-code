@@ -250,6 +250,12 @@ export function getCountryFlag(countryName: string): string {
   return country ? countryCodeToFlag(country.code) : "";
 }
 
+/** Get 2-letter country code for a country name (lowercase, for flag-icons CSS) */
+export function getCountryCode(countryName: string): string {
+  const country = countries.find(c => c.name === countryName);
+  return country ? country.code.toLowerCase() : "";
+}
+
 /** Get sorted country names */
 export function getCountryNames(): string[] {
   return countries.map(c => c.name).sort();

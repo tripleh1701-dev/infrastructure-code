@@ -248,6 +248,7 @@ module "create_infra_worker" {
   dynamodb_table_arn        = module.account_registry_dynamodb.table_arn
   enable_dynamodb           = true
   customer_account_role_arn = var.data_plane_role_arn
+  cross_account_role_arns  = ["arn:aws:iam::*:role/${var.project_name}-${var.environment}-customer-account-access"]
   enable_cloudformation     = true
   ssm_prefix                      = "${var.project_name}/${var.environment}"
   data_plane_dynamodb_arn_patterns = [
@@ -289,6 +290,7 @@ module "delete_infra_worker" {
   dynamodb_table_arn        = module.account_registry_dynamodb.table_arn
   enable_dynamodb           = true
   customer_account_role_arn = var.data_plane_role_arn
+  cross_account_role_arns  = ["arn:aws:iam::*:role/${var.project_name}-${var.environment}-customer-account-access"]
   enable_cloudformation     = true
   ssm_prefix                      = "${var.project_name}/${var.environment}"
   data_plane_dynamodb_arn_patterns = [
@@ -326,6 +328,7 @@ module "poll_infra_worker" {
   dynamodb_table_arn             = module.account_registry_dynamodb.table_arn
   enable_dynamodb                = true
   customer_account_role_arn      = var.data_plane_role_arn
+  cross_account_role_arns        = ["arn:aws:iam::*:role/${var.project_name}-${var.environment}-customer-account-access"]
   enable_cloudformation          = true
   enable_step_functions_callback = true
   ssm_prefix                     = "${var.project_name}/${var.environment}"
