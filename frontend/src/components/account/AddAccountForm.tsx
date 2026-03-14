@@ -54,6 +54,7 @@ import {
   getPasswordRequirementStatus,
 } from "@/lib/validations/account";
 import { useGroups } from "@/hooks/useGroups";
+import { isExternalApi } from "@/lib/api/config";
 import { useEnterprises } from "@/hooks/useEnterprises";
 import { useLicenses, LicenseFormData } from "@/hooks/useLicenses";
 import { toast } from "sonner";
@@ -138,8 +139,12 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
   
-  // Fetch groups filtered by current account/enterprise context
-  const { data: groups = [] } = useGroups(selectedAccount?.id, selectedEnterprise?.id);
+  // For new account creation, fetch all groups (no account filter) so dropdowns are populated
+  // In external API mode we pass null to avoid filtering by a non-existent account
+  const { data: groups = [] } = useGroups(
+    isExternalApi() ? null : selectedAccount?.id,
+    isExternalApi() ? null : selectedEnterprise?.id
+  );
   const { enterprises } = useEnterprises();
 
   useEffect(() => {
