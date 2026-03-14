@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userAccounts, setUserAccounts] = useState<UserAccountAccess[]>([]);
 
   // ── External API: fetch user access from NestJS ────────────────────────────
-  const fetchUserAccountsExternal = useCallback(async (userEmail: string | undefined) => {
+  const fetchUserAccountsExternal = useCallback(async (userEmail: string | undefined, userAccountId?: string | null) => {
     if (!userEmail) {
       setUserAccounts([]);
       setIsSuperAdmin(false);
@@ -78,7 +78,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data) {
         setIsSuperAdmin(data.isSuperAdmin ?? false);
-        setUserAccounts(Array.isArray(data.accounts) ? data.accounts : []);
+        let accounts = Array.isArray(data.accounts) ? data.accounts : [];
+        
+        // For non-super-admins, restrict to the account from the JWT token
+        // This ensures a user logged into Account A doesn't see Account B
+        if (!data.isSuperAdmin && userAccountId) {
+          accounts = accounts.filter(a => a.accountId === userAccountId);
+        }
+        
+        setUserAccounts(accounts);
       }
     } catch (err) {
       console.error("Error fetching user access from API:", err);
@@ -165,9 +173,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Unified dispatcher ─────────────────────────────────────────────────────
   const fetchUserAccounts = useCallback(
-    async (userEmail: string | undefined) => {
+    async (userEmail: string | undefined, userAccountId?: string | null) => {
       if (isExternalApi()) {
-        return fetchUserAccountsExternal(userEmail);
+        return fetchUserAccountsExternal(userEmail, userAccountId);
       }
       return fetchUserAccountsSupabase(userEmail);
     },
@@ -244,7 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         if (authUser?.email) {
           setTimeout(() => {
-            fetchUserAccounts(authUser.email);
+            fetchUserAccounts(authUser.email, authUser.accountId);
           }, 0);
         }
       } else if (event === "SIGNED_OUT" || event === "SESSION_EXPIRED") {
