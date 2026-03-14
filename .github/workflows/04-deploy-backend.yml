@@ -321,7 +321,7 @@ jobs:
             echo "| Production Access | request submitted |" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: "Deploy Gate: SES Domain Verification"
+      - name: "Deploy Gate: SES Identity Verification"
         if: inputs.environment == 'prod' && env.TF_VAR_credential_notification_enabled == 'true'
         run: |
           set -euo pipefail
@@ -330,28 +330,63 @@ jobs:
           SES_SENDER_EMAIL="${TF_VAR_ses_sender_email}"
           DOMAIN="${SES_SENDER_EMAIL#*@}"
 
-          echo "Checking SES domain verification for ${DOMAIN}..."
+          if [ -z "${SES_SENDER_EMAIL}" ] || [ "${SES_SENDER_EMAIL}" = "noreply@example.com" ]; then
+            echo "::error::SES_SENDER_EMAIL is missing or default. Set a verified sender identity first."
+            exit 1
+          fi
 
-          VERIFIED=$(aws sesv2 get-email-identity \
+          # SESv2 checks
+          DOMAIN_VERIFIED=$(aws sesv2 get-email-identity \
             --region "${REGION}" \
             --email-identity "${DOMAIN}" \
             --query 'VerifiedForSendingStatus' \
             --output text 2>/dev/null || echo "false")
 
+          EMAIL_VERIFIED=$(aws sesv2 get-email-identity \
+            --region "${REGION}" \
+            --email-identity "${SES_SENDER_EMAIL}" \
+            --query 'VerifiedForSendingStatus' \
+            --output text 2>/dev/null || echo "false")
+
+          # SES classic fallback (covers older verified identities)
+          DOMAIN_STATUS_V1=$(aws ses get-identity-verification-attributes \
+            --region "${REGION}" \
+            --identities "${DOMAIN}" \
+            --query "VerificationAttributes.\"${DOMAIN}\".VerificationStatus" \
+            --output text 2>/dev/null || echo "unknown")
+
+          EMAIL_STATUS_V1=$(aws ses get-identity-verification-attributes \
+            --region "${REGION}" \
+            --identities "${SES_SENDER_EMAIL}" \
+            --query "VerificationAttributes.\"${SES_SENDER_EMAIL}\".VerificationStatus" \
+            --output text 2>/dev/null || echo "unknown")
+
+          PASSED="false"
+          VERIFIED_VIA="none"
+
+          if [ "${DOMAIN_VERIFIED}" = "True" ] || [ "${DOMAIN_VERIFIED}" = "true" ] || [ "${DOMAIN_STATUS_V1}" = "Success" ]; then
+            PASSED="true"; VERIFIED_VIA="domain (${DOMAIN})"
+          elif [ "${EMAIL_VERIFIED}" = "True" ] || [ "${EMAIL_VERIFIED}" = "true" ] || [ "${EMAIL_STATUS_V1}" = "Success" ]; then
+            PASSED="true"; VERIFIED_VIA="email (${SES_SENDER_EMAIL})"
+          fi
+
           echo "### SES Deploy Gate" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Domain | \`${DOMAIN}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Verified | \`${VERIFIED}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Sender | \`${SES_SENDER_EMAIL}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain Verified (v2) | \`${DOMAIN_VERIFIED}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Email Verified (v2) | \`${EMAIL_VERIFIED}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain Status (v1) | \`${DOMAIN_STATUS_V1}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Email Status (v1) | \`${EMAIL_STATUS_V1}\` |" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${VERIFIED}" != "True" ] && [ "${VERIFIED}" != "true" ]; then
+          if [ "${PASSED}" != "true" ]; then
             echo "| Gate | **FAILED** — deploy blocked |" >> $GITHUB_STEP_SUMMARY
-            echo "::error::SES domain '${DOMAIN}' is NOT verified. Email delivery will fail. Complete DNS verification before deploying to production."
+            echo "::error::Neither domain '${DOMAIN}' nor email '${SES_SENDER_EMAIL}' is verified in SES (v2/v1 checks)."
             exit 1
           fi
 
-          echo "| Gate | **PASSED** |" >> $GITHUB_STEP_SUMMARY
-          echo "SES domain '${DOMAIN}' is verified. Proceeding with deploy."
+          echo "| Gate | **PASSED** via ${VERIFIED_VIA} |" >> $GITHUB_STEP_SUMMARY
+          echo "SES identity verified via ${VERIFIED_VIA}. Proceeding with deploy."
 
   # ===========================================================================
   # Step 2: Build and Deploy Lambda Code
