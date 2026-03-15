@@ -53,7 +53,8 @@ locals {
     Project     = var.project_name
     Environment = var.environment
   }
-  ssm_prefix = "/${var.project_name}/${var.environment}"
+  ssm_prefix                       = "/${var.project_name}/${var.environment}"
+  public_account_table_arn_pattern = "arn:aws:dynamodb:${var.aws_region}:*:table/account-admin-public-*"
 }
 
 # =============================================================================
@@ -104,10 +105,12 @@ resource "aws_iam_role_policy" "dynamodb_access" {
         "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan",
         "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem", "dynamodb:DescribeTable"
       ]
-      Resource = [
+      Resource = distinct([
         module.customer_dynamodb.table_arn,
-        "${module.customer_dynamodb.table_arn}/index/*"
-      ]
+        "${module.customer_dynamodb.table_arn}/index/*",
+        local.public_account_table_arn_pattern,
+        "${local.public_account_table_arn_pattern}/index/*"
+      ])
     }]
   })
 }

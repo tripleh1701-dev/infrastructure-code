@@ -159,6 +159,7 @@ jobs:
           ENV: ${{ needs.resolve.outputs.environment }}
           ACCOUNT_ID: a0000000-0000-0000-0000-000000000001
           DATA_PLANE_ROLE_ARN: ${{ secrets.DATA_PLANE_ROLE_ARN }}
+          DATA_PLANE_TABLE_NAME: ${{ secrets.DATA_PLANE_TABLE_NAME }}
           CROSS_ACCOUNT_EXTERNAL_ID: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
         run: |
           set -euo pipefail
@@ -229,7 +230,7 @@ jobs:
           }
 
           CP_TABLE="${PROJECT}-${ENV}-control-plane"
-          DP_TABLE="account-admin-public-${ENV}"
+          DP_TABLE="${DATA_PLANE_TABLE_NAME:-account-admin-public-${ENV}}"
 
           # Control-plane table lives in the Platform Admin account (current creds)
           check_table "$CP_TABLE" "Control-Plane" "false"
