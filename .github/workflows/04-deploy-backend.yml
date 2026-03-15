@@ -55,6 +55,7 @@ env:
   TF_VAR_data_plane_dynamodb_name: ${{ secrets.DATA_PLANE_TABLE_NAME || '' }}
   TF_VAR_data_plane_region: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_VAR_cfn_execution_role_arn: ${{ secrets.CFN_EXECUTION_ROLE_ARN || '' }}
+  TF_VAR_cross_account_external_id: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID || '' }}
   TF_VAR_github_org: ${{ github.repository_owner }}
   TF_VAR_github_repo: ${{ github.repository }}
   TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET || '' }}
@@ -110,14 +111,122 @@ jobs:
           [ -n "${{ inputs.platform_support_email }}" ] && echo "| PLATFORM_SUPPORT_EMAIL | \`${{ inputs.platform_support_email }}\` |" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
+  # Step 0.5: Cross-Account Preflight — fail fast if AssumeRole is broken
+  # ===========================================================================
+  cross-account-preflight:
+    name: Cross-Account Preflight (${{ inputs.environment || 'dev' }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    needs: [persist-variables]
+    if: always() && (needs.persist-variables.result == 'success' || needs.persist-variables.result == 'skipped')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: "🔍 OIDC Preflight"
+        uses: ./.github/actions/oidc-preflight
+        id: oidc_preflight
+
+      - name: Configure AWS Credentials (Platform Admin via OIDC)
+        id: aws_oidc
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.PLATFORM_ADMIN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-session-name: gha-${{ github.run_id }}-preflight
+          retry-max-attempts: 12
+        continue-on-error: true
+
+      - name: Configure AWS Credentials (Fallback static keys)
+        if: steps.aws_oidc.outcome != 'success'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Validate cross-account STS AssumeRole
+        env:
+          DATA_PLANE_ROLE_ARN: ${{ secrets.DATA_PLANE_ROLE_ARN }}
+          CROSS_ACCOUNT_EXTERNAL_ID: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}
+          ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::Platform Admin Identity"
+          aws sts get-caller-identity
+          echo "::endgroup::"
+
+          # ── Check 1: Validate secrets are present ──
+          MISSING=""
+          if [ -z "${DATA_PLANE_ROLE_ARN}" ]; then MISSING="${MISSING} DATA_PLANE_ROLE_ARN"; fi
+          if [ -z "${CROSS_ACCOUNT_EXTERNAL_ID}" ]; then MISSING="${MISSING} CROSS_ACCOUNT_EXTERNAL_ID"; fi
+
+          if [ -n "${MISSING}" ]; then
+            echo "::error::Missing required secrets:${MISSING}. Run workflow 02 (Bootstrap Customer Account) first."
+            printf "### ❌ Cross-Account Preflight FAILED\n\nMissing secrets:%s\n" "${MISSING}" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # ── Check 2: Attempt STS AssumeRole ──
+          echo "Attempting sts:AssumeRole on ${DATA_PLANE_ROLE_ARN}..."
+          ASSUME_OUTPUT=$(aws sts assume-role \
+            --role-arn "${DATA_PLANE_ROLE_ARN}" \
+            --role-session-name "preflight-check-${GITHUB_RUN_ID}" \
+            --external-id "${CROSS_ACCOUNT_EXTERNAL_ID}" \
+            --duration-seconds 900 \
+            --output json 2>&1) || {
+            echo "::error::sts:AssumeRole FAILED for ${DATA_PLANE_ROLE_ARN}. Check: (1) identity-based policy on backend role allows sts:AssumeRole, (2) trust policy on customer role trusts this account, (3) ExternalId matches."
+            printf "### ❌ Cross-Account Preflight FAILED\n\n" >> "$GITHUB_STEP_SUMMARY"
+            printf "| Check | Result |\n|-------|--------|\n" >> "$GITHUB_STEP_SUMMARY"
+            printf "| DATA_PLANE_ROLE_ARN | \`%s\` |\n" "${DATA_PLANE_ROLE_ARN}" >> "$GITHUB_STEP_SUMMARY"
+            printf "| AssumeRole | **FAILED** |\n" >> "$GITHUB_STEP_SUMMARY"
+            printf "\n\`\`\`\n%s\n\`\`\`\n" "${ASSUME_OUTPUT}" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+
+          ASSUMED_ARN=$(printf '%s' "${ASSUME_OUTPUT}" | jq -r '.AssumedRoleUser.Arn')
+          CUSTOMER_ACCOUNT=$(printf '%s' "${ASSUME_OUTPUT}" | jq -r '.AssumedRoleUser.Arn' | cut -d: -f5)
+
+          echo "✅ Successfully assumed role: ${ASSUMED_ARN}"
+
+          # ── Check 3: Verify DynamoDB table is accessible ──
+          export AWS_ACCESS_KEY_ID=$(printf '%s' "${ASSUME_OUTPUT}" | jq -r '.Credentials.AccessKeyId')
+          export AWS_SECRET_ACCESS_KEY=$(printf '%s' "${ASSUME_OUTPUT}" | jq -r '.Credentials.SecretAccessKey')
+          export AWS_SESSION_TOKEN=$(printf '%s' "${ASSUME_OUTPUT}" | jq -r '.Credentials.SessionToken')
+
+          TABLE_NAME="account-admin-public-${ENVIRONMENT}"
+          echo "Verifying DynamoDB table ${TABLE_NAME} in customer account ${CUSTOMER_ACCOUNT}..."
+          TABLE_STATUS=$(aws dynamodb describe-table --table-name "${TABLE_NAME}" --query 'Table.TableStatus' --output text 2>&1) || {
+            echo "::warning::DynamoDB table '${TABLE_NAME}' not accessible — table may use a different naming convention."
+            TABLE_STATUS="NOT_FOUND"
+          }
+
+          printf "### ✅ Cross-Account Preflight PASSED\n\n" >> "$GITHUB_STEP_SUMMARY"
+          printf "| Check | Result |\n|-------|--------|\n" >> "$GITHUB_STEP_SUMMARY"
+          printf "| DATA_PLANE_ROLE_ARN | \`%s\` |\n" "${DATA_PLANE_ROLE_ARN}" >> "$GITHUB_STEP_SUMMARY"
+          printf "| Customer Account | \`%s\` |\n" "${CUSTOMER_ACCOUNT}" >> "$GITHUB_STEP_SUMMARY"
+          printf "| AssumeRole | ✅ Success |\n" >> "$GITHUB_STEP_SUMMARY"
+          printf "| DynamoDB Table (%s) | \`%s\` |\n" "${TABLE_NAME}" "${TABLE_STATUS}" >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
   # Step 1: Sync Infrastructure (Terraform apply for env vars, API Gateway, etc.)
   # ===========================================================================
   sync-infra:
     name: Sync Infrastructure (${{ inputs.environment || 'dev' }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'dev' }}
-    needs: [persist-variables]
-    if: always() && (needs.persist-variables.result == 'success' || needs.persist-variables.result == 'skipped') && inputs.sync_infra != false
+    needs: [persist-variables, cross-account-preflight]
+    # Always sync infra on push (prevents IAM/env drift). For manual runs, respect the sync_infra toggle.
+    if: always() && (needs.persist-variables.result == 'success' || needs.persist-variables.result == 'skipped') && (needs.cross-account-preflight.result == 'success') && (github.event_name == 'push' || inputs.sync_infra == true)
+    env:
+      # Force environment-scoped secret resolution at job level to avoid accidental empty TF vars.
+      TF_VAR_data_plane_role_arn: ${{ secrets.DATA_PLANE_ROLE_ARN }}
+      TF_VAR_data_plane_dynamodb_name: ${{ secrets.DATA_PLANE_TABLE_NAME }}
+      TF_VAR_cfn_execution_role_arn: ${{ secrets.CFN_EXECUTION_ROLE_ARN }}
+      TF_VAR_cross_account_external_id: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
 
     steps:
       - name: Checkout
@@ -170,6 +279,22 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PLATFORM_ADMIN }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PLATFORM_ADMIN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Validate critical cross-account inputs (sync)
+        run: |
+          set -euo pipefail
+
+          MISSING=""
+          [ -z "${TF_VAR_data_plane_role_arn:-}" ] && MISSING="${MISSING} DATA_PLANE_ROLE_ARN"
+          [ -z "${TF_VAR_data_plane_dynamodb_name:-}" ] && MISSING="${MISSING} DATA_PLANE_TABLE_NAME"
+          [ -z "${TF_VAR_cross_account_external_id:-}" ] && MISSING="${MISSING} CROSS_ACCOUNT_EXTERNAL_ID"
+
+          if [ -n "${MISSING}" ]; then
+            echo "::error::Missing required environment-scoped secrets:${MISSING}. This would risk Terraform drift and broken AssumeRole at runtime."
+            exit 1
+          fi
+
+          echo "Using DATA_PLANE_ROLE_ARN=${TF_VAR_data_plane_role_arn}"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -395,8 +520,8 @@ jobs:
     name: Deploy Backend (${{ inputs.environment || 'dev' }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'dev' }}
-    needs: [persist-variables, sync-infra]
-    if: always() && (needs.sync-infra.result == 'success' || needs.sync-infra.result == 'skipped') && (needs.persist-variables.result == 'success' || needs.persist-variables.result == 'skipped')
+    needs: [persist-variables, sync-infra, cross-account-preflight]
+    if: always() && (needs.cross-account-preflight.result == 'success') && (needs.sync-infra.result == 'success' || needs.sync-infra.result == 'skipped') && (needs.persist-variables.result == 'success' || needs.persist-variables.result == 'skipped')
 
     steps:
       - name: Checkout
@@ -509,3 +634,49 @@ jobs:
             exit 1
           fi
           echo "✅ Handler verified: ${HANDLER}"
+
+      - name: Post-deploy Runtime Health Gate (AssumeRole + Routing)
+        env:
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}
+          ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+          SMOKE_ACCOUNT_ID: a0000000-0000-0000-0000-000000000001
+        run: |
+          set -euo pipefail
+
+          API_URL=$(aws ssm get-parameter \
+            --name "/${PROJECT_NAME}/${ENVIRONMENT}/api/base-url" \
+            --query 'Parameter.Value' \
+            --output text 2>/dev/null || true)
+
+          if [ -z "${API_URL}" ] || [ "${API_URL}" = "None" ]; then
+            echo "::error::Missing /${PROJECT_NAME}/${ENVIRONMENT}/api/base-url in SSM; cannot run runtime health gate."
+            exit 1
+          fi
+
+          API_URL="${API_URL%/}"
+          echo "Runtime health gate against: ${API_URL}"
+
+          PREFLIGHT_JSON=$(curl -sS --fail "${API_URL}/api/health/preflight-assume-role")
+          PREFLIGHT_STATUS=$(echo "${PREFLIGHT_JSON}" | jq -r '.status // empty')
+          if [ "${PREFLIGHT_STATUS}" != "healthy" ]; then
+            echo "::error::Backend runtime AssumeRole preflight failed."
+            echo "${PREFLIGHT_JSON}" | jq .
+            exit 1
+          fi
+
+          FULL_JSON=$(curl -sS --fail "${API_URL}/api/health/full?accountId=${SMOKE_ACCOUNT_ID}")
+          CROSS_STATUS=$(echo "${FULL_JSON}" | jq -r '.sections.cross_account.status // empty')
+          ROUTING_STATUS=$(echo "${FULL_JSON}" | jq -r '.sections.routing.status // empty')
+
+          if [ "${CROSS_STATUS}" != "healthy" ] || [ "${ROUTING_STATUS}" != "healthy" ]; then
+            echo "::error::Backend runtime health failed: cross_account=${CROSS_STATUS}, routing=${ROUTING_STATUS}"
+            echo "${FULL_JSON}" | jq .
+            exit 1
+          fi
+
+          echo "### Runtime Health Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| /api/health/preflight-assume-role | ✅ healthy |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| /api/health/full cross_account | ✅ ${CROSS_STATUS} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| /api/health/full routing | ✅ ${ROUTING_STATUS} |" >> "$GITHUB_STEP_SUMMARY"

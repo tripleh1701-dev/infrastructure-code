@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Logger } from '@nestjs/common';
+import { Controller, Get, Param, Query, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../../auth/decorators/public.decorator';
 import { DynamoDBRouterService } from '../dynamodb/dynamodb-router.service';
@@ -297,6 +297,62 @@ export class HealthController {
       accountId,
       timestamp: new Date().toISOString(),
       checks,
+    };
+  }
+
+  /**
+   * Comprehensive health report — runs all checks (config, SES, assume-role,
+   * routing) in parallel and returns a unified report.
+   *
+   * GET /api/health/full?accountId=<optional>
+   */
+  @Get('full')
+  @Public()
+  async fullDiagnostics(@Param() _params: any, @Query('accountId') accountId?: string) {
+    this.logger.log('Running full health diagnostics');
+    const startTime = Date.now();
+
+    // Run all independent checks in parallel
+    const [configResult, sesResult, assumeRoleResult, routingResult] = await Promise.allSettled([
+      Promise.resolve(this.configCheck()),
+      this.sesDiagnostics(),
+      this.preflightAssumeRole(),
+      accountId ? this.routingDiagnostics(accountId) : Promise.resolve(null),
+    ]);
+
+    const sections: Record<string, any> = {};
+
+    sections.config = configResult.status === 'fulfilled'
+      ? configResult.value
+      : { status: 'error', message: (configResult as PromiseRejectedResult).reason?.message };
+
+    sections.ses = sesResult.status === 'fulfilled'
+      ? sesResult.value
+      : { status: 'error', message: (sesResult as PromiseRejectedResult).reason?.message };
+
+    sections.cross_account = assumeRoleResult.status === 'fulfilled'
+      ? assumeRoleResult.value
+      : { status: 'error', message: (assumeRoleResult as PromiseRejectedResult).reason?.message };
+
+    if (accountId) {
+      sections.routing = routingResult.status === 'fulfilled'
+        ? routingResult.value
+        : { status: 'error', message: (routingResult as PromiseRejectedResult).reason?.message };
+    }
+
+    // Derive overall status
+    const statuses = Object.values(sections).map((s: any) => s?.status);
+    const overall = statuses.includes('unhealthy') || statuses.includes('error') || statuses.includes('fail')
+      ? 'unhealthy'
+      : statuses.includes('degraded') || statuses.includes('incomplete') || statuses.includes('warn')
+        ? 'degraded'
+        : 'healthy';
+
+    return {
+      status: overall,
+      timestamp: new Date().toISOString(),
+      total_duration_ms: Date.now() - startTime,
+      sections,
     };
   }
 

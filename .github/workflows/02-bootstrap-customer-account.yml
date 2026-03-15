@@ -47,6 +47,33 @@ jobs:
           aws sts get-caller-identity
           echo "::endgroup::"
 
+      - name: Validate Cross-Account Trust Inputs
+        env:
+          PLATFORM_ADMIN_ACCOUNT_ID: ${{ secrets.PLATFORM_ADMIN_ACCOUNT_ID }}
+          CROSS_ACCOUNT_EXTERNAL_ID: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID }}
+        run: |
+          set -euo pipefail
+
+          ACTUAL_PLATFORM_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          if [ -z "${PLATFORM_ADMIN_ACCOUNT_ID}" ]; then
+            echo "::error::PLATFORM_ADMIN_ACCOUNT_ID secret is empty. Set it to the Platform Admin AWS account ID."
+            exit 1
+          fi
+
+          if [ "${PLATFORM_ADMIN_ACCOUNT_ID}" != "${ACTUAL_PLATFORM_ACCOUNT_ID}" ]; then
+            echo "::error::PLATFORM_ADMIN_ACCOUNT_ID mismatch. Secret=${PLATFORM_ADMIN_ACCOUNT_ID}, actual caller=${ACTUAL_PLATFORM_ACCOUNT_ID}."
+            echo "::error::This would create a broken customer trust policy and cause sts:AssumeRole AccessDenied."
+            exit 1
+          fi
+
+          if [ -z "${CROSS_ACCOUNT_EXTERNAL_ID}" ]; then
+            echo "::error::CROSS_ACCOUNT_EXTERNAL_ID secret is empty. It must match the ExternalId used by backend/workers."
+            exit 1
+          fi
+
+          echo "✅ Cross-account trust inputs validated."
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:

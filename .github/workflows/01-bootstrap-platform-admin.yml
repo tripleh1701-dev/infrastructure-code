@@ -36,6 +36,7 @@ env:
   TF_VAR_data_plane_dynamodb_name: ${{ secrets.DATA_PLANE_TABLE_NAME || '' }}
   TF_VAR_data_plane_region: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_VAR_cfn_execution_role_arn: ${{ secrets.CFN_EXECUTION_ROLE_ARN || '' }}
+  TF_VAR_cross_account_external_id: ${{ secrets.CROSS_ACCOUNT_EXTERNAL_ID || '' }}
   TF_VAR_github_org: ${{ github.repository_owner }}
   TF_VAR_github_repo: ${{ github.repository }}
   TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET || '' }}
