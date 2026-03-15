@@ -60,9 +60,13 @@ export class DynamoDBRouterService implements OnModuleInit {
   private ssmClient: SSMClient;
   private stsClient: STSClient;
   
-  // Shared table for public accounts
+  // Shared table for platform/control-plane data
   private sharedTableName: string;
-  
+
+  // Shared customer data-plane table for public accounts
+  private publicDataPlaneTableName: string;
+  private deploymentEnvironment: string;
+
   // Cross-account role ARN for data-plane access
   private dataPlaneRoleArn: string | undefined;
   private crossAccountExternalId: string | undefined;
@@ -86,11 +90,13 @@ export class DynamoDBRouterService implements OnModuleInit {
 
   onModuleInit() {
     this.region = this.configService.get('AWS_REGION', 'us-east-1');
+    this.deploymentEnvironment = this.configService.get('NODE_ENV', 'prod');
+
     const credentials = resolveAwsCredentials(
       this.configService.get<string>('AWS_ACCESS_KEY_ID'),
       this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
     );
-    
+
     const dynamoClient = new DynamoDBClient({ region: this.region, ...(credentials && { credentials }) });
 
     this.docClient = DynamoDBDocumentClient.from(dynamoClient, {
@@ -119,8 +125,17 @@ export class DynamoDBRouterService implements OnModuleInit {
     if (!this.sharedTableName) {
       throw new Error('CONTROL_PLANE_TABLE_NAME or DYNAMODB_TABLE_NAME must be set');
     }
-    
-    this.logger.log(`DynamoDB Router initialized. Shared table: ${this.sharedTableName}, Data-plane role: ${this.dataPlaneRoleArn || 'NOT SET'}`);
+
+    // Public account customer table — prefer explicit env config, then convention
+    this.publicDataPlaneTableName = this.configService.get<string>('PUBLIC_ACCOUNT_TABLE_NAME')
+      || this.configService.get<string>('DATA_PLANE_TABLE_NAME')
+      || `account-admin-public-${this.deploymentEnvironment}`;
+
+    this.logger.log(
+      `DynamoDB Router initialized. Shared table: ${this.sharedTableName}, ` +
+      `Public data-plane table: ${this.publicDataPlaneTableName}, ` +
+      `Data-plane role: ${this.dataPlaneRoleArn || 'NOT SET'}`,
+    );
   }
 
   // =============================================================================
@@ -259,16 +274,42 @@ export class DynamoDBRouterService implements OnModuleInit {
 
     try {
       const tableConfig = await this.getAccountTableConfig(accountId);
-      
+
       if (tableConfig) {
-        this.tableCache.set(accountId, tableConfig);
-        return tableConfig.tableName;
+        const normalizedConfig = this.normalizeTableConfig(accountId, tableConfig);
+        this.tableCache.set(accountId, normalizedConfig);
+        return normalizedConfig.tableName;
       }
     } catch (error) {
       this.logger.debug(`No dedicated table found for account ${accountId}, using shared table`);
     }
 
     return this.sharedTableName;
+  }
+
+  /**
+   * Normalize table config to prevent stale SSM mappings from breaking public accounts.
+   * Public accounts should always route to the configured shared customer data-plane table.
+   */
+  private normalizeTableConfig(accountId: string, tableConfig: TableConfig): TableConfig {
+    if (
+      tableConfig.cloudType === 'public'
+      && this.publicDataPlaneTableName
+      && tableConfig.tableName !== this.publicDataPlaneTableName
+    ) {
+      this.logger.warn(
+        `Account ${accountId} has stale public table mapping "${tableConfig.tableName}" in SSM; ` +
+        `using configured public data-plane table "${this.publicDataPlaneTableName}"`,
+      );
+
+      return {
+        ...tableConfig,
+        tableName: this.publicDataPlaneTableName,
+        cachedAt: Date.now(),
+      };
+    }
+
+    return tableConfig;
   }
 
   /**

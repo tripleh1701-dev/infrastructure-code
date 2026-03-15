@@ -55,8 +55,9 @@ variable "cognito_logout_urls" {
 }
 
 variable "enable_cognito_auth" {
+  description = "Enable Cognito authorizer at API Gateway level. Set to false when NestJS JwtAuthGuard handles auth (recommended)."
   type    = bool
-  default = true
+  default = false
 }
 
 # ---- Lambda ----

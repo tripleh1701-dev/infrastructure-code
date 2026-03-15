@@ -173,7 +173,7 @@ async function getAllAccounts(): Promise<AccountRecord[]> {
 async function backfillAccount(account: AccountRecord): Promise<BackfillResult> {
   const tableName =
     account.cloudType === 'private'
-      ? `app-${process.env.NODE_ENV || 'staging'}-account-${account.id}`
+      ? `app-${environment}-account-${account.id}`
       : publicAccountTable;
 
   const params: ParamResult[] = [];
