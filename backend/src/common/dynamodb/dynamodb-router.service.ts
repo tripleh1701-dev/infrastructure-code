@@ -333,7 +333,7 @@ export class DynamoDBRouterService implements OnModuleInit {
   /**
    * Check if an account has a customer-specific table (private OR public customer table).
    * Returns true for any account with SSM routing parameters — both private (dedicated)
-   * and public (shared customer table like account-admin-public-staging).
+   * and public (shared customer table like account-admin-public-{env}).
    */
   async isCustomerAccount(accountId: string): Promise<boolean> {
     const tableName = await this.resolveTableName(accountId);

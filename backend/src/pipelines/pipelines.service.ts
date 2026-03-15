@@ -38,7 +38,7 @@ export interface Pipeline {
  * Pipelines Service
  *
  * Routes all customer operational data to the correct DynamoDB table:
- * - Public accounts → shared customer table (account-admin-public-staging)
+ * - Public accounts → shared customer table (account-admin-public-{env})
  *   PK: ACCT#<accountId>       SK: PIPELINE#<pipelineId>
  * - Private accounts → dedicated customer table
  *   PK: PIPELINE#LIST          SK: PIPELINE#<pipelineId>

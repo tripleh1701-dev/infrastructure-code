@@ -22,7 +22,8 @@
  *
  * Environment variables:
  *   DYNAMODB_TABLE_NAME / CONTROL_PLANE_TABLE_NAME  — control-plane table
- *   PUBLIC_ACCOUNT_TABLE_NAME                       — customer table for public accounts (default: account-admin-public-staging)
+ *   PUBLIC_ACCOUNT_TABLE_NAME / DATA_PLANE_TABLE_NAME — customer table for public accounts (default: account-admin-public-{NODE_ENV})
+ *   NODE_ENV                                        — environment name (default: prod)
  *   AWS_REGION                                      — AWS region (default: us-east-1)
  */
 
@@ -41,8 +42,9 @@ if (!controlPlaneTable) {
   process.exit(1);
 }
 
+const environment = process.env.NODE_ENV || 'prod';
 const publicAccountTable =
-  process.env.PUBLIC_ACCOUNT_TABLE_NAME || 'account-admin-public-staging';
+  process.env.PUBLIC_ACCOUNT_TABLE_NAME || process.env.DATA_PLANE_TABLE_NAME || `account-admin-public-${environment}`;
 
 const dryRun = process.argv.includes('--dry-run');
 const jsonOutput = process.argv.includes('--json');

@@ -43,7 +43,7 @@ export interface BuildExecution {
  * Builds Service
  *
  * Routes all customer operational data to the correct DynamoDB table:
- * - Public accounts → shared customer table (account-admin-public-staging)
+ * - Public accounts → shared customer table (account-admin-public-{env})
  *   PK: ACCOUNT#<accountId>         SK: BUILD_JOB#<id>
  * - Private accounts → dedicated customer table
  *   PK: BUILD_JOB#LIST             SK: BUILD_JOB#<id>
