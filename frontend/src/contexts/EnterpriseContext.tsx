@@ -35,12 +35,21 @@ export function EnterpriseProvider({ children }: { children: ReactNode }) {
   const [selectedEnterprise, setSelectedEnterprise] = useState<Enterprise | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  const { isSuperAdmin, userAccounts, isAuthenticated } = useAuth();
+  const { isSuperAdmin, userAccounts, isAuthenticated, user } = useAuth();
   const { selectedAccount } = useAccountContext();
 
   // ── Shared: apply default selection & sorting ──────────────────────────────
   const applyDefaultSelection = (sorted: Enterprise[]) => {
     if (!selectedEnterprise && sorted.length > 0) {
+      // For technical users with a JWT enterprise claim, pre-select that enterprise
+      const jwtEnterpriseId = user?.enterpriseId;
+      if (!isSuperAdmin && jwtEnterpriseId) {
+        const jwtEnterprise = sorted.find(e => e.id === jwtEnterpriseId);
+        if (jwtEnterprise) {
+          setSelectedEnterprise(jwtEnterprise);
+          return;
+        }
+      }
       const global = sorted.find(e => e.id === GLOBAL_ENTERPRISE_ID) || sorted[0];
       setSelectedEnterprise(global);
     } else if (selectedEnterprise && sorted.length > 0) {

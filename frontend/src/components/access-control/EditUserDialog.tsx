@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { DialogTitle } from "@/components/ui/dialog";
-import { 
-  User, 
-  Sparkles, 
-  Mail, 
-  Calendar, 
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
+import {
+  User,
+  Sparkles,
+  Mail,
+  Calendar,
   Shield,
   Users,
   Building2,
@@ -84,10 +94,10 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
   const updateUser = useUpdateAccessControlUser();
   const updateUserWorkstreams = useUpdateUserWorkstreams();
   const updateUserGroups = useUpdateUserGroups();
-  
+
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
-  
+
   // Fetch groups filtered by current account/enterprise context
   const { data: groups = [] } = useGroups(
     selectedAccount?.id || null,
@@ -109,33 +119,62 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
     accountId: "",
     isTechnicalUser: false,
   });
-  
+
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedWorkstreams, setSelectedWorkstreams] = useState<string[]>([]);
   const [initialWorkstreamsLoaded, setInitialWorkstreamsLoaded] = useState(false);
   const [initialGroupsLoaded, setInitialGroupsLoaded] = useState(false);
+  const [showUnsavedAlert, setShowUnsavedAlert] = useState(false);
+
+  // Store initial values to detect changes
+  const initialFormData = useRef<typeof formData | null>(null);
+  const initialGroupIdsRef = useRef<string[]>([]);
+  const initialWorkstreamIdsRef = useRef<string[]>([]);
 
   // Fetch user's current group assignments
-  const { data: userGroups = [] } = useUserGroups(user?.id);
+  const { data: userGroups = [], isFetched: userGroupsFetched } = useUserGroups(user?.id);
 
-  // Check for duplicate email within the same account + enterprise combination (excluding current user)
-  const { isDuplicate: isEmailDuplicate, isChecking: isCheckingEmail } = useCheckUserEmailExists(
-    formData.email,
+  const initialWorkstreamIds = useMemo(
+    () => user?.workstreams?.map((ws) => ws.workstreamId).filter(Boolean) ?? [],
+    [user]
+  );
+
+  const resolvedGroupIds = useMemo(() => {
+    if (selectedGroupIds.length > 0) return selectedGroupIds;
+    if (userGroups.length > 0) return userGroups.map((ug) => ug.groupId);
+    if (user?.groups?.length) return user.groups.map((group) => group.groupId);
+    if (user?.assignedGroup) {
+      const legacyGroup = groups.find((group) => group.name === user.assignedGroup);
+      if (legacyGroup) return [legacyGroup.id];
+    }
+    return [];
+  }, [selectedGroupIds, userGroups, user?.groups, user?.assignedGroup, groups]);
+
+  const resolvedWorkstreamIds = useMemo(() => {
+    if (selectedWorkstreams.length > 0) return selectedWorkstreams;
+    return initialWorkstreamIds;
+  }, [selectedWorkstreams, initialWorkstreamIds]);
+
+  // Check for duplicate email only when email has actually changed from the original
+  const emailChanged = user ? formData.email.trim().toLowerCase() !== user.email.trim().toLowerCase() : false;
+  const { isDuplicate: rawEmailDuplicate, isChecking: rawCheckingEmail } = useCheckUserEmailExists(
+    emailChanged ? formData.email : "",
     formData.accountId || selectedAccount?.id || null,
     selectedEnterprise?.id || null,
-    user?.id // Exclude current user when editing
+    user?.id
   );
+  const isEmailDuplicate = emailChanged && rawEmailDuplicate;
+  const isCheckingEmail = emailChanged && rawCheckingEmail;
 
   // Reset everything when dialog opens/closes or user changes
   useEffect(() => {
     if (open && user) {
-      // Reset initial loaded flag first
       setInitialWorkstreamsLoaded(false);
       setInitialGroupsLoaded(false);
       setCurrentStep(1);
       setDirection(0);
-      
-      setFormData({
+
+      const initial = {
         firstName: user.firstName,
         middleName: user.middleName || "",
         lastName: user.lastName,
@@ -145,60 +184,68 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         endDate: user.endDate || "",
         accountId: user.accountId || "",
         isTechnicalUser: user.isTechnicalUser,
-      });
-      
-      // Set initial workstreams from user data
-      const workstreamIds = user.workstreams && user.workstreams.length > 0
-        ? user.workstreams.map(ws => ws.workstreamId)
-        : [];
-      
-      setSelectedWorkstreams(workstreamIds);
-      
-      // Set loaded flag after a small delay to ensure state is set
+      };
+      setFormData(initial);
+      initialFormData.current = initial;
+
+      const groupIds = user.groups?.map((group) => group.groupId) ?? [];
+      setSelectedGroupIds(groupIds);
+      initialGroupIdsRef.current = groupIds;
+
+      setSelectedWorkstreams(initialWorkstreamIds);
+      initialWorkstreamIdsRef.current = initialWorkstreamIds;
+
       setTimeout(() => {
         setInitialWorkstreamsLoaded(true);
       }, 50);
     } else if (!open) {
-      // Reset when dialog closes
       setInitialWorkstreamsLoaded(false);
       setInitialGroupsLoaded(false);
       setSelectedWorkstreams([]);
       setSelectedGroupIds([]);
       setCurrentStep(1);
+      initialFormData.current = null;
     }
-  }, [open, user]);
+  }, [open, user, initialWorkstreamIds]);
 
-  // Load user groups when userGroups data is available
+  // Load user groups when userGroups query has completed
   useEffect(() => {
-    if (open && user && userGroups.length >= 0 && !initialGroupsLoaded) {
-      // If we have group assignments from junction table, use them
+    if (open && user && userGroupsFetched && !initialGroupsLoaded) {
       if (userGroups.length > 0) {
-        setSelectedGroupIds(userGroups.map(ug => ug.groupId));
+        setSelectedGroupIds(userGroups.map((ug) => ug.groupId));
+      } else if (user?.groups?.length) {
+        setSelectedGroupIds(user.groups.map((group) => group.groupId));
       } else if (user.assignedGroup) {
-        // Fall back to legacy assigned_group field
-        const legacyGroup = groups.find(g => g.name === user.assignedGroup);
+        const legacyGroup = groups.find((g) => g.name === user.assignedGroup);
         if (legacyGroup) {
           setSelectedGroupIds([legacyGroup.id]);
         }
       }
       setInitialGroupsLoaded(true);
     }
-  }, [open, user, userGroups, groups, initialGroupsLoaded]);
+  }, [open, user, userGroups, userGroupsFetched, groups, initialGroupsLoaded]);
+
   const handleWorkstreamChange = useCallback((ids: string[]) => {
     setSelectedWorkstreams(ids);
   }, []);
 
   const handleSubmit = async () => {
-    if (!user || isEmailDuplicate || selectedGroupIds.length === 0) return;
+    if (
+      !user ||
+      isEmailDuplicate ||
+      isCheckingEmail ||
+      resolvedGroupIds.length === 0 ||
+      resolvedWorkstreamIds.length === 0 ||
+      isSubmitting
+    ) return;
 
     setIsSubmitting(true);
     try {
-      // Get the selected group to derive role
-      const selectedGroups = groups.filter(g => selectedGroupIds.includes(g.id));
+      const selectedGroups = groups.filter((g) => resolvedGroupIds.includes(g.id));
       const primaryGroup = selectedGroups[0];
       const primaryGroupName = primaryGroup?.name || user?.assignedGroup || "";
       const derivedRole = primaryGroup?.roles?.[0]?.roleName || user?.assignedRole || "Member";
-      
+
       await updateUser.mutateAsync({
         id: user.id,
         data: {
@@ -208,25 +255,23 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
           email: formData.email,
           status: formData.status,
           startDate: formData.startDate,
-          endDate: formData.endDate || undefined,
+          endDate: formData.endDate || null,
           assignedGroup: primaryGroupName,
           assignedRole: derivedRole,
           isTechnicalUser: formData.isTechnicalUser,
         },
       });
-      
-      // Update workstream assignments
+
       await updateUserWorkstreams.mutateAsync({
         userId: user.id,
-        workstreamIds: selectedWorkstreams,
+        workstreamIds: resolvedWorkstreamIds,
       });
 
-      // Update group assignments
       await updateUserGroups.mutateAsync({
         userId: user.id,
-        groupIds: selectedGroupIds,
+        groupIds: resolvedGroupIds,
       });
-      
+
       onOpenChange(false);
     } catch (error) {
       // Error handled by mutation
@@ -235,8 +280,33 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
     }
   };
 
+  const hasUnsavedChanges = useCallback(() => {
+    if (!initialFormData.current) return false;
+    const init = initialFormData.current;
+    const formChanged = Object.keys(init).some(
+      (key) => formData[key as keyof typeof formData] !== init[key as keyof typeof init]
+    );
+    const groupsChanged = JSON.stringify([...selectedGroupIds].sort()) !== JSON.stringify([...initialGroupIdsRef.current].sort());
+    const workstreamsChanged = JSON.stringify([...selectedWorkstreams].sort()) !== JSON.stringify([...initialWorkstreamIdsRef.current].sort());
+    return formChanged || groupsChanged || workstreamsChanged;
+  }, [formData, selectedGroupIds, selectedWorkstreams]);
+
   const handleClose = () => {
+    if (hasUnsavedChanges()) {
+      setShowUnsavedAlert(true);
+    } else {
+      onOpenChange(false);
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    setShowUnsavedAlert(false);
     onOpenChange(false);
+  };
+
+  const handleSaveAndClose = async () => {
+    setShowUnsavedAlert(false);
+    await handleSubmit();
   };
 
   const goToStep = (step: number) => {
@@ -250,11 +320,15 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
   const prevStep = () => goToStep(currentStep - 1);
 
   // Step validations - removed assignedRole requirement since roles come from group
+  // For step 4, consider it valid if we have resolved assignments OR if data is still loading
+  const hasGroups = selectedGroupIds.length > 0 || userGroups.length > 0 || (user?.groups && user.groups.length > 0) || !!user?.assignedGroup;
+  const hasWorkstreams = selectedWorkstreams.length > 0 || initialWorkstreamIds.length > 0;
+
   const stepValidation = {
     1: Boolean(formData.firstName && formData.lastName && formData.email),
     2: Boolean(formData.startDate),
     3: Boolean(formData.status),
-    4: Boolean(selectedGroupIds.length > 0 && selectedWorkstreams.length > 0),
+    4: Boolean(hasGroups && hasWorkstreams),
   };
 
   const isCurrentStepValid = stepValidation[currentStep as keyof typeof stepValidation];
@@ -280,25 +354,6 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className="space-y-6"
           >
-            {/* Header Card */}
-            <motion.div
-              variants={fieldVariants}
-              initial="hidden"
-              animate="visible"
-              custom={0}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 border border-primary/20"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-              <div className="relative flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg">
-                  <User className="w-7 h-7 text-primary-foreground" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Personal Information</h3>
-                  <p className="text-sm text-muted-foreground">Basic details about the user</p>
-                </div>
-              </div>
-            </motion.div>
 
             {/* Name Fields */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-fluid-sm">
@@ -386,25 +441,6 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className="space-y-6"
           >
-            {/* Header Card */}
-            <motion.div
-              variants={fieldVariants}
-              initial="hidden"
-              animate="visible"
-              custom={0}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent p-6 border border-blue-500/20"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-              <div className="relative flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
-                  <Calendar className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Access Period & Account</h3>
-                  <p className="text-sm text-muted-foreground">Define access duration and account association</p>
-                </div>
-              </div>
-            </motion.div>
 
             {/* Date Fields */}
             <div className="form-grid">
@@ -431,31 +467,6 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
               </motion.div>
             </div>
 
-            {/* Account Association */}
-            <motion.div variants={fieldVariants} initial="hidden" animate="visible" custom={3} className="space-y-3">
-              <Label className="text-sm font-medium flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-muted-foreground" />
-                Linked Account
-              </Label>
-              {(user?.accountId || selectedAccount) ? (
-                <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-xl border">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{user?.accountName || selectedAccount?.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {user?.accountId ? "From Account Technical User" : "From header selection"}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-xl border border-dashed">
-                  <Building2 className="w-5 h-5 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No account selected in header</p>
-                </div>
-              )}
-            </motion.div>
           </motion.div>
         );
 
@@ -471,25 +482,6 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className="space-y-6"
           >
-            {/* Header Card */}
-            <motion.div
-              variants={fieldVariants}
-              initial="hidden"
-              animate="visible"
-              custom={0}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent p-6 border border-amber-500/20"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-              <div className="relative flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-lg">
-                  <Shield className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Status & User Type</h3>
-                  <p className="text-sm text-muted-foreground">Configure user status and classification</p>
-                </div>
-              </div>
-            </motion.div>
 
             {/* Status Selection */}
             <motion.div variants={fieldVariants} initial="hidden" animate="visible" custom={1} className="space-y-3">
@@ -505,7 +497,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                       "relative p-4 rounded-xl border-2 cursor-pointer transition-all",
                       formData.status === status
                         ? status === "active"
-                          ? "border-green-500 bg-green-500/10"
+                          ? "border-emerald-400 bg-emerald-400/10"
                           : "border-red-500 bg-red-500/10"
                         : "border-border hover:border-primary/50 hover:bg-muted/50"
                     )}
@@ -516,7 +508,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                         animate={{ scale: 1 }}
                         className={cn(
                           "absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center",
-                          status === "active" ? "bg-green-500" : "bg-red-500"
+                          status === "active" ? "bg-emerald-400" : "bg-red-500"
                         )}
                       >
                         <Check className="w-3 h-3 text-white" />
@@ -525,7 +517,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         "w-3 h-3 rounded-full",
-                        status === "active" ? "bg-green-500" : "bg-red-500"
+                        status === "active" ? "bg-emerald-400" : "bg-red-500"
                       )} />
                       <span className="font-medium capitalize">{status}</span>
                     </div>
@@ -592,25 +584,6 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className="space-y-6"
           >
-            {/* Header Card */}
-            <motion.div
-              variants={fieldVariants}
-              initial="hidden"
-              animate="visible"
-              custom={0}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent p-6 border border-violet-500/20"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-              <div className="relative flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center shadow-lg">
-                  <Users className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Group Assignment</h3>
-                  <p className="text-sm text-muted-foreground">Assign the user to one or more groups to inherit their roles and permissions</p>
-                </div>
-              </div>
-            </motion.div>
 
             {/* Group Selection */}
             <motion.div variants={fieldVariants} initial="hidden" animate="visible" custom={1} className="space-y-3">
@@ -653,6 +626,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
         <VisuallyHidden>
@@ -701,8 +675,8 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                       className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 relative",
                         isActive && "bg-primary text-primary-foreground shadow-lg",
-                        !isActive && isPast && isStepValid && "bg-green-500 text-white",
-                        !isActive && !isPast && isStepValid && "bg-green-500/20 text-green-600 border-2 border-green-500/50",
+                        !isActive && isPast && isStepValid && "bg-emerald-400/80 text-white",
+                        !isActive && !isPast && isStepValid && "bg-emerald-400/15 text-emerald-500 border-2 border-emerald-400/40",
                         !isActive && !isStepValid && "bg-muted border-2 border-muted-foreground/20"
                       )}
                       animate={isActive ? { scale: [1, 1.1, 1] } : {}}
@@ -732,7 +706,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                     <div className="hidden sm:block text-left">
                       <p className={cn(
                         "text-xs font-medium transition-colors",
-                        isActive ? "text-primary" : isStepValid ? "text-green-600" : "text-muted-foreground"
+                        isActive ? "text-primary" : isStepValid ? "text-emerald-500" : "text-muted-foreground"
                       )}>
                         {step.title}
                       </p>
@@ -756,7 +730,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                       <motion.div
                         className={cn(
                           "absolute inset-0 rounded-full origin-left",
-                          isStepValid ? "bg-green-500" : isPast ? "bg-primary" : "bg-transparent"
+                          isStepValid ? "bg-emerald-400/80" : isPast ? "bg-primary" : "bg-transparent"
                         )}
                         initial={{ scaleX: 0 }}
                         animate={{ scaleX: isStepValid || isPast ? 1 : 0 }}
@@ -781,7 +755,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                 key={stepId}
                 className={cn(
                   "flex items-center gap-1.5 text-xs transition-colors",
-                  isValid ? "text-green-600" : "text-muted-foreground"
+                  isValid ? "text-emerald-500" : "text-muted-foreground"
                 )}
               >
                 {isValid ? (
@@ -796,7 +770,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         </div>
 
         {/* Step Content */}
-        <div className="flex-1 overflow-y-auto px-8 py-6 min-h-[400px]">
+        <div className="flex-1 overflow-y-auto px-8 py-6">
           <div className="transition-opacity duration-200">
             {renderStepContent()}
           </div>
@@ -812,7 +786,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                   className={cn(
                     "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold",
                     isFormValid 
-                      ? "bg-green-500 text-white" 
+                      ? "bg-emerald-400 text-white" 
                       : "bg-primary/20 text-primary"
                   )}
                   animate={isFormValid ? { scale: [1, 1.2, 1] } : {}}
@@ -827,7 +801,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
               <motion.span 
                 className={cn(
                   "text-sm font-semibold",
-                  isFormValid ? "text-green-600" : "text-primary"
+                  isFormValid ? "text-emerald-500" : "text-primary"
                 )}
                 key={Object.values(stepValidation).filter(Boolean).length}
                 initial={{ scale: 1.2, opacity: 0 }}
@@ -842,7 +816,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                 className={cn(
                   "absolute inset-y-0 left-0 rounded-full",
                   isFormValid 
-                    ? "bg-gradient-to-r from-green-500 to-green-400" 
+                    ? "bg-gradient-to-r from-emerald-400 to-emerald-300" 
                     : "bg-gradient-to-r from-primary to-primary/70"
                 )}
                 initial={{ width: "0%" }}
@@ -866,7 +840,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                   className={cn(
                     "text-[10px] transition-colors",
                     stepValidation[step.id as keyof typeof stepValidation] 
-                      ? "text-green-600 font-medium" 
+                      ? "text-emerald-500 font-medium" 
                       : "text-muted-foreground"
                   )}
                 >
@@ -908,7 +882,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!isFormValid || isSubmitting}
+                disabled={!isFormValid || isSubmitting || isEmailDuplicate || isCheckingEmail}
                 className="gap-2 min-w-[140px]"
               >
                 {isSubmitting ? (
@@ -933,5 +907,25 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         </div>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showUnsavedAlert} onOpenChange={setShowUnsavedAlert}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+          <AlertDialogDescription>
+            You have unsaved changes. Would you like to save them before closing?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleDiscardChanges}>
+            Discard
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={handleSaveAndClose} disabled={!isFormValid || isSubmitting}>
+            Save Changes
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

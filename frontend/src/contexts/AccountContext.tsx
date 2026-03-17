@@ -29,7 +29,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  const { isSuperAdmin, userAccounts, isAuthenticated } = useAuth();
+  const { isSuperAdmin, userAccounts, isAuthenticated, user } = useAuth();
 
   // ── External API: fetch accounts from NestJS ───────────────────────────────
   const fetchAccountsExternal = async () => {
@@ -46,14 +46,28 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         const accessibleIds = new Set(userAccounts.map(ua => ua.accountId));
         accountList = accountList.filter(a => accessibleIds.has(a.id));
       } else if (!isSuperAdmin && userAccounts.length === 0) {
-        // User has no account access at all
-        accountList = [];
+        // If userAccounts haven't loaded yet but we have a JWT claim, keep that account
+        const jwtAccountId = user?.accountId;
+        if (jwtAccountId) {
+          accountList = accountList.filter(a => a.id === jwtAccountId);
+        } else {
+          accountList = [];
+        }
       }
 
       setAccounts(accountList);
 
       if (!selectedAccount && accountList.length > 0) {
-        if (isSuperAdmin) {
+        // For technical users with a JWT account claim, pre-select that account
+        const jwtAccountId = user?.accountId;
+        if (!isSuperAdmin && jwtAccountId) {
+          const jwtAccount = accountList.find(a => a.id === jwtAccountId);
+          if (jwtAccount) {
+            setSelectedAccount({ id: jwtAccount.id, name: jwtAccount.name });
+          } else {
+            setSelectedAccount({ id: accountList[0].id, name: accountList[0].name });
+          }
+        } else if (isSuperAdmin) {
           // Super admin defaults to PPP account
           const pppAccountById = accountList.find(a => a.id === PPP_ACCOUNT_ID);
           const pppAccountByName = accountList.find(a => a.name === PPP_ACCOUNT_NAME);
@@ -93,12 +107,25 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
         setAccounts(data || []);
 
-        // Set PPP account as default for super admin
+        // Set default account for super admin
         if (!selectedAccount && data && data.length > 0) {
-          const pppAccountById = data.find(a => a.id === PPP_ACCOUNT_ID);
-          const pppAccountByName = data.find(a => a.name === PPP_ACCOUNT_NAME);
-          const defaultAccount = pppAccountById || pppAccountByName || data[0];
-          setSelectedAccount({ id: defaultAccount.id, name: defaultAccount.name });
+          const jwtAccountId = user?.accountId;
+          if (jwtAccountId) {
+            const jwtAccount = data.find(a => a.id === jwtAccountId);
+            if (jwtAccount) {
+              setSelectedAccount({ id: jwtAccount.id, name: jwtAccount.name });
+            } else {
+              const pppAccountById = data.find(a => a.id === PPP_ACCOUNT_ID);
+              const pppAccountByName = data.find(a => a.name === PPP_ACCOUNT_NAME);
+              const defaultAccount = pppAccountById || pppAccountByName || data[0];
+              setSelectedAccount({ id: defaultAccount.id, name: defaultAccount.name });
+            }
+          } else {
+            const pppAccountById = data.find(a => a.id === PPP_ACCOUNT_ID);
+            const pppAccountByName = data.find(a => a.name === PPP_ACCOUNT_NAME);
+            const defaultAccount = pppAccountById || pppAccountByName || data[0];
+            setSelectedAccount({ id: defaultAccount.id, name: defaultAccount.name });
+          }
         }
       } else if (userAccounts.length > 0) {
         // Regular user - only show accounts they have access to
@@ -113,9 +140,19 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
         setAccounts(data || []);
 
-        // Set first accessible account as default
+        // Set default: prefer JWT account claim, then first accessible
         if (!selectedAccount && data && data.length > 0) {
-          setSelectedAccount({ id: data[0].id, name: data[0].name });
+          const jwtAccountId = user?.accountId;
+          if (jwtAccountId) {
+            const jwtAccount = data.find(a => a.id === jwtAccountId);
+            if (jwtAccount) {
+              setSelectedAccount({ id: jwtAccount.id, name: jwtAccount.name });
+            } else {
+              setSelectedAccount({ id: data[0].id, name: data[0].name });
+            }
+          } else {
+            setSelectedAccount({ id: data[0].id, name: data[0].name });
+          }
         } else if (selectedAccount && data) {
           // Verify current selection is still accessible
           const stillAccessible = data.find(a => a.id === selectedAccount.id);

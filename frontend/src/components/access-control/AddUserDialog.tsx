@@ -92,6 +92,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const [selectedWorkstreams, setSelectedWorkstreams] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [direction, setDirection] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const passwordStatus = getPasswordRequirementStatus(formData.password);
   const passwordValid = Object.values(passwordStatus).every(Boolean);
@@ -131,7 +132,8 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const isSubmitBlocked = isAtCapacity || hasNoLicenses;
 
   const handleSubmit = async () => {
-    if (!isAllValid || isSubmitBlocked) return;
+    if (!isAllValid || isSubmitBlocked || isSubmitting) return;
+    setIsSubmitting(true);
     
     // Compute group/role names early so they're available for both provision and create
     const primaryGroup = selectedGroups[0];
@@ -245,6 +247,8 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
       handleClose();
     } catch (error) {
       // Error handled by mutation
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -334,8 +338,8 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                   className={cn(
                     "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 relative",
                     isActive && "bg-primary text-primary-foreground shadow-lg",
-                    !isActive && isPast && isStepValid && "bg-green-500 text-white",
-                    !isActive && !isPast && isStepValid && "bg-green-500/20 text-green-600 border-2 border-green-500/50",
+                    !isActive && isPast && isStepValid && "bg-emerald-400/80 text-white",
+                    !isActive && !isPast && isStepValid && "bg-emerald-400/15 text-emerald-500 border-2 border-emerald-400/40",
                     !isActive && !isStepValid && "bg-muted border-2 border-muted-foreground/20"
                   )}
                   animate={isActive ? { scale: [1, 1.1, 1] } : {}}
@@ -365,7 +369,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                 <div className="hidden sm:block text-left">
                   <p className={cn(
                     "text-xs font-medium transition-colors",
-                    isActive ? "text-primary" : isStepValid ? "text-green-600" : "text-muted-foreground"
+                    isActive ? "text-primary" : isStepValid ? "text-emerald-500" : "text-muted-foreground"
                   )}>
                     {step.title}
                   </p>
@@ -389,7 +393,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                   <motion.div
                     className={cn(
                       "absolute inset-0 rounded-full origin-left",
-                      isStepValid ? "bg-green-500" : isPast ? "bg-primary" : "bg-transparent"
+                      isStepValid ? "bg-emerald-400/80" : isPast ? "bg-primary" : "bg-transparent"
                     )}
                     initial={{ scaleX: 0 }}
                     animate={{ scaleX: isStepValid || isPast ? 1 : 0 }}
@@ -414,7 +418,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
             key={stepId}
             className={cn(
               "flex items-center gap-1.5 text-xs transition-colors",
-              isValid ? "text-green-600" : "text-muted-foreground"
+              isValid ? "text-emerald-500" : "text-muted-foreground"
             )}
           >
             {isValid ? (
@@ -432,27 +436,6 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const renderStep1 = () => (
     <div className="space-y-6">
       {/* Identity Header Card */}
-      <motion.div 
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-primary/10 to-violet-500/5 p-6 border border-primary/10"
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="relative flex items-center gap-4">
-          <motion.div 
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/30"
-            whileHover={{ scale: 1.05, rotate: 5 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          >
-            <UserPlus className="w-8 h-8" />
-          </motion.div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">User Identity</h3>
-            <p className="text-sm text-muted-foreground">Enter the basic information for the new user</p>
-          </div>
-        </div>
-      </motion.div>
 
       {/* Name Fields */}
       <motion.div 
@@ -554,7 +537,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
             <SelectContent>
               <SelectItem value="active">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
                   Active
                 </div>
               </SelectItem>
@@ -612,27 +595,6 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const renderStep2 = () => (
     <div className="space-y-6">
       {/* Access Period Header */}
-      <motion.div 
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/5 via-primary/10 to-blue-500/5 p-6 border border-primary/10"
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="relative flex items-center gap-4">
-          <motion.div 
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-primary flex items-center justify-center text-white shadow-lg shadow-violet-500/30"
-            whileHover={{ scale: 1.05, rotate: -5 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          >
-            <Calendar className="w-8 h-8" />
-          </motion.div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">Access Configuration</h3>
-            <p className="text-sm text-muted-foreground">Define the access period and account association</p>
-          </div>
-        </div>
-      </motion.div>
 
       {/* Date Fields */}
       <motion.div 
@@ -643,7 +605,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
       >
         <div className="space-y-2">
           <Label htmlFor="startDate" className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-emerald-500" />
+            <Zap className="w-4 h-4 text-emerald-400" />
             Start Date <span className="text-destructive">*</span>
           </Label>
           <Input
@@ -669,35 +631,6 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
         </div>
       </motion.div>
 
-      {/* Account Association */}
-      <motion.div
-        className="p-5 rounded-xl bg-muted/30 border space-y-4"
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.3 }}
-      >
-        <div className="flex items-center gap-2">
-          <Building2 className="w-5 h-5 text-primary" />
-          <h4 className="font-medium">Account Association</h4>
-        </div>
-        
-        {selectedAccount ? (
-          <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-xl border">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-medium">{selectedAccount.name}</p>
-              <p className="text-xs text-muted-foreground">From header selection</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-xl border border-dashed">
-            <Building2 className="w-5 h-5 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No account selected in header</p>
-          </div>
-        )}
-      </motion.div>
 
       {/* Workstream Assignment */}
       <motion.div
@@ -730,27 +663,6 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const renderStep3 = () => (
     <div className="space-y-6">
       {/* Security Header */}
-      <motion.div 
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/5 via-primary/10 to-teal-500/5 p-6 border border-emerald-500/10"
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="relative flex items-center gap-4">
-          <motion.div 
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/30"
-            whileHover={{ scale: 1.05, rotate: 5 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          >
-            <Shield className="w-8 h-8" />
-          </motion.div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">Security Settings</h3>
-            <p className="text-sm text-muted-foreground">Set up secure credentials for the user</p>
-          </div>
-        </div>
-      </motion.div>
 
       {/* Password Field */}
       <motion.div
@@ -807,7 +719,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
             Password Requirements
           </h4>
           <Badge variant={passwordValid ? "default" : "secondary"} className={cn(
-            passwordValid && "bg-emerald-500 hover:bg-emerald-600"
+            passwordValid && "bg-emerald-400 hover:bg-emerald-500"
           )}>
             {Object.values(passwordStatus).filter(Boolean).length}/5 Complete
           </Badge>
@@ -828,7 +740,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                 className={cn(
                   "flex items-center gap-3 p-3 rounded-lg border transition-all duration-300",
                   isValid 
-                    ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20" 
+                    ? "bg-emerald-50 dark:bg-emerald-400/10 border-emerald-200/70 dark:border-emerald-400/15" 
                     : "bg-muted/50 border-muted"
                 )}
                 initial={{ opacity: 0, x: -20 }}
@@ -838,7 +750,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                 <motion.div
                   className={cn(
                     "w-6 h-6 rounded-full flex items-center justify-center text-xs",
-                    isValid ? "bg-emerald-500 text-white" : "bg-muted"
+                    isValid ? "bg-emerald-400 text-white" : "bg-muted"
                   )}
                   animate={isValid ? { scale: [1, 1.2, 1] } : {}}
                   transition={{ duration: 0.3 }}
@@ -847,7 +759,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                 </motion.div>
                 <span className={cn(
                   "text-xs font-medium transition-colors",
-                  isValid ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"
+                  isValid ? "text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"
                 )}>
                   {label}
                 </span>
@@ -862,27 +774,6 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const renderStep4 = () => (
     <div className="space-y-6">
       {/* Assignment Header */}
-      <motion.div 
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500/5 via-primary/10 to-amber-500/5 p-6 border border-orange-500/10"
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="relative flex items-center gap-4">
-          <motion.div 
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/30"
-            whileHover={{ scale: 1.05, rotate: -5 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          >
-            <Users className="w-8 h-8" />
-          </motion.div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">Group Assignment</h3>
-            <p className="text-sm text-muted-foreground">Assign the user to one or more groups to inherit their roles and permissions</p>
-          </div>
-        </div>
-      </motion.div>
 
       {/* Group Selection */}
       <motion.div
@@ -907,7 +798,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
     </div>
   );
 
-  const isPending = createUser.isPending || updateUserWorkstreams.isPending || updateUserGroups.isPending;
+  const isPending = isSubmitting || createUser.isPending || updateUserWorkstreams.isPending || updateUserGroups.isPending;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -989,7 +880,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                   className={cn(
                     "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold",
                     isAllValid 
-                      ? "bg-green-500 text-white" 
+                      ? "bg-emerald-400 text-white" 
                       : "bg-primary/20 text-primary"
                   )}
                   animate={isAllValid ? { scale: [1, 1.2, 1] } : {}}
@@ -1004,7 +895,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
               <motion.span 
                 className={cn(
                   "text-sm font-semibold",
-                  isAllValid ? "text-green-600" : "text-primary"
+                  isAllValid ? "text-emerald-500" : "text-primary"
                 )}
                 key={Object.values(stepValidation).filter(Boolean).length}
                 initial={{ scale: 1.2, opacity: 0 }}
@@ -1019,7 +910,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                 className={cn(
                   "absolute inset-y-0 left-0 rounded-full",
                   isAllValid 
-                    ? "bg-gradient-to-r from-green-500 to-green-400" 
+                    ? "bg-gradient-to-r from-emerald-400 to-emerald-300" 
                     : "bg-gradient-to-r from-primary to-primary/70"
                 )}
                 initial={{ width: "0%" }}
@@ -1043,7 +934,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                   className={cn(
                     "text-[10px] transition-colors",
                     stepValidation[step.id as keyof typeof stepValidation] 
-                      ? "text-green-600 font-medium" 
+                      ? "text-emerald-500 font-medium" 
                       : "text-muted-foreground"
                   )}
                 >

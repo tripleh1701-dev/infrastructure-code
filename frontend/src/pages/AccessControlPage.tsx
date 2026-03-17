@@ -394,18 +394,21 @@ export default function AccessControlPage() {
     };
   }, [users, groups, roles]);
 
-  const filteredUsers = users.filter((user) => {
+   const filteredUsers = users.filter((user) => {
     const searchLower = searchQuery.toLowerCase();
     const fullName = `${user.firstName} ${user.middleName || ""} ${user.lastName}`.toLowerCase();
     // Include group names from groups array in search
     const groupNames = (user.groups || []).map(g => g.groupName.toLowerCase()).join(' ');
+    // Include workstream names in search
+    const workstreamNames = (user.workstreams || []).map(w => w.workstreamName.toLowerCase()).join(' ');
      
      const matchesSearch = (
       fullName.includes(searchLower) ||
       user.email.toLowerCase().includes(searchLower) ||
       user.assignedRole.toLowerCase().includes(searchLower) ||
       user.assignedGroup.toLowerCase().includes(searchLower) ||
-      groupNames.includes(searchLower)
+      groupNames.includes(searchLower) ||
+      workstreamNames.includes(searchLower)
     );
      
      // Group filter: check if user belongs to selected group

@@ -901,7 +901,7 @@ export function HierarchyView({ users, groups, roles, isLoading }: HierarchyView
 
   return (
     <div>
-      <StatsBar users={users} groups={groups} roles={roles} />
+      
 
       <Tabs value={viewMode} onValueChange={setViewMode} className="mb-4">
         <TabsList className="bg-white/80 backdrop-blur-sm border border-slate-200/60 p-1 rounded-xl">

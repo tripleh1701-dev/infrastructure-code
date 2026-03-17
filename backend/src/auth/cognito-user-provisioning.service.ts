@@ -184,6 +184,9 @@ export class CognitoUserProvisioningService {
       // Set permanent password so user doesn't face forced-change on first login
       await this.setPermanentPassword(params.email, password);
 
+      // Verify user status is CONFIRMED (not stuck in FORCE_CHANGE_PASSWORD)
+      await this.verifyUserConfirmed(params.email);
+
       // Assign to group if specified
       if (params.groupName) {
         await this.ensureGroupMembership(params.email, params.groupName);
@@ -391,6 +394,42 @@ export class CognitoUserProvisioningService {
   }
 
   // ─── RESET PASSWORD ───────────────────────────────────────────────────
+
+  /**
+   * Verify user is in CONFIRMED status after password set.
+   * If still in FORCE_CHANGE_PASSWORD, retry setting the password.
+   */
+  private async verifyUserConfirmed(email: string): Promise<void> {
+    try {
+      const user = await this.client!.send(
+        new AdminGetUserCommand({
+          UserPoolId: this.userPoolId,
+          Username: email,
+        }),
+      );
+
+      if (user.UserStatus === 'FORCE_CHANGE_PASSWORD') {
+        this.logger.warn(
+          `User ${email} still in FORCE_CHANGE_PASSWORD after setPermanentPassword — retrying`,
+        );
+        // Generate a new password and set it again
+        const retryPassword = this.generateTemporaryPassword();
+        await this.client!.send(
+          new AdminSetUserPasswordCommand({
+            UserPoolId: this.userPoolId,
+            Username: email,
+            Password: retryPassword,
+            Permanent: true,
+          }),
+        );
+        this.logger.log(`Retry setPermanentPassword succeeded for ${email}`);
+      } else {
+        this.logger.debug(`User ${email} confirmed with status: ${user.UserStatus}`);
+      }
+    } catch (error: any) {
+      this.logger.warn(`Failed to verify user status for ${email}: ${error.message}`);
+    }
+  }
 
   /**
    * Set a permanent Cognito password for a user.

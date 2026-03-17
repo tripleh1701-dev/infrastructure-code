@@ -33,7 +33,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   userAccounts: UserAccountAccess[];
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: Error | null; cognitoUser?: any }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   confirmSignUp: (email: string, code: string) => Promise<{ error: Error | null }>;
   resendConfirmationCode: (email: string) => Promise<{ error: Error | null }>;
@@ -41,6 +41,7 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   confirmResetPassword: (email: string, code: string, newPassword: string) => Promise<{ error: Error | null }>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<{ error: Error | null }>;
+  completeNewPassword: (cognitoUser: any, newPassword: string) => Promise<{ error: Error | null }>;
   refetchUserAccounts: () => Promise<void>;
 }
 
@@ -271,7 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, [fetchUserAccounts]);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string): Promise<{ error: Error | null; cognitoUser?: any }> => {
     if (BYPASS_AUTH) return { error: null };
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -280,6 +281,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error ? new Error(error.message) : null };
     }
     const { error } = await cognitoAuth.signIn(normalizedEmail, password);
+    // Pass through cognitoUser from the error for NewPasswordRequired challenge
+    const cognitoUser = error && (error as any).cognitoUser ? (error as any).cognitoUser : undefined;
+    return { error, cognitoUser };
+  };
+
+  const completeNewPassword = async (cognitoUser: any, newPassword: string) => {
+    if (BYPASS_AUTH) return { error: null };
+    const { error } = await cognitoAuth.completeNewPassword(cognitoUser, newPassword);
     return { error };
   };
 
@@ -376,6 +385,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPassword,
         confirmResetPassword,
         changePassword,
+        completeNewPassword,
         refetchUserAccounts,
       }}
     >

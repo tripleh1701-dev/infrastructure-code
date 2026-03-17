@@ -89,7 +89,13 @@ export default function LoginPage() {
   const [pendingEmail, setPendingEmail] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  const { signIn, signUp, confirmSignUp, resendConfirmationCode, isAuthenticated } = useAuth();
+  // New password required state (FORCE_CHANGE_PASSWORD)
+  const [showNewPasswordForm, setShowNewPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [pendingCognitoUser, setPendingCognitoUser] = useState<any>(null);
+
+  const { signIn, signUp, confirmSignUp, resendConfirmationCode, completeNewPassword, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -153,7 +159,7 @@ export default function LoginPage() {
           setPassword("");
         }
       } else {
-        const { error } = await signIn(email, password);
+        const { error, cognitoUser } = await signIn(email, password);
         if (error) {
           if (error.message.includes("NotAuthorizedException") || error.message.includes("Incorrect")) {
             setError("Invalid email or password. Please try again.");
@@ -164,11 +170,49 @@ export default function LoginPage() {
             setError("");
             setSuccess("Your account is not yet verified. Please enter the verification code sent to your email.");
           } else if (error.message.includes("New password required")) {
-            setError("You need to set a new password. Please use the forgot password flow.");
+            // User is in FORCE_CHANGE_PASSWORD state — show new password form
+            setError("");
+            setShowNewPasswordForm(true);
+            setPendingCognitoUser(cognitoUser);
+            setPendingEmail(email);
+            setSuccess("You must set a new password before signing in.");
           } else {
             setError(error.message);
           }
         }
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!newPassword || newPassword.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await completeNewPassword(pendingCognitoUser, newPassword);
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess("Password updated! You are now signed in.");
+        setShowNewPasswordForm(false);
+        setNewPassword("");
+        setConfirmNewPassword("");
+        setPendingCognitoUser(null);
       }
     } catch (err) {
       setError("An unexpected error occurred. Please try again.");
@@ -380,14 +424,18 @@ export default function LoginPage() {
           {/* Header */}
           <div>
             <h2 className="text-2xl font-bold text-foreground">
-              {showOtpConfirm
+              {showNewPasswordForm
+                ? "Set new password"
+                : showOtpConfirm
                 ? "Verify your email"
                 : isSignUp
                 ? "Create your account"
                 : "Welcome back"}
             </h2>
             <p className="text-sm text-muted-foreground mt-1.5">
-              {showOtpConfirm
+              {showNewPasswordForm
+                ? "You must set a new password before continuing"
+                : showOtpConfirm
                 ? `Enter the 6-digit code sent to ${pendingEmail}`
                 : isSignUp
                 ? "Get started with your CI/CD dashboard in minutes"
@@ -395,8 +443,78 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* OTP Confirmation Form */}
-          {showOtpConfirm ? (
+          {/* New Password Required Form */}
+          {showNewPasswordForm ? (
+            <form onSubmit={handleNewPasswordSubmit} className="space-y-5">
+              {error && (
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5">
+                  <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                  {success}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">New Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="pl-10 pr-10"
+                    required
+                    minLength={8}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Confirm New Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="pl-10 pr-10"
+                    required
+                    minLength={8}
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Setting password..." : "Set Password & Sign In"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setShowNewPasswordForm(false);
+                  setNewPassword("");
+                  setConfirmNewPassword("");
+                  setPendingCognitoUser(null);
+                  setError("");
+                  setSuccess("");
+                }}
+              >
+                Back to sign in
+              </Button>
+            </form>
+          ) : showOtpConfirm ? (
             <form onSubmit={handleOtpSubmit} className="space-y-5">
               {error && (
                 <motion.div
