@@ -10,6 +10,9 @@ export interface Group {
   description?: string;
   accountId?: string;
   enterpriseId?: string;
+  workstreamId?: string;
+  productId?: string;
+  serviceId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,9 +75,20 @@ export class GroupsService {
       id,
       name: dto.name,
       description: dto.description,
+      accountId: dto.accountId,
+      enterpriseId: dto.enterpriseId,
+      workstreamId: dto.workstreamId,
+      productId: dto.productId,
+      serviceId: dto.serviceId,
       createdAt: now,
       updatedAt: now,
     };
+
+    // Add GSI2 for account-scoped queries
+    if (dto.accountId) {
+      group.GSI2PK = `ACCOUNT#${dto.accountId}#GROUPS`;
+      group.GSI2SK = `GROUP#${id}`;
+    }
 
     await this.dynamoDb.put({ Item: group });
 
@@ -96,16 +110,13 @@ export class GroupsService {
       ':updatedAt': now,
     };
 
-    if (dto.name !== undefined) {
-      updateExpressions.push('#name = :name');
-      expressionAttributeNames['#name'] = 'name';
-      expressionAttributeValues[':name'] = dto.name;
-    }
-
-    if (dto.description !== undefined) {
-      updateExpressions.push('#description = :description');
-      expressionAttributeNames['#description'] = 'description';
-      expressionAttributeValues[':description'] = dto.description;
+    const fields = ['name', 'description', 'accountId', 'enterpriseId', 'workstreamId', 'productId', 'serviceId'];
+    for (const field of fields) {
+      if ((dto as Record<string, any>)[field] !== undefined) {
+        updateExpressions.push(`#${field} = :${field}`);
+        expressionAttributeNames[`#${field}`] = field;
+        expressionAttributeValues[`:${field}`] = (dto as Record<string, any>)[field];
+      }
     }
 
     const result = await this.dynamoDb.update({
@@ -157,6 +168,9 @@ export class GroupsService {
       description: item.description,
       accountId: item.accountId,
       enterpriseId: item.enterpriseId,
+      workstreamId: item.workstreamId,
+      productId: item.productId,
+      serviceId: item.serviceId,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };

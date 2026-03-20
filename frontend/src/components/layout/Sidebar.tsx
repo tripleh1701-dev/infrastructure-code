@@ -174,7 +174,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: -10 }}
-                          className="text-sm font-medium whitespace-nowrap"
+                          className="text-sm font-medium truncate"
                         >
                           {item.label}
                         </motion.span>

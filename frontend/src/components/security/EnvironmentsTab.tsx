@@ -477,10 +477,6 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
     <div className="space-y-4">
       {/* Toolbar */}
       <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-2">
-        {/* Create New – opens modal */}
-        <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
-          <Plus className="w-4 h-4" /> Create New
-        </Button>
 
         {/* Global Search */}
         <div className="relative">

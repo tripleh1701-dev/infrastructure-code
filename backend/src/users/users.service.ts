@@ -984,6 +984,10 @@ export class UsersService {
           key: t.key,
           label: t.label,
           isVisible: t.isVisible ?? true,
+          canView: t.canView ?? true,
+          canCreate: t.canCreate ?? false,
+          canEdit: t.canEdit ?? false,
+          canDelete: t.canDelete ?? false,
         }));
 
         if (!existing) {
@@ -1007,8 +1011,12 @@ export class UsersService {
             const existingTab = existing.tabs.find((t: any) => t.key === tab.key);
             if (!existingTab) {
               existing.tabs.push(tab);
-            } else if (tab.isVisible) {
-              existingTab.isVisible = true;
+            } else {
+              if (tab.isVisible) existingTab.isVisible = true;
+              if (tab.canView) existingTab.canView = true;
+              if (tab.canCreate) existingTab.canCreate = true;
+              if (tab.canEdit) existingTab.canEdit = true;
+              if (tab.canDelete) existingTab.canDelete = true;
             }
           }
         }

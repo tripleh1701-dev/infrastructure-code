@@ -91,10 +91,15 @@ export class AccountsService {
 
     const accounts = (result.Items || []).map(this.mapToAccount);
 
-    // Enrich each account with addresses and technical user
+    // Enrich each account with addresses, technical user, and license counts
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0];
+
     const enriched = await Promise.all(
       accounts.map(async (account) => {
-        const [addressResult, techUserResult] = await Promise.all([
+        const [addressResult, techUserResult, licenseResult] = await Promise.all([
           this.dynamoDb.query({
             KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
             ExpressionAttributeValues: {
@@ -109,6 +114,13 @@ export class AccountsService {
               ':sk': 'TECH_USER#',
             },
           }),
+          this.dynamoDb.query({
+            KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+            ExpressionAttributeValues: {
+              ':pk': `ACCOUNT#${account.id}`,
+              ':sk': 'LICENSE#',
+            },
+          }),
         ]);
 
         const addresses = (addressResult.Items || []).map(this.mapToAddress);
@@ -116,10 +128,24 @@ export class AccountsService {
           ? this.mapToTechnicalUser(techUserResult.Items[0])
           : undefined;
 
+        const licenses = licenseResult.Items || [];
+        const activeLicenses = licenses.filter(
+          (lic) => lic.endDate && lic.endDate >= today,
+        );
+        const expiredLicenses = licenses.filter(
+          (lic) => lic.endDate && lic.endDate < today,
+        );
+        const expiringLicenses = activeLicenses.filter(
+          (lic) => lic.endDate && lic.endDate <= thirtyDaysFromNow,
+        );
+
         return {
           ...account,
           addresses,
           technicalUser,
+          licenseCount: activeLicenses.length,
+          expiringLicenseCount: expiringLicenses.length,
+          expiredLicenseCount: expiredLicenses.length,
         };
       }),
     );

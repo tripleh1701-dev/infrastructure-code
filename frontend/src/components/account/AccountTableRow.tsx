@@ -42,6 +42,9 @@ interface AccountTableRowProps {
   onEditLicense: (license: LicenseWithDetails) => void;
   onDeleteLicense: (license: LicenseWithDetails) => void;
   getCloudTypeLabel: (type: string) => string;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export function AccountTableRow({
@@ -57,6 +60,9 @@ export function AccountTableRow({
   onEditLicense,
   onDeleteLicense,
   getCloudTypeLabel,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }: AccountTableRowProps) {
   const { licenses } = useLicenses(account.id);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -187,6 +193,7 @@ export function AccountTableRow({
           </span>
         </td>
         <td className="px-5 py-4">
+          {(canEdit || canCreate || canDelete) ? (
           <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -199,6 +206,7 @@ export function AccountTableRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              {canEdit && (
               <DropdownMenuItem 
                 onClick={(e) => {
                   e.stopPropagation();
@@ -209,6 +217,8 @@ export function AccountTableRow({
                 <Pencil className="w-4 h-4" />
                 Edit Account
               </DropdownMenuItem>
+              )}
+              {canCreate && (
               <DropdownMenuItem 
                 onClick={(e) => {
                   e.stopPropagation();
@@ -219,6 +229,9 @@ export function AccountTableRow({
                 <Plus className="w-4 h-4" />
                 Add License
               </DropdownMenuItem>
+              )}
+              {canDelete && (
+              <>
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 onClick={(e) => {
@@ -230,8 +243,11 @@ export function AccountTableRow({
                 <Trash2 className="w-4 h-4" />
                 Delete Account
               </DropdownMenuItem>
+              </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
+          ) : null}
         </td>
       </motion.tr>
 
@@ -253,6 +269,9 @@ export function AccountTableRow({
                   onAddLicense={onAddLicense}
                   onEditLicense={onEditLicense}
                   onDeleteLicense={onDeleteLicense}
+                  canCreate={canCreate}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
                 />
               </motion.div>
             </td>

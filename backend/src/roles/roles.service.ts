@@ -109,6 +109,12 @@ export class RolesService {
       updatedAt: now,
     };
 
+    // Add GSI2 for account-scoped queries
+    if (dto.accountId) {
+      role.GSI2PK = `ACCOUNT#${dto.accountId}#ROLES`;
+      role.GSI2SK = `ROLE#${id}`;
+    }
+
     await this.dynamoDb.put({ Item: role });
 
     return this.mapToRole(role);
@@ -265,15 +271,23 @@ export class RolesService {
       const existingKeys = new Set(existingPerms.map((p) => p.menuKey));
 
       // Determine permission levels based on role name
-      const isAdmin = role.name === 'Platform Admin' || role.name === 'Admin';
+      const isPlatformAdmin = role.name === 'Platform Admin';
+      const isAdmin = isPlatformAdmin || role.name === 'Admin';
       const isManager = role.name === 'Manager';
       const isUser = role.name === 'User';
+      const hasAccessControlCrud = isPlatformAdmin || isAdmin || isManager || isUser;
 
       for (const menu of menuItems) {
         if (existingKeys.has(menu.key)) continue; // Already has this permission
 
         const permId = uuidv4();
         const now = new Date().toISOString();
+
+        // account-settings: only Platform Admin gets CRUD, all others view-only
+        const isAccountSettingsRestricted = menu.key === 'account-settings';
+        const menuCanCreate = isAccountSettingsRestricted ? isPlatformAdmin : (isAdmin || isManager || isUser);
+        const menuCanEdit = isAccountSettingsRestricted ? isPlatformAdmin : (isAdmin || isManager);
+        const menuCanDelete = isAccountSettingsRestricted ? isPlatformAdmin : isAdmin;
 
         await this.dynamoDb.put({
           Item: {
@@ -285,9 +299,14 @@ export class RolesService {
             menuLabel: menu.label,
             isVisible: true,
             canView: true,
-            canCreate: isAdmin || isManager || isUser,
-            canEdit: isAdmin || isManager,
-            canDelete: isAdmin,
+            canCreate: menuCanCreate,
+            canEdit: menuCanEdit,
+            canDelete: menuCanDelete,
+            tabs: this.getTabsForMenu(menu.key, isPlatformAdmin, hasAccessControlCrud),
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
             createdAt: now,
             updatedAt: now,
           },
@@ -312,5 +331,32 @@ export class RolesService {
       canDelete: item.canDelete,
       tabs: item.tabs,
     };
+  }
+
+  private getTabsForMenu(menuKey: string, isPlatformAdmin: boolean, hasAccessControlCrud: boolean = isPlatformAdmin): any[] {
+    const ACCOUNT_SETTINGS_TABS = [
+      { key: 'enterprise', label: 'Enterprise' },
+      { key: 'accounts', label: 'Accounts' },
+      { key: 'global-settings', label: 'Global Settings' },
+    ];
+    const ACCESS_CONTROL_TABS = [
+      { key: 'users', label: 'Users' },
+      { key: 'groups', label: 'Groups' },
+      { key: 'roles', label: 'Roles' },
+    ];
+
+    if (menuKey === 'account-settings') {
+      return ACCOUNT_SETTINGS_TABS.map((tab) => ({
+        key: tab.key, label: tab.label, isVisible: true,
+        canView: true, canCreate: isPlatformAdmin, canEdit: isPlatformAdmin, canDelete: isPlatformAdmin,
+      }));
+    }
+    if (menuKey === 'access-control') {
+      return ACCESS_CONTROL_TABS.map((tab) => ({
+        key: tab.key, label: tab.label, isVisible: true,
+        canView: true, canCreate: hasAccessControlCrud, canEdit: hasAccessControlCrud, canDelete: hasAccessControlCrud,
+      }));
+    }
+    return [];
   }
 }

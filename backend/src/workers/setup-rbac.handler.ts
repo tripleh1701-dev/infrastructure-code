@@ -66,6 +66,7 @@ const DEFAULT_GROUPS = [
 const MENU_ITEMS = [
   { key: 'overview', label: 'Overview' },
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'pipelines', label: 'Pipelines' },
   { key: 'builds', label: 'Builds' },
   { key: 'access-control', label: 'Access Control' },
   { key: 'security', label: 'Security' },
@@ -74,6 +75,34 @@ const MENU_ITEMS = [
   { key: 'inbox', label: 'Inbox' },
   { key: 'monitoring', label: 'Monitoring' },
 ];
+
+const ACCOUNT_SETTINGS_TABS = [
+  { key: 'enterprise', label: 'Enterprise' },
+  { key: 'accounts', label: 'Accounts' },
+  { key: 'global-settings', label: 'Global Settings' },
+];
+
+const ACCESS_CONTROL_TABS = [
+  { key: 'users', label: 'Users' },
+  { key: 'groups', label: 'Groups' },
+  { key: 'roles', label: 'Roles' },
+];
+
+function getTabsForMenu(menuKey: string, isPlatformAdmin: boolean, hasAccessControlCrud: boolean): any[] {
+  if (menuKey === 'account-settings') {
+    return ACCOUNT_SETTINGS_TABS.map((tab) => ({
+      key: tab.key, label: tab.label, isVisible: true,
+      canView: true, canCreate: isPlatformAdmin, canEdit: isPlatformAdmin, canDelete: isPlatformAdmin,
+    }));
+  }
+  if (menuKey === 'access-control') {
+    return ACCESS_CONTROL_TABS.map((tab) => ({
+      key: tab.key, label: tab.label, isVisible: true,
+      canView: true, canCreate: hasAccessControlCrud, canEdit: hasAccessControlCrud, canDelete: hasAccessControlCrud,
+    }));
+  }
+  return [];
+}
 
 export async function handler(event: SetupRBACEvent): Promise<SetupRBACResult> {
   const region = process.env.AWS_REGION || 'us-east-1';
@@ -144,41 +173,60 @@ export async function handler(event: SetupRBACEvent): Promise<SetupRBACResult> {
 
       for (const menu of MENU_ITEMS) {
         const permId = uuidv4();
-        const isAdmin = roleDef.name === 'Platform Admin' || roleDef.name === 'Admin';
+        const isPlatformAdmin = roleDef.name === 'Platform Admin';
+        const isAdmin = isPlatformAdmin || roleDef.name === 'Admin';
         const isManager = roleDef.name === 'Manager';
         const isUser = roleDef.name === 'User';
+        // Technical users (any non-viewer) get access-control CRUD
+        const hasAccessControlCrud = isPlatformAdmin || isAdmin || isManager || isUser;
+
+        // Technical users get full CRUD on pipelines and access-control
+        const isTechnicalUser = isPlatformAdmin || isAdmin || isManager || isUser;
+        const isPipelinesOrAccessControl = menu.key === 'pipelines' || menu.key === 'access-control';
+
+        // account-settings: only Platform Admin gets CRUD, all others view-only
+        const isAccountSettingsRestricted = menu.key === 'account-settings';
+        const menuCanCreate = isAccountSettingsRestricted ? isPlatformAdmin : (isPipelinesOrAccessControl ? isTechnicalUser : (isAdmin || isManager || isUser));
+        const menuCanEdit = isAccountSettingsRestricted ? isPlatformAdmin : (isPipelinesOrAccessControl ? isTechnicalUser : (isAdmin || isManager));
+        const menuCanDelete = isAccountSettingsRestricted ? isPlatformAdmin : (isPipelinesOrAccessControl ? isTechnicalUser : isAdmin);
 
         try {
+          // Find existing permission for this role+menu to preserve its SK/id
+          const existingPerm = await findExistingPermission(
+            dynamoClient, tableName, roleId, menu.key,
+          );
+
+          const actualPermId = existingPerm?.id || permId;
+          const actualSK = existingPerm?.SK || `PERMISSION#${permId}`;
+
           await dynamoClient.send(
             new PutItemCommand({
               TableName: tableName,
               Item: marshall({
                 PK: `ROLE#${roleId}`,
-                SK: `PERMISSION#${permId}`,
+                SK: actualSK,
                 GSI1PK: `ROLE#${roleId}#PERMISSIONS`,
                 GSI1SK: `MENU#${menu.key}`,
-                id: permId,
+                id: actualPermId,
                 roleId,
                 menuKey: menu.key,
                 menuLabel: menu.label,
                 isVisible: true,
                 canView: true,
-                canCreate: isAdmin || isManager || isUser,
-                canEdit: isAdmin || isManager,
-                canDelete: isAdmin,
-                createdAt: now,
+                canCreate: menuCanCreate,
+                canEdit: menuCanEdit,
+                canDelete: menuCanDelete,
+                tabs: getTabsForMenu(menu.key, isPlatformAdmin, hasAccessControlCrud),
+                createdAt: existingPerm?.createdAt || now,
                 updatedAt: now,
               }, { removeUndefinedValues: true }),
-              ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+              // No ConditionExpression — overwrites existing permissions
+              // to ensure RBAC flags stay in sync with code definitions
             }),
           );
           permCount++;
         } catch (error: any) {
-          if (error.name === 'ConditionalCheckFailedException') {
-            // Permission already exists
-          } else {
-            throw error;
-          }
+          throw error;
         }
       }
     }
@@ -267,6 +315,30 @@ export async function handler(event: SetupRBACEvent): Promise<SetupRBACResult> {
     logger.error(`[${event.executionId}] RBAC setup failed: ${error.message}`);
     throw error;
   }
+}
+
+async function findExistingPermission(
+  client: DynamoDBClient,
+  tableName: string,
+  roleId: string,
+  menuKey: string,
+): Promise<any | null> {
+  const result = await client.send(
+    new QueryCommand({
+      TableName: tableName,
+      IndexName: 'GSI1',
+      KeyConditionExpression: 'GSI1PK = :pk AND GSI1SK = :sk',
+      ExpressionAttributeValues: marshall({
+        ':pk': `ROLE#${roleId}#PERMISSIONS`,
+        ':sk': `MENU#${menuKey}`,
+      }),
+    }),
+  );
+
+  if (result.Items && result.Items.length > 0) {
+    return unmarshall(result.Items[0]);
+  }
+  return null;
 }
 
 async function findExistingEntity(

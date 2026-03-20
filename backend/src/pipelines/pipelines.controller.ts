@@ -152,12 +152,12 @@ export class PipelinesController {
   /**
    * Delete a pipeline.
    *
-   * Requires: admin or manager role
+   * Requires: admin, manager, or user role
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'user')
   async remove(
     @CurrentUser() user: CognitoUser,
     @Param('id') id: string,

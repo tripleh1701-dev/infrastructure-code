@@ -52,6 +52,7 @@ export class RolesController {
   @Roles('super_admin')
   async backfillPermissions() {
     const menuItems = [
+      { key: 'pipelines', label: 'Pipelines' },
       { key: 'inbox', label: 'Inbox' },
       { key: 'monitoring', label: 'Monitoring' },
     ];
@@ -66,14 +67,14 @@ export class RolesController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
+  @Roles('admin', 'super_admin', 'manager', 'user')
   async create(@Body() createRoleDto: CreateRoleDto) {
     return this.rolesService.create(createRoleDto);
   }
 
   @Put(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
+  @Roles('admin', 'super_admin', 'manager', 'user')
   async update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
     return this.rolesService.update(id, updateRoleDto);
   }
@@ -81,7 +82,7 @@ export class RolesController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
+  @Roles('admin', 'super_admin', 'manager', 'user')
   async remove(@Param('id') id: string) {
     await this.rolesService.remove(id);
   }
@@ -94,7 +95,7 @@ export class RolesController {
 
   @Put(':id/permissions')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
+  @Roles('admin', 'super_admin', 'manager', 'user')
   async updatePermissions(
     @Param('id') id: string,
     @Body() permissions: any[],

@@ -74,7 +74,7 @@ import { useAccountGlobalAccess } from "@/hooks/useAccountGlobalAccess";
 import { ProvisioningStatusBanner } from "@/components/account/ProvisioningStatusBanner";
 import { NotificationPreferences } from "@/components/notifications/NotificationPreferences";
 import { SesDiagnosticsCard } from "@/components/settings/SesDiagnosticsCard";
-import { PermissionGate } from "@/components/auth/PermissionGate";
+import { PermissionGate, usePermissionCheck } from "@/components/auth/PermissionGate";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -152,6 +152,9 @@ export default function AccountSettingsPage() {
   
   // Check if selected account has Global enterprise license (grants access to all data)
   const { hasGlobalAccess } = useAccountGlobalAccess(selectedAccount?.id);
+
+  // RBAC permission check for account-settings
+  const { canCreate, canEdit, canDelete } = usePermissionCheck("account-settings");
 
   // Read ?tab= query param to allow deep-linking (e.g. from SES health banner)
   const [searchParams] = useState(() => new URLSearchParams(window.location.search));
@@ -431,6 +434,7 @@ export default function AccountSettingsPage() {
                     Manage Products & Services
                   </Button>
                 </motion.div>
+                {canCreate && (
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button 
                     size="sm" 
@@ -446,6 +450,7 @@ export default function AccountSettingsPage() {
                     Add Enterprise
                   </Button>
                 </motion.div>
+                )}
               </motion.div>
             )}
             {activeTab === "accounts" && (
@@ -457,6 +462,7 @@ export default function AccountSettingsPage() {
                 className="flex flex-wrap items-center gap-3"
               >
                 <ViewToggle view={accountsView} onViewChange={setAccountsView} />
+                {canCreate && (
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button 
                     size="sm" 
@@ -472,6 +478,7 @@ export default function AccountSettingsPage() {
                     Add Account
                   </Button>
                 </motion.div>
+                )}
               </motion.div>
             )}
             </AnimatePresence>
@@ -758,6 +765,9 @@ export default function AccountSettingsPage() {
                           onEditLicense={(license) => setEditingLicense(license)}
                           onDeleteLicense={(license) => setDeletingLicense(license)}
                           getCloudTypeLabel={getCloudTypeLabel}
+                          canCreate={canCreate}
+                          canEdit={canEdit}
+                          canDelete={canDelete}
                         />
                       ))}
                     </tbody>
@@ -794,6 +804,9 @@ export default function AccountSettingsPage() {
                           expandedAccountId === account.id ? null : account.id
                         )}
                         getCloudTypeLabel={getCloudTypeLabel}
+                        canCreate={canCreate}
+                        canEdit={canEdit}
+                        canDelete={canDelete}
                       />
                     </motion.div>
                   ))}

@@ -48,6 +48,9 @@ interface AccountExpandedRowProps {
   onAddLicense: () => void;
   onEditLicense: (license: LicenseWithDetails) => void;
   onDeleteLicense: (license: LicenseWithDetails) => void;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export function AccountExpandedRow({
@@ -58,6 +61,9 @@ export function AccountExpandedRow({
   onAddLicense,
   onEditLicense,
   onDeleteLicense,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }: AccountExpandedRowProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
@@ -290,6 +296,7 @@ export function AccountExpandedRow({
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 {technicalUsers.length} Technical User{technicalUsers.length !== 1 ? "s" : ""}
               </span>
+              {canCreate && (
               <Button
                 type="button"
                 size="sm"
@@ -300,6 +307,7 @@ export function AccountExpandedRow({
                 <Plus className="w-3 h-3" />
                 Add Technical User
               </Button>
+              )}
             </div>
 
             {technicalUsers.length === 0 ? (
@@ -360,7 +368,7 @@ export function AccountExpandedRow({
                         </div>
                       )}
                     </div>
-                    {account.technical_users.length > 1 && (
+                    {canDelete && account.technical_users.length > 1 && (
                       <div className="flex items-center gap-0.5 border-l pl-3">
                         <Button
                           type="button"
@@ -385,6 +393,7 @@ export function AccountExpandedRow({
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 {licenses.length} License{licenses.length !== 1 ? "s" : ""}
               </span>
+              {canCreate && (
               <Button
                 type="button"
                 size="sm"
@@ -395,6 +404,7 @@ export function AccountExpandedRow({
                 <Plus className="w-3 h-3" />
                 Add License
               </Button>
+              )}
             </div>
 
             {licenses.length === 0 ? (
@@ -491,7 +501,9 @@ export function AccountExpandedRow({
                           )}
                         </div>
 
+                        {(canEdit || canDelete) && (
                         <div className="flex items-center gap-0.5 border-l pl-3">
+                          {canEdit && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -501,6 +513,8 @@ export function AccountExpandedRow({
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </Button>
+                          )}
+                          {canDelete && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -510,7 +524,9 @@ export function AccountExpandedRow({
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
+                        )}
                       </div>
                     </div>
                   );

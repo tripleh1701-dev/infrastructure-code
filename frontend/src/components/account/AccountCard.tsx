@@ -33,6 +33,9 @@ interface AccountCardProps {
   onAddLicense: () => void;
   onClick: () => void;
   getCloudTypeLabel: (type: string) => string;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export function AccountCard({
@@ -43,6 +46,9 @@ export function AccountCard({
   onAddLicense,
   onClick,
   getCloudTypeLabel,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }: AccountCardProps) {
   const primaryAddress = account.addresses?.[0];
   const licenseCount = account.license_count ?? 0;
@@ -114,6 +120,7 @@ export function AccountCard({
           </motion.span>
 
           {/* Actions Menu */}
+          {(canEdit || canCreate || canDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -126,14 +133,20 @@ export function AccountCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36">
+              {canCreate && (
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddLicense(); }} className="gap-2 cursor-pointer">
                 <Plus className="w-3.5 h-3.5" />
                 Add License
               </DropdownMenuItem>
+              )}
+              {canEdit && (
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }} className="gap-2 cursor-pointer">
                 <Edit className="w-3.5 h-3.5" />
                 Edit
               </DropdownMenuItem>
+              )}
+              {canDelete && (
+              <>
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 onClick={(e) => { e.stopPropagation(); onDelete(); }} 
@@ -142,8 +155,11 @@ export function AccountCard({
                 <Trash2 className="w-3.5 h-3.5" />
                 Delete
               </DropdownMenuItem>
+              </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </div>
         
         {/* Description */}
