@@ -307,10 +307,6 @@ export class RolesService {
             updatedAt: now,
           },
         });
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
         permissionsAdded++;
       }
     }
