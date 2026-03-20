@@ -45,6 +45,8 @@ export interface RolePermissionTab {
 export class RolesService {
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
+  private static readonly GLOBAL_ENTERPRISE_ID = '00000000-0000-0000-0000-000000000001';
+
   async findAll(accountId?: string, enterpriseId?: string, productId?: string): Promise<Role[]> {
     const result = await this.dynamoDb.queryByIndex(
       'GSI1',
@@ -58,7 +60,13 @@ export class RolesService {
       roles = roles.filter((r) => r.accountId === accountId);
     }
     if (enterpriseId) {
-      roles = roles.filter((r) => r.enterpriseId === enterpriseId);
+      // Include roles matching the requested enterprise, the global default, or no enterprise
+      roles = roles.filter(
+        (r) =>
+          !r.enterpriseId ||
+          r.enterpriseId === enterpriseId ||
+          r.enterpriseId === RolesService.GLOBAL_ENTERPRISE_ID,
+      );
     }
     if (productId) {
       roles = roles.filter((r) => !r.productId || r.productId === productId);

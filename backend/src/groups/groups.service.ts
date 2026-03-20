@@ -19,6 +19,8 @@ export interface Group {
 
 @Injectable()
 export class GroupsService {
+  private static readonly GLOBAL_ENTERPRISE_ID = '00000000-0000-0000-0000-000000000001';
+
   constructor(private readonly dynamoDb: DynamoDBService) {}
 
   async findAll(accountId?: string, enterpriseId?: string, productId?: string): Promise<Group[]> {
@@ -34,7 +36,13 @@ export class GroupsService {
       groups = groups.filter((g) => (g as any).accountId === accountId);
     }
     if (enterpriseId) {
-      groups = groups.filter((g) => (g as any).enterpriseId === enterpriseId);
+      // Include groups matching the requested enterprise, the global default, or no enterprise
+      groups = groups.filter(
+        (g) =>
+          !(g as any).enterpriseId ||
+          (g as any).enterpriseId === enterpriseId ||
+          (g as any).enterpriseId === GroupsService.GLOBAL_ENTERPRISE_ID,
+      );
     }
     if (productId) {
       groups = groups.filter((g) => !(g as any).productId || (g as any).productId === productId);
