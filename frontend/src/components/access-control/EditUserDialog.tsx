@@ -40,11 +40,13 @@ import { useUpdateUserWorkstreams } from "@/hooks/useUserWorkstreams";
 import { useUpdateUserGroups, useUserGroups } from "@/hooks/useUserGroups";
 
 import { useGroups, Group } from "@/hooks/useGroups";
+import { useRoles, Role } from "@/hooks/useRoles";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { WorkstreamMultiSelect } from "./WorkstreamMultiSelect";
 import { GroupMultiSelect } from "./GroupMultiSelect";
 import { cn } from "@/lib/utils";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 interface EditUserDialogProps {
   open: boolean;
@@ -94,12 +96,19 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
   const updateUser = useUpdateAccessControlUser();
   const updateUserWorkstreams = useUpdateUserWorkstreams();
   const updateUserGroups = useUpdateUserGroups();
+  const { logAudit } = useAuditLog();
 
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
 
   // Fetch groups filtered by current account/enterprise context
   const { data: groups = [] } = useGroups(
+    selectedAccount?.id || null,
+    selectedEnterprise?.id || null
+  );
+
+  // Fetch all roles for role override dropdown
+  const { data: allRoles = [] } = useRoles(
     selectedAccount?.id || null,
     selectedEnterprise?.id || null
   );
@@ -125,11 +134,13 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
   const [initialWorkstreamsLoaded, setInitialWorkstreamsLoaded] = useState(false);
   const [initialGroupsLoaded, setInitialGroupsLoaded] = useState(false);
   const [showUnsavedAlert, setShowUnsavedAlert] = useState(false);
+  const [roleOverride, setRoleOverride] = useState<string>("");
 
   // Store initial values to detect changes
   const initialFormData = useRef<typeof formData | null>(null);
   const initialGroupIdsRef = useRef<string[]>([]);
   const initialWorkstreamIdsRef = useRef<string[]>([]);
+  const initialRoleOverrideRef = useRef<string>("");
 
   // Fetch user's current group assignments
   const { data: userGroups = [], isFetched: userGroupsFetched } = useUserGroups(user?.id);
@@ -195,6 +206,10 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
       setSelectedWorkstreams(initialWorkstreamIds);
       initialWorkstreamIdsRef.current = initialWorkstreamIds;
 
+      const userRole = user.assignedRole || "";
+      setRoleOverride(userRole);
+      initialRoleOverrideRef.current = userRole;
+
       setTimeout(() => {
         setInitialWorkstreamsLoaded(true);
       }, 50);
@@ -244,7 +259,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
       const selectedGroups = groups.filter((g) => resolvedGroupIds.includes(g.id));
       const primaryGroup = selectedGroups[0];
       const primaryGroupName = primaryGroup?.name || user?.assignedGroup || "";
-      const derivedRole = primaryGroup?.roles?.[0]?.roleName || user?.assignedRole || "Member";
+      const finalRole = roleOverride || primaryGroup?.roles?.[0]?.roleName || user?.assignedRole || "Member";
 
       await updateUser.mutateAsync({
         id: user.id,
@@ -257,7 +272,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
           startDate: formData.startDate,
           endDate: formData.endDate || null,
           assignedGroup: primaryGroupName,
-          assignedRole: derivedRole,
+          assignedRole: finalRole,
           isTechnicalUser: formData.isTechnicalUser,
         },
       });
@@ -271,6 +286,44 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         userId: user.id,
         groupIds: resolvedGroupIds,
       });
+
+      // Audit log for role/group changes
+      const roleChanged = finalRole !== user.assignedRole;
+      const groupChanged = primaryGroupName !== user.assignedGroup;
+
+      if (roleChanged) {
+        logAudit({
+          action: "user.role_changed",
+          entityType: "user",
+          entityId: user.id,
+          entityName: `${formData.firstName} ${formData.lastName}`,
+          targetUserEmail: formData.email,
+          oldValue: user.assignedRole,
+          newValue: finalRole,
+        });
+      }
+
+      if (groupChanged) {
+        logAudit({
+          action: "user.group_changed",
+          entityType: "user",
+          entityId: user.id,
+          entityName: `${formData.firstName} ${formData.lastName}`,
+          targetUserEmail: formData.email,
+          oldValue: user.assignedGroup,
+          newValue: primaryGroupName,
+        });
+      }
+
+      if (!roleChanged && !groupChanged) {
+        logAudit({
+          action: "user.updated",
+          entityType: "user",
+          entityId: user.id,
+          entityName: `${formData.firstName} ${formData.lastName}`,
+          targetUserEmail: formData.email,
+        });
+      }
 
       onOpenChange(false);
     } catch (error) {
@@ -598,7 +651,32 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
               )}
             </motion.div>
 
-            {/* Workstream Assignment */}
+            {/* Role Override */}
+            <motion.div variants={fieldVariants} initial="hidden" animate="visible" custom={2} className="space-y-3">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Shield className="w-4 h-4 text-muted-foreground" />
+                Role Assignment
+              </Label>
+              <Select value={roleOverride} onValueChange={setRoleOverride}>
+                <SelectTrigger className="h-11 transition-all focus:ring-2 focus:ring-primary/20">
+                  <SelectValue placeholder="Auto-detect from group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allRoles.map((role) => (
+                    <SelectItem key={role.id} value={role.name}>
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-3.5 h-3.5 text-muted-foreground" />
+                        {role.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Override the role derived from the group. Leave empty to auto-detect from group assignment.
+              </p>
+            </motion.div>
+
             <motion.div variants={fieldVariants} initial="hidden" animate="visible" custom={3} className="space-y-3">
               <Label className="text-sm font-medium flex items-center gap-2">
                 <Layers className="w-4 h-4 text-muted-foreground" />

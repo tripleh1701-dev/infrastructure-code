@@ -110,6 +110,11 @@ module "cognito" {
   logout_urls                     = var.cognito_logout_urls
   post_confirmation_lambda_arn    = module.post_confirmation_worker.function_arn
   tags                            = local.common_tags
+
+  # SES email configuration — use DEVELOPER mode when notifications are enabled
+  ses_email_sending_account = var.credential_notification_enabled ? "DEVELOPER" : "COGNITO_DEFAULT"
+  ses_sender_arn            = var.credential_notification_enabled ? "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/${replace(var.ses_sender_email, "/^[^@]+@/", "")}" : ""
+  ses_sender_email          = var.credential_notification_enabled ? var.ses_sender_email : ""
 }
 
 # =============================================================================

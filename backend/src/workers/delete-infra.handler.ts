@@ -27,10 +27,10 @@ import { retryWithBackoff, isTransientAwsError } from '../common/utils/retry';
 const logger = new Logger('DeleteInfraWorker');
 
 interface DeleteInfraEvent {
-  action: 'delete_public' | 'delete_private';
+  action?: 'delete_public' | 'delete_private';
   accountId: string;
   accountName: string;
-  cloudType?: string;
+  cloudType?: 'public' | 'private';
   executionId: string;
 }
 

@@ -60,7 +60,7 @@ env:
   TF_VAR_github_repo: ${{ github.repository }}
   TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET || '' }}
   TF_VAR_tf_lock_table: ${{ secrets.TF_LOCK_TABLE || '' }}
-  TF_VAR_credential_notification_enabled: ${{ inputs.credential_notification_enabled || vars.CREDENTIAL_NOTIFICATION_ENABLED || 'false' }}
+  TF_VAR_credential_notification_enabled: ${{ inputs.credential_notification_enabled || vars.CREDENTIAL_NOTIFICATION_ENABLED || 'true' }}
   TF_VAR_ses_sender_email: ${{ inputs.ses_sender_email || vars.SES_SENDER_EMAIL || 'noreply@example.com' }}
   TF_VAR_platform_login_url: ${{ inputs.platform_login_url || vars.PLATFORM_LOGIN_URL || '' }}
   TF_VAR_platform_name: ${{ inputs.platform_name || vars.PLATFORM_NAME || 'License Portal' }}
@@ -683,9 +683,91 @@ jobs:
             exit 1
           fi
 
+          # Routing audit — check ALL accounts route to correct tables
+          AUDIT_JSON=$(curl -sS "${API_URL}/api/health/routing-audit" 2>/dev/null || echo '{}')
+          AUDIT_STATUS=$(echo "${AUDIT_JSON}" | jq -r '.status // "unknown"')
+          MISROUTED=$(echo "${AUDIT_JSON}" | jq -r '.summary.misrouted // 0')
+          TOTAL=$(echo "${AUDIT_JSON}" | jq -r '.summary.total_accounts // 0')
+
+          # Export for self-healing step
+          echo "AUDIT_STATUS=${AUDIT_STATUS}" >> "$GITHUB_ENV"
+          echo "MISROUTED=${MISROUTED}" >> "$GITHUB_ENV"
+          echo "TOTAL=${TOTAL}" >> "$GITHUB_ENV"
+          echo "API_URL=${API_URL}" >> "$GITHUB_ENV"
+
+          if [ "${AUDIT_STATUS}" = "unhealthy" ] && [ "${MISROUTED}" -gt "0" ]; then
+            echo "::warning::⚠️ Routing Audit: ${MISROUTED}/${TOTAL} account(s) misrouted to control-plane! Self-healing will run next."
+            echo "${AUDIT_JSON}" | jq '.accounts[] | select(.status != "ok")'
+          fi
+
           echo "### Runtime Health Gate" >> "$GITHUB_STEP_SUMMARY"
           echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| /api/health/preflight-assume-role | ✅ healthy |" >> "$GITHUB_STEP_SUMMARY"
           echo "| /api/health/full cross_account | ✅ ${CROSS_STATUS} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| /api/health/full routing | ✅ ${ROUTING_STATUS} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| /api/health/routing-audit | ${AUDIT_STATUS} (${MISROUTED} misrouted / ${TOTAL} total) |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "🔧 Self-Heal: Backfill SSM Params for Misrouted Accounts"
+        if: env.MISROUTED != '0' && env.MISROUTED != ''
+        env:
+          CONTROL_PLANE_TABLE_NAME: ${{ vars.PROJECT_NAME || 'license-portal' }}-${{ inputs.environment || 'dev' }}
+          PUBLIC_ACCOUNT_TABLE_NAME: ${{ secrets.DATA_PLANE_TABLE_NAME }}
+          NODE_ENV: ${{ inputs.environment || 'dev' }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+        run: |
+          set -euo pipefail
+
+          echo "🔧 Self-healing: detected ${MISROUTED} misrouted account(s). Running SSM backfill with --fix..."
+
+          cd backend
+          npx ts-node scripts/backfill-ssm-params.ts --fix --json > /tmp/backfill-result.json 2>&1 || {
+            echo "::error::SSM backfill script failed"
+            cat /tmp/backfill-result.json || true
+            exit 1
+          }
+
+          CREATED=$(jq -r '.summary.paramsCreated // 0' /tmp/backfill-result.json)
+          FIXED=$(jq -r '.summary.paramsFixed // 0' /tmp/backfill-result.json)
+          STILL_WRONG=$(jq -r '.summary.paramsWrongValue // 0' /tmp/backfill-result.json)
+          OK=$(jq -r '.summary.paramsOk // 0' /tmp/backfill-result.json)
+
+          echo "### 🔧 Self-Healing: SSM Backfill Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Already correct | ${OK} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Created | ${CREATED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Fixed | ${FIXED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Still wrong | ${STILL_WRONG} |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${STILL_WRONG}" -gt "0" ]; then
+            echo "::warning::${STILL_WRONG} SSM param(s) could not be auto-fixed. Manual intervention required."
+          fi
+
+      - name: "✅ Post-Heal Routing Re-Audit"
+        if: env.MISROUTED != '0' && env.MISROUTED != ''
+        run: |
+          set -euo pipefail
+
+          echo "Re-running routing audit after self-healing..."
+          sleep 5
+
+          REAUDIT_JSON=$(curl -sS "${API_URL}/api/health/routing-audit" 2>/dev/null || echo '{}')
+          REAUDIT_STATUS=$(printf '%s' "${REAUDIT_JSON}" | jq -r '.status // "unknown"')
+          REAUDIT_MISROUTED=$(printf '%s' "${REAUDIT_JSON}" | jq -r '.summary.misrouted // 0')
+          REAUDIT_TOTAL=$(printf '%s' "${REAUDIT_JSON}" | jq -r '.summary.total_accounts // 0')
+
+          echo "### ✅ Post-Heal Re-Audit" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Before | After |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Misrouted | ${MISROUTED} | ${REAUDIT_MISROUTED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total | ${TOTAL} | ${REAUDIT_TOTAL} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Status | ${AUDIT_STATUS} | ${REAUDIT_STATUS} |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${REAUDIT_MISROUTED}" -gt "0" ]; then
+            echo "::error::Self-healing did not fully resolve routing issues. ${REAUDIT_MISROUTED} account(s) still misrouted."
+            printf '%s' "${REAUDIT_JSON}" | jq '.accounts[] | select(.status != "ok")'
+            exit 1
+          fi
+
+          echo "✅ All ${REAUDIT_TOTAL} account(s) routing correctly after self-heal."

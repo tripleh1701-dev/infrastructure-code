@@ -108,27 +108,32 @@ function mapExternalEnvironment(e: any): EnvironmentRecord {
   };
 }
 
-export function useEnvironments(accountId?: string, enterpriseId?: string) {
+export function useEnvironments(accountId?: string, enterpriseId?: string, productId?: string) {
   const queryClient = useQueryClient();
 
   const { data: environments = [], isLoading, refetch } = useQuery({
-    queryKey: ["environments", accountId, enterpriseId],
+    queryKey: ["environments", accountId, enterpriseId, productId],
     queryFn: async () => {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<any[]>("/environments", {
-          params: { accountId, enterpriseId },
+          params: { accountId, enterpriseId, productId },
         });
         if (error) throw new Error(error.message);
         return (data || []).map(mapExternalEnvironment);
       }
 
-      const { data, error } = await (supabase
+      let query = supabase
         .from("environments" as any)
         .select("*")
         .eq("account_id", accountId)
         .eq("enterprise_id", enterpriseId)
-        .order("created_at", { ascending: false }) as any);
+        .order("created_at", { ascending: false }) as any;
 
+      if (productId) {
+        query = query.eq("product_id", productId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data || []) as EnvironmentRecord[];
     },

@@ -34,7 +34,9 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   email_configuration {
-    email_sending_account = "COGNITO_DEFAULT"
+    email_sending_account = var.ses_email_sending_account
+    source_arn            = var.ses_email_sending_account == "DEVELOPER" ? var.ses_sender_arn : null
+    from_email_address    = var.ses_email_sending_account == "DEVELOPER" ? var.ses_sender_email : null
   }
 
   # Custom attributes for multi-tenancy

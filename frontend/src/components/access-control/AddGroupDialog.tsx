@@ -42,6 +42,7 @@ import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { useProductContext } from "@/contexts/ProductContext";
 import { AlertCircle } from "lucide-react";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 interface AddGroupDialogProps {
   open: boolean;
@@ -58,6 +59,7 @@ export function AddGroupDialog({ open, onOpenChange }: AddGroupDialogProps) {
   const createGroup = useCreateGroup();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { logAudit } = useAuditLog();
   const { selectedProduct } = useProductContext();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -135,7 +137,7 @@ export function AddGroupDialog({ open, onOpenChange }: AddGroupDialogProps) {
     }
 
     try {
-      await createGroup.mutateAsync({
+      const result = await createGroup.mutateAsync({
         name: formData.name,
         description: formData.description || undefined,
         accountId: selectedAccount?.id,
@@ -145,6 +147,15 @@ export function AddGroupDialog({ open, onOpenChange }: AddGroupDialogProps) {
         serviceId: formData.serviceId || undefined,
         roleIds: formData.roleIds,
       });
+
+      logAudit({
+        action: "group.created",
+        entityType: "group",
+        entityId: result?.id,
+        entityName: formData.name,
+        metadata: { roleIds: formData.roleIds },
+      });
+
       handleClose();
     } catch (error) {
       // Error handled by mutation

@@ -74,6 +74,7 @@ import { useAccountGlobalAccess } from "@/hooks/useAccountGlobalAccess";
 import { ProvisioningStatusBanner } from "@/components/account/ProvisioningStatusBanner";
 import { NotificationPreferences } from "@/components/notifications/NotificationPreferences";
 import { SesDiagnosticsCard } from "@/components/settings/SesDiagnosticsCard";
+import { FailedEmailRetryPanel } from "@/components/settings/FailedEmailRetryPanel";
 import { PermissionGate, usePermissionCheck } from "@/components/auth/PermissionGate";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
@@ -867,6 +868,9 @@ export default function AccountSettingsPage() {
           <TabsContent value="settings" className="space-y-6">
             {/* SES Email Diagnostics */}
             <SesDiagnosticsCard />
+
+            {/* Failed Email Retry */}
+            <FailedEmailRetryPanel />
 
             {/* Provisioning Notification Preferences */}
             <NotificationPreferences />

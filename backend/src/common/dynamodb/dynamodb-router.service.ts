@@ -280,8 +280,18 @@ export class DynamoDBRouterService implements OnModuleInit {
         this.tableCache.set(accountId, normalizedConfig);
         return normalizedConfig.tableName;
       }
-    } catch (error) {
-      this.logger.debug(`No dedicated table found for account ${accountId}, using shared table`);
+    } catch (error: any) {
+      // ParameterNotFound → no SSM config yet, fall through to shared table
+      if (error.name === 'ParameterNotFound') {
+        this.logger.debug(`No SSM routing params for account ${accountId}, using shared table`);
+      } else {
+        // Real SSM error (permissions, network, throttle) — log loudly and STILL
+        // fall back so the service doesn't crash, but make it very visible.
+        this.logger.error(
+          `SSM lookup FAILED for account ${accountId} — data will route to CONTROL PLANE ` +
+          `instead of customer account. This is likely a misconfiguration! Error: ${error.message}`,
+        );
+      }
     }
 
     return this.sharedTableName;
@@ -462,6 +472,20 @@ export class DynamoDBRouterService implements OnModuleInit {
   // =============================================================================
   // DynamoDB Operations with Account Context
   // =============================================================================
+
+  /**
+   * Log a critical warning when operational data is about to be written to the
+   * control-plane table instead of the customer data-plane table.
+   * Call this from services before falling back to this.dynamoDb writes.
+   */
+  warnControlPlaneFallback(accountId: string, entityType: string): void {
+    this.logger.error(
+      `⚠️  CONTROL-PLANE FALLBACK: ${entityType} for account ${accountId} is being ` +
+      `written to the control-plane table "${this.sharedTableName}" instead of the ` +
+      `customer data-plane table. This means SSM routing params are missing for this account. ` +
+      `Run "POST /api/bootstrap" or the backfill script to register the account in SSM.`,
+    );
+  }
 
   /**
    * Resolve the correct DynamoDB doc client for an account.

@@ -196,6 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: terraform-validate
     if: github.event_name == 'pull_request' && needs.terraform-validate.result == 'success'
+    environment: ${{ github.event.pull_request.base.ref == 'main' && 'dev' || 'dev' }}
     steps:
       - uses: actions/checkout@v5
       - id: aws

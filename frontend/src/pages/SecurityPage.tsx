@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
 import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -73,8 +74,9 @@ import { useConnectors, type ConnectorRecord } from "@/hooks/useConnectors";
 import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { formatDistanceToNow, differenceInDays, isPast, format } from "date-fns";
-import { PermissionGate } from "@/components/auth/PermissionGate";
+import { PermissionGate, usePermissionCheck } from "@/components/auth/PermissionGate";
 import { BulkActionBar } from "@/components/shared/BulkActionBar";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -161,20 +163,24 @@ export default function SecurityPage() {
   const [environmentsView, setEnvironmentsView] = useViewPreference("security-environments", "table");
   const [webhooksView, setWebhooksView] = useViewPreference("security-webhooks", "table");
   
-  // Context
+   // Context
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
+  const { canCreate, canEdit, canDelete } = usePermissionCheck("security");
   
   // Fetch credentials from database
   const { credentials, isLoading: credentialsLoading, deleteCredential, refetch: refetchCredentials } = useCredentials(
     selectedAccount?.id,
-    selectedEnterprise?.id
+    selectedEnterprise?.id,
+    selectedProduct?.id
   );
 
   // Fetch connectors from database
   const { connectors, isLoading: connectorsLoading, createConnector, deleteConnector, updateConnector, refetch: refetchConnectors } = useConnectors(
     selectedAccount?.id,
-    selectedEnterprise?.id
+    selectedEnterprise?.id,
+    selectedProduct?.id
   );
   
   // Dialog states
@@ -606,6 +612,7 @@ export default function SecurityPage() {
                 } 
               />
               
+              {canCreate && (
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <Button 
                   size="sm" 
@@ -621,6 +628,7 @@ export default function SecurityPage() {
                   {getAddButtonLabel()}
                 </Button>
               </motion.div>
+              )}
             </motion.div>
           </motion.div>
 
@@ -687,7 +695,7 @@ export default function SecurityPage() {
             </motion.div>
 
             <AnimatePresence>
-              {credentialBulk.selectedIds.size > 0 && (
+              {canDelete && credentialBulk.selectedIds.size > 0 && (
                 <BulkActionBar
                   selectedCount={credentialBulk.selectedIds.size}
                   totalCount={filteredCredentials.length}
@@ -701,13 +709,7 @@ export default function SecurityPage() {
             </AnimatePresence>
 
             {credentialsLoading ? (
-              <motion.div 
-                variants={itemVariants}
-                className="flex items-center justify-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60"
-              >
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-muted-foreground">Loading credentials...</span>
-              </motion.div>
+              <TableSkeleton rows={5} columns={5} variant={credentialsView === "tile" ? "tile" : "table"} />
             ) : filteredCredentials.length === 0 ? (
               <motion.div 
                 variants={itemVariants}
@@ -720,7 +722,7 @@ export default function SecurityPage() {
                     ? "Try adjusting your filters or search query" 
                     : "Add your first credential to get started"}
                 </p>
-                {!searchQuery && !hasActiveCredentialFilters && (
+                {!searchQuery && !hasActiveCredentialFilters && canCreate && (
                   <Button 
                     size="sm" 
                     onClick={() => setAddCredentialOpen(true)}
@@ -872,6 +874,7 @@ export default function SecurityPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {canEdit && (
                               <DropdownMenuItem 
                                 className="gap-2"
                                 onClick={() => handleEditCredential(credential)}
@@ -879,6 +882,8 @@ export default function SecurityPage() {
                                 <Pencil className="w-4 h-4" />
                                 Edit
                               </DropdownMenuItem>
+                              )}
+                              {canEdit && (
                               <DropdownMenuItem 
                                 className="gap-2"
                                 onClick={() => handleRotateCredential(credential)}
@@ -886,6 +891,8 @@ export default function SecurityPage() {
                                 <RefreshCw className="w-4 h-4" />
                                 Rotate
                               </DropdownMenuItem>
+                              )}
+                              {canDelete && (
                               <DropdownMenuItem 
                                 className="gap-2 text-destructive"
                                 onClick={() => handleDeleteCredential(credential)}
@@ -893,6 +900,7 @@ export default function SecurityPage() {
                                 <Trash2 className="w-4 h-4" />
                                 Delete
                               </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -968,6 +976,7 @@ export default function SecurityPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {canEdit && (
                           <DropdownMenuItem 
                             className="gap-2"
                             onClick={() => handleEditCredential(credential)}
@@ -975,6 +984,8 @@ export default function SecurityPage() {
                             <Pencil className="w-4 h-4" />
                             Edit
                           </DropdownMenuItem>
+                          )}
+                          {canEdit && (
                           <DropdownMenuItem 
                             className="gap-2"
                             onClick={() => handleRotateCredential(credential)}
@@ -982,6 +993,8 @@ export default function SecurityPage() {
                             <RefreshCw className="w-4 h-4" />
                             Rotate
                           </DropdownMenuItem>
+                          )}
+                          {canDelete && (
                           <DropdownMenuItem 
                             className="gap-2 text-destructive"
                             onClick={() => handleDeleteCredential(credential)}
@@ -989,6 +1002,7 @@ export default function SecurityPage() {
                             <Trash2 className="w-4 h-4" />
                             Delete
                           </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1178,7 +1192,7 @@ export default function SecurityPage() {
             </motion.div>
 
             <AnimatePresence>
-              {connectorBulk.selectedIds.size > 0 && (
+              {canDelete && connectorBulk.selectedIds.size > 0 && (
                 <BulkActionBar
                   selectedCount={connectorBulk.selectedIds.size}
                   totalCount={filteredConnectors.length}
@@ -1191,7 +1205,9 @@ export default function SecurityPage() {
               )}
             </AnimatePresence>
 
-            {connectorsView === "table" ? (
+            {connectorsLoading ? (
+              <TableSkeleton rows={5} columns={6} variant={connectorsView === "tile" ? "tile" : "table"} />
+            ) : connectorsView === "table" ? (
               <motion.div 
                 variants={itemVariants}
                 className="bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/30 overflow-hidden"
@@ -1315,10 +1331,12 @@ export default function SecurityPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-48">
+                                {canEdit && (
                                 <DropdownMenuItem className="gap-2" onClick={() => handleEditConnector(connector)}>
                                   <Pencil className="w-4 h-4" />
                                   Edit
                                 </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem 
                                   className="gap-2" 
                                   onClick={() => handleTestConnectorFromList(connector)}
@@ -1335,10 +1353,12 @@ export default function SecurityPage() {
                                   <RefreshCw className="w-4 h-4" />
                                   Sync Now
                                 </DropdownMenuItem>
+                                {canDelete && (
                                 <DropdownMenuItem className="gap-2 text-destructive" onClick={() => handleDeleteConnector(connector)}>
                                   <Trash2 className="w-4 h-4" />
                                   Delete
                                 </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -1387,10 +1407,12 @@ export default function SecurityPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
+                            {canEdit && (
                             <DropdownMenuItem className="gap-2" onClick={() => handleEditConnector(connector)}>
                               <Pencil className="w-4 h-4" />
                               Edit
                             </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem 
                               className="gap-2" 
                               onClick={() => handleTestConnectorFromList(connector)}
@@ -1407,10 +1429,12 @@ export default function SecurityPage() {
                               <RefreshCw className="w-4 h-4" />
                               Sync Now
                             </DropdownMenuItem>
+                            {canDelete && (
                             <DropdownMenuItem className="gap-2 text-destructive" onClick={() => handleDeleteConnector(connector)}>
                               <Trash2 className="w-4 h-4" />
                               Delete
                             </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -1599,10 +1623,12 @@ export default function SecurityPage() {
                                 <Zap className="w-4 h-4" />
                                 Test
                               </DropdownMenuItem>
+                              {canDelete && (
                               <DropdownMenuItem className="gap-2 text-destructive">
                                 <Trash2 className="w-4 h-4" />
                                 Delete
                               </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

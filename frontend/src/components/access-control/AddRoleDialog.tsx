@@ -33,6 +33,7 @@ import { useLicenses } from "@/hooks/useLicenses";
 import { cn } from "@/lib/utils";
 import { RoleScopesModal, MenuPermission } from "./RoleScopesModal";
 import { WorkstreamMultiSelect } from "./WorkstreamMultiSelect";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 interface AddRoleDialogProps {
   open: boolean;
@@ -48,6 +49,7 @@ const STEPS = [
 export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
   const createRole = useCreateRole();
   const createRolePermissions = useCreateRolePermissions();
+  const { logAudit } = useAuditLog();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
   const { selectedProduct } = useProductContext();
@@ -137,6 +139,16 @@ export function AddRoleDialog({ open, onOpenChange }: AddRoleDialogProps) {
         }));
 
         await createRolePermissions.mutateAsync(permissionsToCreate);
+      }
+
+      if (result) {
+        logAudit({
+          action: "role.created",
+          entityType: "role",
+          entityId: result.id,
+          entityName: formData.name,
+          metadata: { permissionCount: permissions.length },
+        });
       }
 
       handleClose();

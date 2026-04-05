@@ -91,7 +91,7 @@ export function AddEnvironmentDialog({
   const accountId = selectedAccount?.id;
   const enterpriseId = selectedEnterprise?.id;
 
-  const { createEnvironment } = useEnvironments(accountId, enterpriseId);
+  const { createEnvironment } = useEnvironments(accountId, enterpriseId, selectedProduct?.id);
   const { workstreams } = useWorkstreams(accountId, enterpriseId);
 
   const [products, setProducts] = useState<{ id: string; name: string }[]>([]);

@@ -1489,7 +1489,7 @@ export function AddAccountForm({ open, onOpenChange, onSuccess }: AddAccountForm
                             <p className="text-xs font-medium text-muted-foreground">Role</p>
                             <p className="text-sm font-semibold text-foreground">Technical Role</p>
                             <p className="text-[11px] text-muted-foreground mt-0.5">
-                              View-only access across all menus
+                              Can manage pipelines and access control, with view-only access elsewhere
                             </p>
                           </div>
                         </div>

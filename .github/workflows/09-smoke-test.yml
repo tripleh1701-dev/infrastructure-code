@@ -720,6 +720,20 @@ jobs:
           test_endpoint "GET" "/health/preflight-assume-role" "200" "Health Preflight AssumeRole" "false"
           test_endpoint "GET" "/health/full?accountId=${ACCT}" "200" "Health Full Diagnostics" "false"
           test_endpoint "GET" "/health/routing/${ACCT}" "200,500" "Health Routing Check" "true"
+          test_endpoint "GET" "/health/routing-audit" "200" "Health Routing Audit (all accounts)" "false"
+
+          # ── Validate routing-audit results ───────────────────────
+          echo ""
+          echo "━━━ Routing Audit Validation ━━━"
+          AUDIT_JSON=$(curl -sS "${BASE_URL}/health/routing-audit" ${AUTH_HEADER:+-H "$AUTH_HEADER"} 2>/dev/null || echo '{}')
+          AUDIT_STATUS=$(echo "${AUDIT_JSON}" | jq -r '.status // "unknown"')
+          MISROUTED=$(echo "${AUDIT_JSON}" | jq -r '.summary.misrouted // 0')
+          TOTAL=$(echo "${AUDIT_JSON}" | jq -r '.summary.total_accounts // 0')
+          echo "  Routing audit: status=${AUDIT_STATUS}, total=${TOTAL}, misrouted=${MISROUTED}"
+          if [ "${AUDIT_STATUS}" = "unhealthy" ] && [ "${MISROUTED}" -gt "0" ]; then
+            echo "::warning::⚠️ ${MISROUTED} account(s) are misrouted to control-plane table! Run backfill script or re-bootstrap."
+            echo "${AUDIT_JSON}" | jq '.accounts[] | select(.status != "ok")'
+          fi
 
           # ╔═══════════════════════════════════════════════════════╗
           # ║  SECTION 2: Read-Only (GET) Endpoints — All Entities  ║

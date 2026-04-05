@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { toast } from "sonner";
 import {
   buildsService,
@@ -171,10 +172,12 @@ function mapArtifactTypeForYaml(type: string): string {
 export function useBuilds() {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const queryClient = useQueryClient();
 
   const accountId = selectedAccount?.id;
   const enterpriseId = selectedEnterprise?.id;
+  const productId = selectedProduct?.id;
 
   // Helper: trigger Build YAML generation/update
   const syncBuildYaml = async (buildJob: BuildJob) => {
@@ -218,10 +221,10 @@ export function useBuilds() {
   };
 
   const { data: buildJobs = [], isLoading, refetch } = useQuery({
-    queryKey: ["build_jobs", accountId, enterpriseId],
+    queryKey: ["build_jobs", accountId, enterpriseId, productId],
     queryFn: async () => {
       if (!accountId || !enterpriseId) return [];
-      return buildsService.getBuildJobs(accountId, enterpriseId);
+      return buildsService.getBuildJobs(accountId, enterpriseId, productId, selectedProduct?.name);
     },
     enabled: !!accountId && !!enterpriseId,
   });

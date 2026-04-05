@@ -116,7 +116,7 @@ export class PipelinesController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'manager', 'user')
+  @Roles('admin', 'manager', 'user', 'Technical Role')
   async create(
     @Body() dto: CreatePipelineDto,
     @CurrentUser() user: CognitoUser,
@@ -139,7 +139,7 @@ export class PipelinesController {
    */
   @Put(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'manager', 'user')
+  @Roles('admin', 'manager', 'user', 'Technical Role')
   async update(
     @CurrentUser() user: CognitoUser,
     @Param('id') id: string,
@@ -157,7 +157,7 @@ export class PipelinesController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'manager', 'user')
+  @Roles('admin', 'manager', 'user', 'Technical Role')
   async remove(
     @CurrentUser() user: CognitoUser,
     @Param('id') id: string,
@@ -176,7 +176,7 @@ export class PipelinesController {
   @Post(':id/duplicate')
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'manager', 'user')
+  @Roles('admin', 'manager', 'user', 'Technical Role')
   async duplicate(
     @CurrentUser() user: CognitoUser,
     @Param('id') id: string,

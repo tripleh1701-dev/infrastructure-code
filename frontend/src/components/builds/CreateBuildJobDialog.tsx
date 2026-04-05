@@ -23,6 +23,7 @@ import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { usePipelines } from "@/hooks/usePipelines";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { Zap, FileText, Layers, GitBranch } from "lucide-react";
 
 interface CreateBuildJobDialogProps {
@@ -34,6 +35,7 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
   const { createBuildJob } = useBuilds();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const { workstreams, isLoading: workstreamsLoading } = useWorkstreams(selectedAccount?.id, selectedEnterprise?.id);
   const { pipelines } = usePipelines();
 
@@ -55,6 +57,7 @@ export function CreateBuildJobDialog({ open, onOpenChange }: CreateBuildJobDialo
         description: form.description || undefined,
         entity: form.entity || undefined,
         pipeline: form.pipeline || undefined,
+        product: selectedProduct?.name || "DevOps",
       });
       setForm({ connector_name: "", description: "", entity: "", pipeline: "" });
       onOpenChange(false);

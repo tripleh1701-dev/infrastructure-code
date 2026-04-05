@@ -214,6 +214,7 @@ export class PipelinesService {
     if (isCustomer) {
       await this.dynamoDbRouter.put(dto.accountId, { Item: item });
     } else {
+      this.dynamoDbRouter.warnControlPlaneFallback(dto.accountId, 'PIPELINE');
       await this.dynamoDb.put({ Item: item });
     }
 

@@ -67,14 +67,14 @@ export class GroupsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async create(@Body() createGroupDto: CreateGroupDto) {
     return this.groupsService.create(createGroupDto);
   }
 
   @Put(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async update(@Param('id') id: string, @Body() updateGroupDto: UpdateGroupDto) {
     return this.groupsService.update(id, updateGroupDto);
   }
@@ -82,7 +82,7 @@ export class GroupsController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async remove(@Param('id') id: string) {
     await this.groupsService.remove(id);
   }

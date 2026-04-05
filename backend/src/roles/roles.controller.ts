@@ -67,14 +67,14 @@ export class RolesController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async create(@Body() createRoleDto: CreateRoleDto) {
     return this.rolesService.create(createRoleDto);
   }
 
   @Put(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
     return this.rolesService.update(id, updateRoleDto);
   }
@@ -82,7 +82,7 @@ export class RolesController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async remove(@Param('id') id: string) {
     await this.rolesService.remove(id);
   }
@@ -95,7 +95,7 @@ export class RolesController {
 
   @Put(':id/permissions')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async updatePermissions(
     @Param('id') id: string,
     @Body() permissions: any[],

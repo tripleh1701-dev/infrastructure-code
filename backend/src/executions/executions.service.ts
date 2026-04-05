@@ -205,6 +205,7 @@ export class ExecutionsService {
     if (isCustomer) {
       await this.dynamoDbRouter.put(accountId, { Item: executionItem });
     } else {
+      this.dynamoDbRouter.warnControlPlaneFallback(accountId, 'PIPELINE_EXECUTION');
       await this.dynamoDb.put({ Item: executionItem });
     }
 
@@ -1098,6 +1099,7 @@ export class ExecutionsService {
     if (isCustomer) {
       await this.dynamoDbRouter.put(accountId, { Item: item });
     } else {
+      this.dynamoDbRouter.warnControlPlaneFallback(accountId, 'EXECUTION_STAGE');
       await this.dynamoDb.put({ Item: item });
     }
   }
@@ -1135,6 +1137,7 @@ export class ExecutionsService {
       if (isCustomer) {
         await this.dynamoDbRouter.put(accountId, { Item: item });
       } else {
+        this.dynamoDbRouter.warnControlPlaneFallback(accountId, 'EXECUTION_LOG');
         await this.dynamoDb.put({ Item: item });
       }
     } catch (err: any) {

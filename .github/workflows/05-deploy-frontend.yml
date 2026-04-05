@@ -18,7 +18,7 @@
 #   - prod: Manual trigger with required approval
 # =============================================================================
 
-name: "05 - Deploy Frontend"
+name: "05 · Deploy Frontend"
 
 on:
   push:

@@ -95,15 +95,15 @@ function mapExternalCredential(c: any): Credential {
   };
 }
 
-export function useCredentials(accountId?: string, enterpriseId?: string) {
+export function useCredentials(accountId?: string, enterpriseId?: string, productId?: string) {
   const queryClient = useQueryClient();
 
   const { data: credentials = [], isLoading, refetch } = useQuery({
-    queryKey: ["credentials", accountId, enterpriseId],
+    queryKey: ["credentials", accountId, enterpriseId, productId],
     queryFn: async () => {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<any[]>('/credentials', {
-          params: { accountId, enterpriseId },
+          params: { accountId, enterpriseId, productId },
         });
         if (error) throw new Error(error.message);
         return (data || []).map(mapExternalCredential) as Credential[];
@@ -127,6 +127,9 @@ export function useCredentials(accountId?: string, enterpriseId?: string) {
       }
       if (enterpriseId) {
         query = query.eq("enterprise_id", enterpriseId);
+      }
+      if (productId) {
+        query = query.eq("product_id", productId);
       }
 
       const { data, error } = await query;

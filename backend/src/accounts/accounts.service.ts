@@ -713,6 +713,10 @@ export class AccountsService {
     { key: 'roles', label: 'Roles' },
   ];
 
+  private isTechnicalCrudMenu(menuKey: string): boolean {
+    return menuKey === 'access-control' || menuKey === 'pipelines';
+  }
+
   private getTabsForMenu(menuKey: string): any[] {
     if (menuKey === 'account-settings') {
       return AccountsService.ACCOUNT_SETTINGS_TABS.map((t) => ({
@@ -723,7 +727,7 @@ export class AccountsService {
     if (menuKey === 'access-control') {
       return AccountsService.ACCESS_CONTROL_TABS.map((t) => ({
         key: t.key, label: t.label, isVisible: true,
-        canView: true, canCreate: false, canEdit: false, canDelete: false,
+        canView: true, canCreate: true, canEdit: true, canDelete: true,
       }));
     }
     return [];
@@ -735,7 +739,8 @@ export class AccountsService {
    * structure for its technical users from the moment of creation.
    *
    * Flow:
-   *   1. Create "Technical Role" with view-only permissions for all menus
+   *   1. Create "Technical Role" with CRUD on pipelines + access control,
+   *      and view-only permissions elsewhere
    *   2. Create "Technical Group" scoped to the account/enterprise
    *   3. Link the Role → Group via group_roles junction
    *   4. For private accounts, replicate to the dedicated table
@@ -762,7 +767,7 @@ export class AccountsService {
       GSI1SK: `ROLE#${roleId}`,
       id: roleId,
       name: 'Technical Role',
-      description: 'Default view-only role for technical users',
+      description: 'Default technical role with access-control and pipeline management',
       permissions: 0,
       accountId,
       enterpriseId: enterpriseId || null,
@@ -782,9 +787,9 @@ export class AccountsService {
       menuLabel: menu.label,
       isVisible: true,
       canView: true,
-      canCreate: false,
-      canEdit: false,
-      canDelete: false,
+      canCreate: this.isTechnicalCrudMenu(menu.key),
+      canEdit: this.isTechnicalCrudMenu(menu.key),
+      canDelete: this.isTechnicalCrudMenu(menu.key),
       tabs: this.getTabsForMenu(menu.key),
       createdAt: now,
       updatedAt: now,

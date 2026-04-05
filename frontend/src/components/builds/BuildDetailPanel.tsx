@@ -5,6 +5,7 @@ import { useBuildExecution } from "@/hooks/useBuildExecution";
 import { usePipelines } from "@/hooks/usePipelines";
 import { isExternalApi } from "@/lib/api/config";
 import { usePermissions } from "@/contexts/PermissionContext";
+import { usePermissionCheck } from "@/components/auth/PermissionGate";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -59,6 +60,7 @@ type SidebarTabKey = typeof SIDEBAR_TABS[number]["key"];
 export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isTheaterMode }: BuildDetailPanelProps) {
   const { fetchExecutions, createExecution, regenerateBuildYaml } = useBuilds();
   const { currentUserRoleName } = usePermissions();
+  const { canEdit } = usePermissionCheck("builds");
   const buildExecution = useBuildExecution();
   const { pipelines } = usePipelines();
   const [executions, setExecutions] = useState<BuildExecution[]>([]);
@@ -425,6 +427,7 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
                   <TooltipContent><p className="text-xs">Toggle log panel</p></TooltipContent>
                 </Tooltip>
               )}
+              {canEdit ? (
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   size="sm"
@@ -436,6 +439,19 @@ export function BuildDetailPanel({ buildJob, onClose, onExecutionComplete, isThe
                   Run
                 </Button>
               </motion.div>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-muted/60 text-muted-foreground text-[10px] font-medium border border-border/40 cursor-default">
+                      <Eye className="w-3 h-3" />
+                      Read-only
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">You don't have edit permission to run builds. Contact your administrator.</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {!isTheaterMode && (
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={onClose}>
                   <X className="w-4 h-4" />

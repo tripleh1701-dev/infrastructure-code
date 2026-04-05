@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 interface BuildsCardViewProps {
   builds: BuildJob[];
   onOpenDetail: (job: BuildJob) => void;
-  onDelete: (job: BuildJob) => void;
+  onDelete?: (job: BuildJob) => void;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
 }
@@ -107,17 +107,19 @@ export function BuildsCardView({ builds, onOpenDetail, onDelete, selectedIds, on
                 {build.scope || "No artifacts"}
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(build);
-                  }}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
+                {onDelete && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(build);
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"

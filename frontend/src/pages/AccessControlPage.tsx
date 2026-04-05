@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
 import { Network } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "@/components/layout/Header";
@@ -971,30 +972,7 @@ export default function AccessControlPage() {
               )}
             </AnimatePresence>
             {usersLoading ? (
-              <motion.div 
-                variants={itemVariants}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200/60 shadow-lg"
-              >
-                <div className="p-6 space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <motion.div 
-                      key={i} 
-                      className="flex items-center gap-4"
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.1 }}
-                    >
-                      <Skeleton className="w-10 h-10 rounded-full" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-48" />
-                        <Skeleton className="h-3 w-32" />
-                      </div>
-                      <Skeleton className="h-6 w-20 rounded-full" />
-                      <Skeleton className="h-6 w-16 rounded-full" />
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
+              <TableSkeleton rows={5} columns={6} variant={usersView === "tile" ? "tile" : "table"} />
             ) : filteredUsers.length === 0 ? (
               <motion.div 
                 variants={itemVariants}
@@ -1585,18 +1563,7 @@ export default function AccessControlPage() {
               )}
             </AnimatePresence>
             {rolesLoading ? (
-              <motion.div 
-                variants={itemVariants}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"
-              >
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200/60 p-5 shadow-lg">
-                    <Skeleton className="w-12 h-12 rounded-xl mb-4" />
-                    <Skeleton className="h-5 w-32 mb-2" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                ))}
-              </motion.div>
+              <TableSkeleton rows={4} columns={4} variant="tile" />
             ) : filteredRoles.length === 0 ? (
               <motion.div 
                 variants={itemVariants}
@@ -1711,18 +1678,7 @@ export default function AccessControlPage() {
               )}
             </AnimatePresence>
             {groupsLoading ? (
-              <motion.div 
-                variants={itemVariants}
-                className="responsive-grid-lg"
-              >
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200/60 p-5 shadow-lg">
-                    <Skeleton className="w-12 h-12 rounded-xl mb-4" />
-                    <Skeleton className="h-5 w-32 mb-2" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                ))}
-              </motion.div>
+              <TableSkeleton rows={3} columns={4} variant="tile" />
             ) : filteredGroups.length === 0 ? (
               <motion.div 
                 variants={itemVariants}

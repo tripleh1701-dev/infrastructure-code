@@ -37,6 +37,7 @@ import { useUpdateUserWorkstreams } from "@/hooks/useUserWorkstreams";
 import { useUpdateUserGroups } from "@/hooks/useUserGroups";
 
 import { useGroups, Group } from "@/hooks/useGroups";
+import { useRoles } from "@/hooks/useRoles";
 import { getPasswordRequirementStatus } from "@/lib/validations/account";
 import { GroupMultiSelect } from "./GroupMultiSelect";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,7 @@ import { httpClient } from "@/lib/api/http-client";
 import { toast } from "sonner";
 import { useLicenseCapacity } from "@/hooks/useLicenseCapacity";
 import { LicenseCapacityBanner } from "./LicenseCapacityBanner";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 interface AddUserDialogProps {
   open: boolean;
@@ -66,10 +68,12 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   const createUser = useCreateAccessControlUser();
   const updateUserWorkstreams = useUpdateUserWorkstreams();
   const updateUserGroups = useUpdateUserGroups();
+  const { logAudit } = useAuditLog();
   
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
   const { data: groups = [] } = useGroups(selectedAccount?.id, selectedEnterprise?.id);
+  const { data: allRoles = [] } = useRoles(selectedAccount?.id, selectedEnterprise?.id);
 
   // License capacity check
   const { data: licenseCapacity, isLoading: isLoadingCapacity } = useLicenseCapacity(selectedAccount?.id);
@@ -90,6 +94,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
   
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedWorkstreams, setSelectedWorkstreams] = useState<string[]>([]);
+  const [roleOverride, setRoleOverride] = useState<string>("");
   const [showPassword, setShowPassword] = useState(false);
   const [direction, setDirection] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -138,7 +143,7 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
     // Compute group/role names early so they're available for both provision and create
     const primaryGroup = selectedGroups[0];
     const primaryGroupName = primaryGroup?.name || "";
-    const primaryRoleName = primaryGroup?.roles?.[0]?.roleName || "Member";
+    const primaryRoleName = roleOverride || primaryGroup?.roles?.[0]?.roleName || "Member";
 
     try {
       // Create the auth user via edge function (Supabase) or NestJS endpoint (external)
@@ -241,6 +246,18 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
         await updateUserGroups.mutateAsync({
           userId: result.id,
           groupIds: selectedGroupIds,
+        });
+      }
+
+      // Audit log
+      if (result) {
+        logAudit({
+          action: "user.created",
+          entityType: "user",
+          entityId: result.id,
+          entityName: `${formData.firstName} ${formData.lastName}`,
+          targetUserEmail: formData.email,
+          newValue: JSON.stringify({ role: primaryRoleName, group: primaryGroupName }),
         });
       }
       
@@ -631,6 +648,37 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
         </div>
       </motion.div>
 
+
+      {/* Role Override */}
+      <motion.div
+        className="p-5 rounded-xl bg-gradient-to-br from-primary/5 to-amber-500/5 border border-primary/10 space-y-4"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.35 }}
+      >
+        <div className="flex items-center gap-2">
+          <Shield className="w-5 h-5 text-primary" />
+          <h4 className="font-medium">Role Assignment</h4>
+        </div>
+        <Select value={roleOverride} onValueChange={setRoleOverride}>
+          <SelectTrigger className="h-11 transition-all focus:ring-2 focus:ring-primary/20">
+            <SelectValue placeholder="Auto-detect from group" />
+          </SelectTrigger>
+          <SelectContent>
+            {allRoles.map((role) => (
+              <SelectItem key={role.id} value={role.name}>
+                <div className="flex items-center gap-2">
+                  <Shield className="w-3.5 h-3.5 text-muted-foreground" />
+                  {role.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Override the role derived from the group. Leave empty to auto-detect from group assignment.
+        </p>
+      </motion.div>
 
       {/* Workstream Assignment */}
       <motion.div

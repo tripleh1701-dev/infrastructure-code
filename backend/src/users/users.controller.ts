@@ -110,7 +110,7 @@ export class UsersController {
    */
   @Post('provision')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin')
+  @Roles('admin', 'super_admin', 'Technical Role')
   @HttpCode(HttpStatus.OK)
   async provisionAuthUser(
     @Body()
@@ -339,14 +339,14 @@ export class UsersController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
   @Put(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
   }
@@ -354,7 +354,7 @@ export class UsersController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async remove(@Param('id') id: string) {
     await this.usersService.remove(id);
   }
@@ -367,7 +367,7 @@ export class UsersController {
 
   @Put(':id/workstreams')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async updateWorkstreams(
     @Param('id') id: string,
     @Body() body: UpdateUserWorkstreamsDto,
@@ -383,7 +383,7 @@ export class UsersController {
 
   @Put(':id/groups')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'super_admin', 'manager', 'user')
+  @Roles('admin', 'super_admin', 'manager', 'user', 'Technical Role')
   async updateUserGroups(
     @Param('id') id: string,
     @Body() body: UpdateUserGroupsDto,

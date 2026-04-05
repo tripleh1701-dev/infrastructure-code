@@ -65,15 +65,15 @@ function mapExternalConnector(c: any): ConnectorRecord {
   };
 }
 
-export function useConnectors(accountId?: string, enterpriseId?: string) {
+export function useConnectors(accountId?: string, enterpriseId?: string, productId?: string) {
   const queryClient = useQueryClient();
 
   const { data: connectors = [], isLoading, refetch } = useQuery({
-    queryKey: ["connectors", accountId, enterpriseId],
+    queryKey: ["connectors", accountId, enterpriseId, productId],
     queryFn: async () => {
       if (isExternalApi()) {
         const { data, error } = await httpClient.get<any[]>("/connectors", {
-          params: { accountId, enterpriseId },
+          params: { accountId, enterpriseId, productId },
         });
         if (error) throw new Error(error.message);
         return (data || []).map(mapExternalConnector) as ConnectorRecord[];
@@ -91,6 +91,7 @@ export function useConnectors(accountId?: string, enterpriseId?: string) {
 
       if (accountId) query = query.eq("account_id", accountId);
       if (enterpriseId) query = query.eq("enterprise_id", enterpriseId);
+      if (productId) query = query.eq("product_id", productId);
 
       const { data, error } = await query;
       if (error) throw error;

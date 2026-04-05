@@ -246,6 +246,57 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_logs: {
+        Row: {
+          account_id: string
+          action: string
+          changed_by_email: string | null
+          changed_by_user_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_name: string | null
+          entity_type: string
+          id: string
+          metadata: Json | null
+          new_value: string | null
+          old_value: string | null
+          target_user_email: string | null
+          target_user_id: string | null
+        }
+        Insert: {
+          account_id: string
+          action: string
+          changed_by_email?: string | null
+          changed_by_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json | null
+          new_value?: string | null
+          old_value?: string | null
+          target_user_email?: string | null
+          target_user_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          action?: string
+          changed_by_email?: string | null
+          changed_by_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json | null
+          new_value?: string | null
+          old_value?: string | null
+          target_user_email?: string | null
+          target_user_id?: string | null
+        }
+        Relationships: []
+      }
       build_executions: {
         Row: {
           approvers: string[] | null

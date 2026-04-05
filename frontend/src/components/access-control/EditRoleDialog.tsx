@@ -19,6 +19,7 @@ import { useProductContext } from "@/contexts/ProductContext";
 import { useLicenses } from "@/hooks/useLicenses";
 import { cn } from "@/lib/utils";
 import { WorkstreamMultiSelect } from "./WorkstreamMultiSelect";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 interface EditRoleDialogProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
   const { selectedProduct } = useProductContext();
   const updateRole = useUpdateRole();
   const updatePermissions = useUpdateRolePermissions();
+  const { logAudit } = useAuditLog();
 
   // Fetch licensed services filtered by global product
   const { licenses = [] } = useLicenses(selectedAccount?.id, selectedEnterprise?.id);
@@ -168,6 +170,16 @@ export function EditRoleDialog({ open, onOpenChange, role }: EditRoleDialogProps
           })),
         });
       }
+
+      logAudit({
+        action: "role.updated",
+        entityType: "role",
+        entityId: role.id,
+        entityName: formData.name,
+        oldValue: role.name !== formData.name ? role.name : undefined,
+        newValue: role.name !== formData.name ? formData.name : undefined,
+        metadata: { permissionCount: scopePermissions.length },
+      });
 
       onOpenChange(false);
     } catch (error) {

@@ -32,7 +32,7 @@ interface BuildsTableProps {
   visibleColumns: string[];
   groupBy: string | null;
   onOpenDetail: (job: BuildJob) => void;
-  onDelete: (job: BuildJob) => void;
+  onDelete?: (job: BuildJob) => void;
   selectedBuildId?: string;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
@@ -215,19 +215,21 @@ export function BuildsTable({
             </td>
           )}
 
-          <td className="px-3 py-4 w-10">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(build);
-              }}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          </td>
+          {onDelete && (
+            <td className="px-3 py-4 w-10">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(build);
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </td>
+          )}
         </motion.tr>
 
         <AnimatePresence>
@@ -294,7 +296,7 @@ export function BuildsTable({
                   {columnLabels[col]}
                 </th>
               ))}
-              <th className="px-3 py-3 w-10" />
+              {onDelete && <th className="px-3 py-3 w-10" />}
             </tr>
           </thead>
           <tbody>

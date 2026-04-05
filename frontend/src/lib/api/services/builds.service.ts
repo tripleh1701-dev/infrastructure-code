@@ -93,10 +93,12 @@ export const buildsService = {
 
   // ── Build Jobs ──────────────────────────────────────────────────────────────
 
-  async getBuildJobs(accountId: string, enterpriseId: string): Promise<BuildJob[]> {
+  async getBuildJobs(accountId: string, enterpriseId: string, productId?: string, productName?: string): Promise<BuildJob[]> {
     if (isExternalApi()) {
+      const params: Record<string, string> = { accountId, enterpriseId };
+      if (productId) params.productId = productId;
       const { data, error } = await httpClient.get<any[]>('/builds/jobs', {
-        params: { accountId, enterpriseId },
+        params,
       });
       if (error) throw new Error(error.message);
       return (data || []).map(this.mapApiToBuildJob);

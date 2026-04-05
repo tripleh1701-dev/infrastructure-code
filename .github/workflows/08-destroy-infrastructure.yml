@@ -214,6 +214,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: "🔍 OIDC Preflight"
+        uses: ./.github/actions/oidc-preflight
+        id: oidc_preflight
+
       - name: Configure AWS Credentials (Platform Admin via OIDC)
         id: aws_oidc
         uses: aws-actions/configure-aws-credentials@v5
@@ -261,41 +265,67 @@ jobs:
         run: |
           set -euo pipefail
 
+          empty_bucket() {
+            local BUCKET="$1"
+            echo "🗑️ Emptying S3 bucket: $BUCKET"
+
+            if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+              echo "⚠️ Bucket $BUCKET not found — skipping"
+              return 0
+            fi
+
+            # Delete all object versions in paginated batches (max 1000 per API call)
+            local KEY_MARKER="" VERSION_MARKER="" TRUNCATED="true"
+            while [ "$TRUNCATED" = "true" ]; do
+              local ARGS="--bucket $BUCKET --output json --max-items 1000"
+              if [ -n "$KEY_MARKER" ]; then
+                ARGS="$ARGS --key-marker $KEY_MARKER --version-id-marker $VERSION_MARKER"
+              fi
+
+              local RESPONSE
+              RESPONSE=$(aws s3api list-object-versions $ARGS 2>/dev/null || echo '{}')
+
+              # Delete versions
+              echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          versions = data.get('Versions', [])
+          if versions:
+              keys = [{'Key': v['Key'], 'VersionId': v['VersionId']} for v in versions]
+              json.dump({'Objects': keys, 'Quiet': True}, sys.stdout)
+          else:
+              sys.exit(1)
+          " > /tmp/batch.json 2>/dev/null && \
+                aws s3api delete-objects --bucket "$BUCKET" --delete file:///tmp/batch.json > /dev/null 2>&1 || true
+
+              # Delete markers
+              echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          markers = data.get('DeleteMarkers', [])
+          if markers:
+              keys = [{'Key': m['Key'], 'VersionId': m['VersionId']} for m in markers]
+              json.dump({'Objects': keys, 'Quiet': True}, sys.stdout)
+          else:
+              sys.exit(1)
+          " > /tmp/batch.json 2>/dev/null && \
+                aws s3api delete-objects --bucket "$BUCKET" --delete file:///tmp/batch.json > /dev/null 2>&1 || true
+
+              TRUNCATED=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('IsTruncated', False) else 'false')" 2>/dev/null || echo "false")
+              if [ "$TRUNCATED" = "true" ]; then
+                KEY_MARKER=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('NextKeyMarker',''))" 2>/dev/null)
+                VERSION_MARKER=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('NextVersionIdMarker',''))" 2>/dev/null)
+              fi
+            done
+
+            echo "✅ S3 bucket emptied: $BUCKET"
+          }
+
           FRONTEND_BUCKET="${{ secrets.FRONTEND_S3_BUCKET }}"
           if [ -z "$FRONTEND_BUCKET" ]; then
             FRONTEND_BUCKET="${{ env.PROJECT }}-${{ inputs.environment }}-frontend"
           fi
-
-          echo "🗑️ Emptying S3 bucket: $FRONTEND_BUCKET"
-          if aws s3api head-bucket --bucket "$FRONTEND_BUCKET" 2>/dev/null; then
-            # Delete all object versions (required for versioned buckets)
-            aws s3api list-object-versions \
-              --bucket "$FRONTEND_BUCKET" \
-              --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
-              --output json > /tmp/versions.json
-
-            if [ "$(cat /tmp/versions.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/versions.json)" != 'null' ]; then
-              aws s3api delete-objects \
-                --bucket "$FRONTEND_BUCKET" \
-                --delete file:///tmp/versions.json 2>/dev/null || true
-            fi
-
-            # Delete all delete markers
-            aws s3api list-object-versions \
-              --bucket "$FRONTEND_BUCKET" \
-              --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
-              --output json > /tmp/markers.json
-
-            if [ "$(cat /tmp/markers.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/markers.json)" != 'null' ]; then
-              aws s3api delete-objects \
-                --bucket "$FRONTEND_BUCKET" \
-                --delete file:///tmp/markers.json 2>/dev/null || true
-            fi
-
-            echo "✅ S3 bucket emptied: $FRONTEND_BUCKET"
-          else
-            echo "⚠️ Bucket $FRONTEND_BUCKET not found — skipping"
-          fi
+          empty_bucket "$FRONTEND_BUCKET"
 
       - name: Create Lambda Placeholder (required for Terraform state consistency)
         working-directory: infra/control-plane/terraform
@@ -384,28 +414,37 @@ jobs:
           echo "🗑️ Emptying and deleting Terraform state bucket: $BUCKET"
 
           if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-            # Empty all versions
-            aws s3api list-object-versions \
-              --bucket "$BUCKET" \
-              --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
-              --output json > /tmp/versions.json
+            # Paginated delete of all object versions and delete markers
+            TRUNCATED="true"
+            KEY_MARKER=""
+            VERSION_MARKER=""
+            while [ "$TRUNCATED" = "true" ]; do
+              ARGS="--bucket $BUCKET --output json --max-items 1000"
+              if [ -n "$KEY_MARKER" ]; then
+                ARGS="$ARGS --key-marker $KEY_MARKER --version-id-marker $VERSION_MARKER"
+              fi
 
-            if [ "$(cat /tmp/versions.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/versions.json)" != 'null' ]; then
-              aws s3api delete-objects \
-                --bucket "$BUCKET" \
-                --delete file:///tmp/versions.json 2>/dev/null || true
-            fi
+              RESPONSE=$(aws s3api list-object-versions $ARGS 2>/dev/null || echo '{}')
 
-            aws s3api list-object-versions \
-              --bucket "$BUCKET" \
-              --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
-              --output json > /tmp/markers.json
+              echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for kind in ('Versions', 'DeleteMarkers'):
+              items = data.get(kind, [])
+              if items:
+                  keys = [{'Key': v['Key'], 'VersionId': v['VersionId']} for v in items]
+                  json.dump({'Objects': keys, 'Quiet': True}, open('/tmp/batch.json','w'))
+                  sys.exit(0)
+          sys.exit(1)
+          " 2>/dev/null && \
+                aws s3api delete-objects --bucket "$BUCKET" --delete file:///tmp/batch.json > /dev/null 2>&1 || true
 
-            if [ "$(cat /tmp/markers.json)" != '{"Objects": null}' ] && [ "$(cat /tmp/markers.json)" != 'null' ]; then
-              aws s3api delete-objects \
-                --bucket "$BUCKET" \
-                --delete file:///tmp/markers.json 2>/dev/null || true
-            fi
+              TRUNCATED=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('IsTruncated', False) else 'false')" 2>/dev/null || echo "false")
+              if [ "$TRUNCATED" = "true" ]; then
+                KEY_MARKER=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('NextKeyMarker',''))" 2>/dev/null)
+                VERSION_MARKER=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('NextVersionIdMarker',''))" 2>/dev/null)
+              fi
+            done
 
             aws s3api delete-bucket --bucket "$BUCKET"
             echo "✅ State bucket deleted: $BUCKET"

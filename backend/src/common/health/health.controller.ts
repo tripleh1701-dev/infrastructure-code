@@ -13,13 +13,7 @@ import {
   GetCallerIdentityCommand,
 } from '@aws-sdk/client-sts';
 import { resolveAwsCredentials } from '../utils/aws-credentials';
-
-interface CheckResult {
-  status: 'pass' | 'fail' | 'warn';
-  message: string;
-  duration_ms: number;
-  details?: Record<string, any>;
-}
+import { SesHealthService, CheckResult } from './ses-health.service';
 
 @Controller('health')
 export class HealthController {
@@ -28,6 +22,7 @@ export class HealthController {
   constructor(
     private readonly dynamoRouter: DynamoDBRouterService,
     private readonly configService: ConfigService,
+    private readonly sesHealthService: SesHealthService,
   ) {}
 
   /**
@@ -80,131 +75,7 @@ export class HealthController {
   @Get('ses')
   async sesDiagnostics() {
     this.logger.log('Running SES diagnostics');
-    const region = this.configService.get<string>('AWS_REGION') || process.env.AWS_REGION || 'us-east-1';
-    const senderEmail = this.configService.get<string>('SES_SENDER_EMAIL') || process.env.SES_SENDER_EMAIL || 'noreply@example.com';
-    const notificationsEnabled = (this.configService.get<string>('CREDENTIAL_NOTIFICATION_ENABLED') || process.env.CREDENTIAL_NOTIFICATION_ENABLED || 'true') === 'true';
-
-    const sesClient = new SESClient({ region });
-    const checks: Record<string, CheckResult> = {};
-
-    // 1. Check if notifications are enabled
-    checks['notifications_enabled'] = {
-      status: notificationsEnabled ? 'pass' : 'warn',
-      message: notificationsEnabled
-        ? 'Credential notifications are enabled'
-        : 'CREDENTIAL_NOTIFICATION_ENABLED is not set to "true" — emails will be skipped',
-      duration_ms: 0,
-    };
-
-    // 2. Sender identity verification (email OR domain)
-    const verifyStart = Date.now();
-    const senderDomain = senderEmail.includes('@') ? senderEmail.split('@')[1] : senderEmail;
-    try {
-      const result = await sesClient.send(
-        new GetIdentityVerificationAttributesCommand({
-          Identities: [senderEmail, senderDomain],
-        }),
-      );
-      const emailStatus = result.VerificationAttributes?.[senderEmail]?.VerificationStatus || 'NotFound';
-      const domainStatus = result.VerificationAttributes?.[senderDomain]?.VerificationStatus || 'NotFound';
-      const isEmailVerified = emailStatus === 'Success';
-      const isDomainVerified = domainStatus === 'Success';
-      const isVerified = isEmailVerified || isDomainVerified;
-
-      checks['sender_verification'] = {
-        status: isVerified ? 'pass' : 'fail',
-        message: isVerified
-          ? isEmailVerified
-            ? `Sender "${senderEmail}" is verified in SES`
-            : `Sender domain "${senderDomain}" is verified in SES`
-          : `Sender "${senderEmail}" and domain "${senderDomain}" are NOT verified. Emails will fail.`,
-        duration_ms: Date.now() - verifyStart,
-        details: {
-          sender: senderEmail,
-          domain: senderDomain,
-          sender_verification_status: emailStatus,
-          domain_verification_status: domainStatus,
-          action: isVerified
-            ? null
-            : 'Verify this email address or domain in AWS SES, or update SES_SENDER_EMAIL to a verified identity.',
-        },
-      };
-    } catch (error: any) {
-      checks['sender_verification'] = {
-        status: 'fail',
-        message: `Failed to check sender verification: ${error.message}`,
-        duration_ms: Date.now() - verifyStart,
-        details: {
-          sender: senderEmail,
-          domain: senderDomain,
-          error: error.name,
-          action: 'Check IAM permissions for ses:GetIdentityVerificationAttributes',
-        },
-      };
-    }
-
-    // 3. SES account status (quota-based check)
-    const accountStart = Date.now();
-    try {
-      const quota = await sesClient.send(new GetSendQuotaCommand({}));
-      const sendingEnabled = (quota.Max24HourSend ?? 0) > 0;
-      const isSandbox = (quota.Max24HourSend ?? 0) <= 200;
-
-      checks['account_status'] = {
-        status: sendingEnabled ? (isSandbox ? 'warn' : 'pass') : 'fail',
-        message: !sendingEnabled
-          ? 'SES sending is DISABLED on this account. No emails can be sent.'
-          : isSandbox
-            ? 'SES account is in SANDBOX mode — emails can only be sent to verified addresses.'
-            : 'SES account is in PRODUCTION mode — emails can be sent to any address.',
-        duration_ms: Date.now() - accountStart,
-        details: {
-          sending_enabled: sendingEnabled,
-          enforcement_status: isSandbox ? 'SANDBOX' : 'PRODUCTION',
-          max_24hr_send: quota.Max24HourSend,
-          max_send_rate: quota.MaxSendRate,
-          sent_last_24hr: quota.SentLast24Hours,
-          action: isSandbox
-            ? 'Request production access in the AWS SES console to send emails to unverified addresses.'
-            : null,
-        },
-      };
-    } catch (error: any) {
-      checks['account_status'] = {
-        status: 'fail',
-        message: `Failed to retrieve SES account status: ${error.message}`,
-        duration_ms: Date.now() - accountStart,
-        details: {
-          error: error.name,
-          action: 'Check IAM permissions for ses:GetSendQuota',
-        },
-      };
-    }
-
-    // 4. Config completeness
-    const isDefaultSender = senderEmail === 'noreply@example.com';
-    checks['config_completeness'] = {
-      status: isDefaultSender ? 'fail' : 'pass',
-      message: isDefaultSender
-        ? 'SES_SENDER_EMAIL is still set to default "noreply@example.com" — this will NOT work.'
-        : `SES_SENDER_EMAIL is configured as "${senderEmail}"`,
-      duration_ms: 0,
-      details: {
-        action: isDefaultSender
-          ? 'Set SES_SENDER_EMAIL to a verified email address or domain in your environment variables.'
-          : null,
-      },
-    };
-
-    const hasFail = Object.values(checks).some((c) => c.status === 'fail');
-    const hasWarn = Object.values(checks).some((c) => c.status === 'warn');
-
-    return {
-      status: hasFail ? 'unhealthy' : hasWarn ? 'degraded' : 'healthy',
-      timestamp: new Date().toISOString(),
-      region,
-      checks,
-    };
+    return this.sesHealthService.check();
   }
 
   /**
@@ -247,13 +118,25 @@ export class HealthController {
       const isCustomer = await this.dynamoRouter.isCustomerAccount(accountId);
       const isPrivate = await this.dynamoRouter.isPrivateAccount(accountId);
       const cloudType = await this.dynamoRouter.getCloudType(accountId);
-      checks['account_type'] = {
-        status: 'pass',
-        message: isCustomer
-          ? `Customer account (${cloudType}, ${isPrivate ? 'dedicated' : 'shared customer'} table)`
-          : 'No customer table configured — falls back to control plane',
-        duration_ms: Date.now() - typeStart,
-      };
+
+      if (!isCustomer) {
+        // This is the ROOT CAUSE of data going to the wrong table!
+        checks['account_type'] = {
+          status: 'fail',
+          message: `CRITICAL: Account ${accountId} has NO SSM routing params — ALL operational data ` +
+            `(builds, pipelines, connectors, etc.) is being written to the CONTROL PLANE table ` +
+            `instead of the customer data-plane table. ` +
+            `Run "POST /api/accounts/${accountId}/reprovision" or re-run bootstrap to fix.`,
+          duration_ms: Date.now() - typeStart,
+        };
+      } else {
+        checks['account_type'] = {
+          status: 'pass',
+          message: `Customer account (${cloudType}, ${isPrivate ? 'dedicated' : 'shared customer'} table)`,
+          duration_ms: Date.now() - typeStart,
+          details: { cloudType, isPrivate, isCustomer },
+        };
+      }
     } catch (error: any) {
       checks['account_type'] = {
         status: 'fail',
@@ -298,6 +181,96 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       checks,
     };
+  }
+
+  /**
+   * Bulk routing audit — checks ALL accounts in the control plane table
+   * and reports which ones are correctly routed vs falling back to control plane.
+   *
+   * GET /api/health/routing-audit
+   */
+  @Get('routing-audit')
+  @Public()
+  async routingAudit() {
+    this.logger.log('Running bulk routing audit for all accounts');
+
+    const results: Array<{
+      accountId: string;
+      accountName: string;
+      cloudType: string;
+      resolvedTable: string;
+      isCustomerRouted: boolean;
+      status: string;
+      issue?: string;
+    }> = [];
+
+    // Query all accounts from the control plane table
+    try {
+      const sharedTable = this.dynamoRouter.getSharedTableName();
+
+      // Use the DynamoDB service (control plane) to list all accounts
+      // We need to import it — but since HealthController already has dynamoRouter,
+      // we can use listPrivateAccounts for SSM-registered ones.
+      // For a full audit, let's also scan the shared table for ACCOUNT# records.
+
+      // First: get all SSM-registered accounts
+      const ssmAccounts = await this.dynamoRouter.listPrivateAccounts();
+      const ssmAccountIds = new Set(ssmAccounts.map((a) => a.accountId));
+
+      // For each SSM-registered account, verify routing
+      for (const ssmAccount of ssmAccounts) {
+        try {
+          // Clear cache to get fresh resolution
+          this.dynamoRouter.invalidateCache(ssmAccount.accountId);
+          const resolvedTable = await this.dynamoRouter.resolveTableName(ssmAccount.accountId);
+          const isCustomer = resolvedTable !== sharedTable;
+          const cloudType = await this.dynamoRouter.getCloudType(ssmAccount.accountId);
+
+          results.push({
+            accountId: ssmAccount.accountId,
+            accountName: '',
+            cloudType,
+            resolvedTable,
+            isCustomerRouted: isCustomer,
+            status: isCustomer ? 'ok' : 'MISROUTED',
+            issue: isCustomer ? undefined : 'SSM params exist but table resolves to control plane — check PUBLIC_ACCOUNT_TABLE_NAME env var',
+          });
+        } catch (error: any) {
+          results.push({
+            accountId: ssmAccount.accountId,
+            accountName: '',
+            cloudType: 'unknown',
+            resolvedTable: sharedTable,
+            isCustomerRouted: false,
+            status: 'ERROR',
+            issue: `Resolution failed: ${error.message}`,
+          });
+        }
+      }
+
+      const misrouted = results.filter((r) => r.status !== 'ok');
+
+      return {
+        status: misrouted.length === 0 ? 'healthy' : 'unhealthy',
+        timestamp: new Date().toISOString(),
+        summary: {
+          total_accounts: results.length,
+          correctly_routed: results.filter((r) => r.status === 'ok').length,
+          misrouted: misrouted.length,
+          control_plane_table: sharedTable,
+        },
+        accounts: results,
+        action: misrouted.length > 0
+          ? 'Run the backfill script: npx ts-node backend/scripts/backfill-ssm-params.ts — or re-run bootstrap to fix missing SSM routing parameters.'
+          : undefined,
+      };
+    } catch (error: any) {
+      return {
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        message: `Audit failed: ${error.message}`,
+      };
+    }
   }
 
   /**

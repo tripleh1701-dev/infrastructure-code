@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
 import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PermissionGate } from "@/components/auth/PermissionGate";
+import { PermissionGate, usePermissionCheck } from "@/components/auth/PermissionGate";
 import { useViewPreference } from "@/hooks/useViewPreference";
 import { useBuilds, BuildJob } from "@/hooks/useBuilds";
 import { ViewToggle } from "@/components/ui/view-toggle";
@@ -84,6 +85,7 @@ const pulseVariants = {
 
 export default function BuildsPage() {
   const { buildJobs, isLoading, refetch, deleteBuildJob } = useBuilds();
+  const { canCreate, canDelete } = usePermissionCheck("builds");
   const [activeTab, setActiveTab] = useState("integrations");
   const [view, setView] = useViewPreference("builds-integrations", "table");
 
@@ -209,7 +211,7 @@ export default function BuildsPage() {
       />
 
       <AnimatePresence>
-        {bulkSelection.selectedIds.size > 0 && (
+        {canDelete && bulkSelection.selectedIds.size > 0 && (
           <BulkActionBar
             selectedCount={bulkSelection.selectedIds.size}
             totalCount={processedBuilds.length}
@@ -223,14 +225,7 @@ export default function BuildsPage() {
       </AnimatePresence>
 
       {isLoading ? (
-        <div className="glass-card p-12 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-primary animate-spin" />
-            </div>
-            <p className="text-muted-foreground text-sm">Loading build jobs...</p>
-          </div>
-        </div>
+        <TableSkeleton rows={6} columns={6} variant={view === "tile" ? "tile" : "table"} />
       ) : processedBuilds.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -248,6 +243,7 @@ export default function BuildsPage() {
           <p className="text-muted-foreground mb-6 max-w-md">
             Create your first integration build job to start managing pipeline executions.
           </p>
+          {canCreate && (
           <Button
             onClick={() => setIsCreateOpen(true)}
             className="gap-2 bg-gradient-to-r from-[hsl(var(--brand-blue))] to-[hsl(213,97%,37%)] hover:shadow-xl text-white shadow-lg transition-all duration-300"
@@ -255,6 +251,7 @@ export default function BuildsPage() {
             <Plus className="w-4 h-4" />
             Create New Job
           </Button>
+          )}
         </motion.div>
       ) : view === "table" ? (
         <BuildsTable
@@ -262,20 +259,20 @@ export default function BuildsPage() {
           visibleColumns={visibleColumns}
           groupBy={groupBy}
           onOpenDetail={handleOpenDetail}
-          onDelete={handleDelete}
+          onDelete={canDelete ? handleDelete : undefined}
           selectedBuildId={selectedBuildForDetail?.id}
-          selectedIds={bulkSelection.selectedIds}
-          onToggleSelect={bulkSelection.toggle}
-          onToggleSelectAll={bulkSelection.toggleAll}
+          selectedIds={canDelete ? bulkSelection.selectedIds : undefined}
+          onToggleSelect={canDelete ? bulkSelection.toggle : undefined}
+          onToggleSelectAll={canDelete ? bulkSelection.toggleAll : undefined}
           isAllSelected={bulkSelection.isAllSelected}
         />
       ) : (
         <BuildsCardView
           builds={processedBuilds}
           onOpenDetail={handleOpenDetail}
-          onDelete={handleDelete}
-          selectedIds={bulkSelection.selectedIds}
-          onToggleSelect={bulkSelection.toggle}
+          onDelete={canDelete ? handleDelete : undefined}
+          selectedIds={canDelete ? bulkSelection.selectedIds : undefined}
+          onToggleSelect={canDelete ? bulkSelection.toggle : undefined}
         />
       )}
     </motion.div>
@@ -527,6 +524,7 @@ export default function BuildsPage() {
                     )}
 
                     <ViewToggle view={view} onViewChange={setView} />
+                    {canCreate && (
                     <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                       <Button
                         size="sm"
@@ -542,6 +540,7 @@ export default function BuildsPage() {
                         Create New Job
                       </Button>
                     </motion.div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>

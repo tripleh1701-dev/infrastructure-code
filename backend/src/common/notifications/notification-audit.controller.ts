@@ -1,9 +1,12 @@
 import {
   Controller,
   Get,
+  Post,
   Param,
   Query,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -14,19 +17,23 @@ import {
   AuditQueryResult,
   NotificationAuditEntry,
 } from './notification-audit.service';
+import { NotificationRetryService, RetrySummary } from './notification-retry.service';
 
 /**
  * NotificationAuditController
  *
- * Exposes read-only REST endpoints for querying the notification audit log.
+ * Exposes read-only REST endpoints for querying the notification audit log,
+ * plus retry summary for failed credential emails.
  * All endpoints require authentication and super_admin or admin role.
  *
  * Routes:
- *   GET /api/notification-audit                – List all audit entries (paginated)
- *   GET /api/notification-audit/summary        – Get aggregate statistics
- *   GET /api/notification-audit/status/:status  – Filter by delivery status
- *   GET /api/notification-audit/account/:id     – Filter by account (tenant-scoped)
- *   GET /api/notification-audit/:id             – Get single entry by ID
+ *   GET  /api/notification-audit                – List all audit entries (paginated)
+ *   GET  /api/notification-audit/summary        – Get aggregate statistics
+ *   GET  /api/notification-audit/retry-summary   – Get retry-eligible failed entries
+ *   GET  /api/notification-audit/status/:status  – Filter by delivery status
+ *   GET  /api/notification-audit/account/:id     – Filter by account (tenant-scoped)
+ *   GET  /api/notification-audit/:id             – Get single entry by ID
+ *   POST /api/notification-audit/:id/mark-retried – Mark an entry after retry attempt
  */
 @Controller('notification-audit')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -34,6 +41,7 @@ import {
 export class NotificationAuditController {
   constructor(
     private readonly auditService: NotificationAuditService,
+    private readonly retryService: NotificationRetryService,
   ) {}
 
   /**
@@ -83,6 +91,35 @@ export class NotificationAuditController {
     lastFailedAt?: string;
   }> {
     return this.auditService.getSummary(accountId);
+  }
+
+  /**
+   * GET /api/notification-audit/retry-summary
+   *
+   * Returns failed credential notifications eligible for retry,
+   * along with SES health status.
+   */
+  @Get('retry-summary')
+  async getRetrySummary(
+    @Query('accountId') accountId?: string,
+  ): Promise<RetrySummary> {
+    return this.retryService.getRetrySummary(accountId);
+  }
+
+  /**
+   * POST /api/notification-audit/:id/mark-retried
+   *
+   * Called after an admin triggers resend-credentials for a user.
+   * Increments the retry counter on the original failed audit entry.
+   */
+  @Post(':id/mark-retried')
+  @HttpCode(HttpStatus.OK)
+  async markRetried(
+    @Param('id') id: string,
+    @Query('succeeded') succeeded?: string,
+  ): Promise<{ ok: boolean }> {
+    await this.retryService.markRetryAttempt(id, succeeded === 'true');
+    return { ok: true };
   }
 
   /**

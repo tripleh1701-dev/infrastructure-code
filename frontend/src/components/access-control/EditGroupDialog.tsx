@@ -41,6 +41,7 @@ import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { useProductContext } from "@/contexts/ProductContext";
 import { AlertCircle } from "lucide-react";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 interface EditGroupDialogProps {
   open: boolean;
@@ -58,6 +59,7 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
   const updateGroup = useUpdateGroup();
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { logAudit } = useAuditLog();
   const { selectedProduct } = useProductContext();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -161,6 +163,17 @@ export function EditGroupDialog({ open, onOpenChange, group }: EditGroupDialogPr
           roleIds: formData.roleIds,
         },
       });
+
+      logAudit({
+        action: "group.updated",
+        entityType: "group",
+        entityId: group.id,
+        entityName: formData.name,
+        oldValue: group.name !== formData.name ? group.name : undefined,
+        newValue: group.name !== formData.name ? formData.name : undefined,
+        metadata: { roleIds: formData.roleIds },
+      });
+
       onOpenChange(false);
     } catch (error) {
       // Error handled by mutation

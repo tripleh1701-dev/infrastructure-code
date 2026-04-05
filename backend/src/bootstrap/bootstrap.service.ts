@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { DynamoDBService } from '../common/dynamodb/dynamodb.service';
 import { AccountProvisionerService } from '../common/dynamodb/account-provisioner.service';
 import { CognitoBootstrapService } from './cognito-bootstrap.service';
+import { SesHealthService, SesHealthResult } from '../common/health/ses-health.service';
 
 /**
  * Day-0 Bootstrap Service
@@ -66,6 +67,7 @@ export class BootstrapService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly accountProvisioner: AccountProvisionerService,
     private readonly cognitoBootstrap: CognitoBootstrapService,
+    private readonly sesHealth: SesHealthService,
   ) {
     this.autoBootstrap = this.configService.get('AUTO_BOOTSTRAP', 'false') === 'true';
   }
@@ -79,23 +81,38 @@ export class BootstrapService implements OnModuleInit {
   /**
    * Execute full Day-0 bootstrap
    */
-  async bootstrap(): Promise<{ success: boolean; message: string; details: string[] }> {
+  async bootstrap(): Promise<{ success: boolean; message: string; details: string[]; sesHealth?: SesHealthResult }> {
     const details: string[] = [];
 
     try {
+      const now = new Date().toISOString();
+
       // Check if already bootstrapped
       const existing = await this.checkExistingBootstrap();
       if (existing) {
-        this.logger.log('Platform already bootstrapped, skipping');
+        this.logger.log('Platform already bootstrapped, reconciling RBAC defaults');
+        await this.reconcileBootstrapRbac(now);
+
+        let sesHealthResult: SesHealthResult | undefined;
+        try {
+          sesHealthResult = await this.sesHealth.check();
+        } catch {}
+
         return {
           success: true,
-          message: 'Platform already bootstrapped',
-          details: ['Bootstrap data already exists'],
+          message: 'Platform already bootstrapped; RBAC reconciled',
+          details: [
+            'Bootstrap data already exists',
+            'Reconciled Platform Role and Technical Role permissions',
+          ],
+          sesHealth: sesHealthResult,
         };
       }
 
-      const now = new Date().toISOString();
       this.logger.log('Starting Day-0 bootstrap...');
+
+      // Pre-flight: Validate email configuration
+      this.validateEmailConfig(details);
 
       // Step 1: Create master data (Products & Services)
       await this.createMasterData(now);
@@ -123,7 +140,7 @@ export class BootstrapService implements OnModuleInit {
 
       // Step 7: Create Roles with full permissions
       await this.createRoles(now);
-      details.push('Created Platform Role (full access) and Technical Role (base access)');
+      details.push('Created Platform Role (full access) and Technical Role (pipelines + access control management)');
 
       // Step 8: Link Roles to Groups
       await this.linkRolesToGroups(now);
@@ -144,19 +161,36 @@ export class BootstrapService implements OnModuleInit {
       // Step 12: Provision admin user in Cognito User Pool
       await this.provisionCognitoAdmin(details);
 
+      // Post-bootstrap: Run live SES health check
+      let sesHealthResult: SesHealthResult | undefined;
+      try {
+        sesHealthResult = await this.sesHealth.check();
+        const emoji = sesHealthResult.status === 'healthy' ? '✅' : sesHealthResult.status === 'degraded' ? '⚠️' : '❌';
+        details.push(`${emoji} SES health: ${sesHealthResult.status} (${Object.values(sesHealthResult.checks).filter(c => c.status === 'fail').length} failures, ${Object.values(sesHealthResult.checks).filter(c => c.status === 'warn').length} warnings)`);
+      } catch (e: any) {
+        this.logger.warn(`SES health check failed during bootstrap: ${e.message}`);
+        details.push('⚠️ SES health check could not be completed');
+      }
+
       this.logger.log('Day-0 bootstrap completed successfully!');
 
       return {
         success: true,
         message: 'Platform bootstrapped successfully',
         details,
+        sesHealth: sesHealthResult,
       };
     } catch (error: any) {
       this.logger.error(`Bootstrap failed: ${error.message}`, error.stack);
+      let sesHealthResult: SesHealthResult | undefined;
+      try {
+        sesHealthResult = await this.sesHealth.check();
+      } catch {}
       return {
         success: false,
         message: `Bootstrap failed: ${error.message}`,
         details,
+        sesHealth: sesHealthResult,
       };
     }
   }
@@ -172,6 +206,43 @@ export class BootstrapService implements OnModuleInit {
       return !!result.Item;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Pre-flight: Validate email configuration is properly set for user provisioning.
+   * Warns at bootstrap time if SES is misconfigured so admins can fix before creating users.
+   */
+  private validateEmailConfig(details: string[]): void {
+    const notifEnabled = this.configService.get('CREDENTIAL_NOTIFICATION_ENABLED', 'false');
+    const senderEmail = this.configService.get('SES_SENDER_EMAIL', 'noreply@example.com');
+    const cognitoPoolId = this.configService.get('COGNITO_USER_POOL_ID', '');
+
+    if (notifEnabled !== 'true') {
+      this.logger.warn(
+        'CREDENTIAL_NOTIFICATION_ENABLED is not "true". ' +
+        'Credential emails will NOT be sent when technical users are created. ' +
+        'Set CREDENTIAL_NOTIFICATION_ENABLED=true and configure SES_SENDER_EMAIL to enable.',
+      );
+      details.push('⚠️ Email notifications disabled — new users will not receive credential emails');
+    } else if (!senderEmail || senderEmail === 'noreply@example.com') {
+      this.logger.warn(
+        'SES_SENDER_EMAIL is not configured or still default. ' +
+        'Credential emails will fail at send time. ' +
+        'Set SES_SENDER_EMAIL to a verified SES identity.',
+      );
+      details.push('⚠️ SES_SENDER_EMAIL not configured — credential emails will fail');
+    } else {
+      details.push(`Email notifications enabled (sender: ${senderEmail})`);
+    }
+
+    if (!cognitoPoolId) {
+      this.logger.warn(
+        'COGNITO_USER_POOL_ID not set. Cognito user provisioning will be skipped.',
+      );
+      details.push('⚠️ Cognito not configured — users will not be provisioned in User Pool');
+    } else {
+      details.push(`Cognito User Pool configured (${cognitoPoolId})`);
     }
   }
 
@@ -304,13 +375,21 @@ export class BootstrapService implements OnModuleInit {
    */
   private async registerAccountProvisioning(): Promise<void> {
     try {
-      await this.accountProvisioner.provisionAccount({
+      const result = await this.accountProvisioner.provisionAccount({
         accountId: FIXED_IDS.ACCOUNT,
         accountName: 'PPP',
         cloudType: 'public',
       });
+      this.logger.log(`Account provisioning registered: table=${result.tableName}, cloudType=${result.cloudType}`);
     } catch (error: any) {
-      this.logger.warn(`SSM provisioning skipped (may not be configured): ${error.message}`);
+      // This is CRITICAL — without SSM params, ALL data falls back to control plane!
+      this.logger.error(
+        `CRITICAL: SSM provisioning FAILED for bootstrap account. ` +
+        `Operational data (builds, pipelines, etc.) will be written to the CONTROL PLANE table ` +
+        `instead of the customer data-plane table. Error: ${error.message}`,
+      );
+      // Re-throw so the bootstrap response shows this failure
+      throw new Error(`SSM provisioning failed — cross-account routing will not work: ${error.message}`);
     }
   }
 
@@ -391,7 +470,8 @@ export class BootstrapService implements OnModuleInit {
   }
 
   /**
-   * Step 7: Create Platform Role (full perms) and Technical Role (base perms)
+   * Step 7: Create Platform Role (full perms) and Technical Role
+   * (CRUD on pipelines + access control, view-only elsewhere)
    */
   private async createRoles(now: string): Promise<void> {
     // Create role metadata
@@ -426,7 +506,7 @@ export class BootstrapService implements OnModuleInit {
             GSI1SK: `ROLE#${FIXED_IDS.TECHNICAL_ROLE}`,
             id: FIXED_IDS.TECHNICAL_ROLE,
             name: 'Technical Role',
-            description: 'Base access for technical users in customer accounts',
+            description: 'Technical users can manage access control and pipelines while remaining view-only elsewhere',
             permissions: 0,
             accountId: FIXED_IDS.ACCOUNT,
             enterpriseId: FIXED_IDS.ENTERPRISE,
@@ -467,7 +547,7 @@ export class BootstrapService implements OnModuleInit {
       await this.dynamoDb.transactWrite(platformPermissions.slice(i, i + 25));
     }
 
-    // Create base permissions for Technical Role (view-only on most menus)
+    // Create Technical Role permissions (CRUD on pipelines + access control, view-only elsewhere)
     const technicalPermissions = MENU_ITEMS.map((menu) => ({
       Put: {
         Item: {
@@ -479,10 +559,10 @@ export class BootstrapService implements OnModuleInit {
           menuLabel: menu.label,
           isVisible: true,
           canView: true,
-          canCreate: false,
-          canEdit: false,
-          canDelete: false,
-          tabs: this.getTabsForMenu(menu.key, false),
+          canCreate: this.isTechnicalCrudMenu(menu.key),
+          canEdit: this.isTechnicalCrudMenu(menu.key),
+          canDelete: this.isTechnicalCrudMenu(menu.key),
+          tabs: this.getTabsForMenu(menu.key, false, this.isTechnicalCrudMenu(menu.key)),
           createdAt: now,
           updatedAt: now,
         },
@@ -497,7 +577,7 @@ export class BootstrapService implements OnModuleInit {
   /**
    * Get tab-level permissions for specific menus
    */
-  private getTabsForMenu(menuKey: string, fullAccess: boolean): any[] {
+  private getTabsForMenu(menuKey: string, fullAccess: boolean, technicalCrud = false): any[] {
     if (menuKey === 'account-settings') {
       return ACCOUNT_SETTINGS_TABS.map((tab) => ({
         key: tab.key,
@@ -516,13 +596,17 @@ export class BootstrapService implements OnModuleInit {
         label: tab.label,
         isVisible: true,
         canView: true,
-        canCreate: fullAccess,
-        canEdit: fullAccess,
-        canDelete: fullAccess,
+        canCreate: fullAccess || technicalCrud,
+        canEdit: fullAccess || technicalCrud,
+        canDelete: fullAccess || technicalCrud,
       }));
     }
 
     return [];
+  }
+
+  private isTechnicalCrudMenu(menuKey: string): boolean {
+    return menuKey === 'access-control' || menuKey === 'pipelines';
   }
 
   /**
@@ -662,6 +746,16 @@ export class BootstrapService implements OnModuleInit {
         createdAt: now,
       },
     });
+  }
+
+  /**
+   * Reconcile bootstrap RBAC defaults for existing installs.
+   * Safe to run multiple times because all bootstrap entities use fixed IDs.
+   */
+  private async reconcileBootstrapRbac(now: string): Promise<void> {
+    await this.createGroups(now);
+    await this.createRoles(now);
+    await this.linkRolesToGroups(now);
   }
 
   /**

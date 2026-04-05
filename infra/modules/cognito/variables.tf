@@ -43,3 +43,22 @@ variable "post_confirmation_lambda_arn" {
   type        = string
   default     = ""
 }
+
+# ---- SES Email Configuration ----
+variable "ses_email_sending_account" {
+  description = "Email sending mode: COGNITO_DEFAULT (50/day limit) or DEVELOPER (uses SES, no limit)"
+  type        = string
+  default     = "DEVELOPER"
+}
+
+variable "ses_sender_arn" {
+  description = "ARN of the verified SES identity (domain or email). Required when ses_email_sending_account = DEVELOPER."
+  type        = string
+  default     = ""
+}
+
+variable "ses_sender_email" {
+  description = "FROM address for Cognito emails when using DEVELOPER mode"
+  type        = string
+  default     = ""
+}

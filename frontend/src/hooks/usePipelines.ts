@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Json } from "@/integrations/supabase/types";
@@ -66,27 +67,32 @@ export interface UpdatePipelineInput extends Partial<CreatePipelineInput> {
 export function usePipelines() {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const selectedAccountId = selectedAccount?.id;
   const selectedEnterpriseId = selectedEnterprise?.id;
+  const selectedProductId = selectedProduct?.id;
 
-  // Fetch all pipelines for the current account/enterprise context
+  // Fetch all pipelines for the current account/enterprise/product context
   const {
     data: pipelines = [],
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["pipelines", selectedAccountId, selectedEnterpriseId],
+    queryKey: ["pipelines", selectedAccountId, selectedEnterpriseId, selectedProductId],
     queryFn: async () => {
       if (!selectedAccountId) return [];
 
       if (isExternalApi()) {
-        const { data, error } = await httpClient.get<any[]>('/pipelines', {
-          params: { accountId: selectedAccountId, enterpriseId: selectedEnterpriseId },
-        });
+        const params: Record<string, string | undefined> = {
+          accountId: selectedAccountId,
+          enterpriseId: selectedEnterpriseId,
+          productId: selectedProductId,
+        };
+        const { data, error } = await httpClient.get<any[]>('/pipelines', { params });
         if (error) throw new Error(error.message);
         return (data || []).map(mapExternalPipeline);
       }
@@ -99,6 +105,10 @@ export function usePipelines() {
 
       if (selectedEnterpriseId) {
         query = query.eq("enterprise_id", selectedEnterpriseId);
+      }
+
+      if (selectedProductId) {
+        query = query.eq("product_id", selectedProductId);
       }
 
       const { data, error } = await query;

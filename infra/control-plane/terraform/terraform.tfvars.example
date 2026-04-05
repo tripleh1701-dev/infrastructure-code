@@ -25,7 +25,7 @@ cross_account_external_id = "license-portal-xaccount-2026"
 alarm_email = ""
 
 # ---- Credential Notification / SES ----
-credential_notification_enabled = false
+credential_notification_enabled = true
 ses_sender_email                = "noreply@yourdomain.com"      # Must be SES-verified
 platform_name                   = "Trumpet DevOps"
 platform_support_email          = "support@yourdomain.com"

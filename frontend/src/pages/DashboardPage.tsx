@@ -1,4 +1,6 @@
 import { motion } from "framer-motion";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import {
@@ -103,7 +105,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-[#0f172a] mb-2">
-                  {isLoading ? <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /> : metric.value}
+                  {isLoading ? <Skeleton className="h-8 w-20" /> : metric.value}
                 </p>
               </motion.div>
             );
@@ -122,8 +124,11 @@ export default function DashboardPage() {
             <h3 className="font-semibold text-[#0f172a] mb-4">Build Trends (Last 7 Days)</h3>
             <div className="h-[250px]">
               {isLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                <div className="h-full flex flex-col justify-between py-2 space-y-3">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <Skeleton key={i} className="h-4 w-full" style={{ width: `${60 + Math.random() * 40}%` }} />
+                  ))}
+                  <Skeleton className="h-4 w-full mt-auto" />
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -155,8 +160,13 @@ export default function DashboardPage() {
             <h3 className="font-semibold text-[#0f172a] mb-4">Executions by Status</h3>
             <div className="h-[250px]">
               {isLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                <div className="h-full flex flex-col justify-center space-y-4 py-2">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="h-4 w-16 shrink-0" />
+                      <Skeleton className="h-5 rounded" style={{ width: `${30 + Math.random() * 50}%` }} />
+                    </div>
+                  ))}
                 </div>
               ) : deploymentsByStatus.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -196,8 +206,8 @@ export default function DashboardPage() {
             
             <div className="table-container">
               {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                <div className="p-1">
+                  <TableSkeleton rows={4} columns={5} />
                 </div>
               ) : (stats?.recentExecutions?.length ?? 0) === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">

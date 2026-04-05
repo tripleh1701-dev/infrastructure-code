@@ -185,6 +185,7 @@ export class EnvironmentsService {
     if (isCustomer) {
       await this.dynamoDbRouter.put(dto.accountId, { Item: item });
     } else {
+      this.dynamoDbRouter.warnControlPlaneFallback(dto.accountId, 'ENVIRONMENT');
       await this.dynamoDb.put({ Item: item });
     }
 

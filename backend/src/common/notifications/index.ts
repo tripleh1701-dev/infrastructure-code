@@ -17,3 +17,8 @@ export {
   SnsNotificationService,
   ProvisioningNotificationParams,
 } from './sns-notification.service';
+export {
+  NotificationRetryService,
+  RetryEligibleEntry,
+  RetrySummary,
+} from './notification-retry.service';

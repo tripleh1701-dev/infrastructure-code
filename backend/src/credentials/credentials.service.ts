@@ -259,6 +259,7 @@ export class CredentialsService {
     if (isCustomer) {
       await this.dynamoDbRouter.transactWrite(dto.accountId, operations);
     } else {
+      this.dynamoDbRouter.warnControlPlaneFallback(dto.accountId, 'CREDENTIAL');
       await this.dynamoDb.transactWrite(operations);
     }
 
@@ -353,6 +354,7 @@ export class CredentialsService {
         if (isCustomer) {
           await this.dynamoDbRouter.transactWrite(existing.accountId, operations);
         } else {
+          this.dynamoDbRouter.warnControlPlaneFallback(existing.accountId, 'CREDENTIAL_WORKSTREAM');
           await this.dynamoDb.transactWrite(operations);
         }
       }

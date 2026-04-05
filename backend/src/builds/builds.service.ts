@@ -175,6 +175,7 @@ export class BuildsService {
     if (isCustomer) {
       await this.dynamoDbRouter.put(dto.accountId, { Item: item });
     } else {
+      this.dynamoDbRouter.warnControlPlaneFallback(dto.accountId, 'BUILD_JOB');
       await this.dynamoDb.put({ Item: item });
     }
 
@@ -356,6 +357,7 @@ export class BuildsService {
     if (isCustomer) {
       await this.dynamoDbRouter.put(buildJob.accountId, { Item: item });
     } else {
+      this.dynamoDbRouter.warnControlPlaneFallback(buildJob.accountId, 'BUILD_EXECUTION');
       await this.dynamoDb.put({ Item: item });
     }
 

@@ -349,80 +349,6 @@ function PipelineCanvasContent() {
     }
   }, [nodes, edges, pushState]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete selected nodes/edges
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedNodes.length > 0 || selectedEdges.length > 0) {
-          handleDeleteSelected();
-        }
-      }
-      
-      // Undo (Ctrl+Z)
-      if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-      }
-      
-      // Redo (Ctrl+Y or Ctrl+Shift+Z)
-      if ((e.ctrlKey && e.key === "y") || (e.ctrlKey && e.shiftKey && e.key === "z")) {
-        e.preventDefault();
-        handleRedo();
-      }
-      
-      // Duplicate (Ctrl+D)
-      if (e.ctrlKey && e.key === "d") {
-        e.preventDefault();
-        handleDuplicateSelected();
-      }
-      
-      // Save (Ctrl+S)
-      if (e.ctrlKey && e.key === "s") {
-        e.preventDefault();
-        handleSave();
-      }
-
-      // Fullscreen (F)
-      if (e.key === "f" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          e.preventDefault();
-          setIsFullscreen((prev) => !prev);
-        }
-      }
-
-      // Toggle Sidebar (P)
-      if (e.key === "p" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          e.preventDefault();
-          setSidebarOpen((prev) => !prev);
-        }
-      }
-
-      // Toggle Minimap (M)
-      if (e.key === "m" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          e.preventDefault();
-          setMinimapVisible((prev) => !prev);
-        }
-      }
-
-      // Auto Layout (L)
-      if (e.key === "l" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          e.preventDefault();
-          handleAutoLayout();
-        }
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodes, selectedEdges, nodes, edges]);
 
   // Convert line style to edge style properties
   const getEdgeStyle = useCallback((style: LineStyle) => {
@@ -546,7 +472,7 @@ function PipelineCanvasContent() {
     }
     setHasUnsavedChanges(true);
     toast.success(`Added ${label} node`);
-  }, [setNodes, setEdges, edges, nodes, getNextNodePosition, suggestConnection]);
+  }, [setNodes, setEdges, edges, nodes, getNextNodePosition, suggestConnection, isPipelineLinked, pipelineName]);
 
   // Handle accepting a connection suggestion
   const handleAcceptConnectionSuggestion = useCallback(() => {
@@ -731,7 +657,7 @@ function PipelineCanvasContent() {
       );
       setHasUnsavedChanges(true);
     },
-    [setEdges, lineStyle, getEdgeStyle]
+    [setEdges, lineStyle, getEdgeStyle, isPipelineLinked, pipelineName]
   );
 
   // Update all existing edges when line style changes
@@ -876,7 +802,7 @@ function PipelineCanvasContent() {
       setHasUnsavedChanges(true);
       toast.success(`Added ${label} node`);
     },
-    [setNodes, setEdges, edges, nodes, reactFlowInstance, suggestConnection]
+    [setNodes, setEdges, edges, nodes, reactFlowInstance, suggestConnection, isPipelineLinked, pipelineName]
   );
 
   // Handle reparenting when a node is dragged into/out of an env group
@@ -1068,7 +994,82 @@ ${edges.map((e) => `  - source: ${e.source}
     } catch (error) {
       console.error("Error saving pipeline:", error);
     }
-  }, [nodes, edges, pipelineName, deploymentType, currentPipelineId, selectedAccountId, selectedEnterpriseId, selectedProductId, selectedServiceIds, generateYamlContent, createPipeline, updatePipeline, navigate]);
+  }, [nodes, edges, pipelineName, deploymentType, currentPipelineId, selectedAccountId, selectedEnterpriseId, selectedProductId, selectedServiceIds, generateYamlContent, createPipeline, updatePipeline, navigate, isPipelineLinked]);
+
+  // Keyboard shortcuts (placed after all handler definitions to avoid forward references)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Delete selected nodes/edges
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedNodes.length > 0 || selectedEdges.length > 0) {
+          handleDeleteSelected();
+        }
+      }
+      
+      // Undo (Ctrl+Z)
+      if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      
+      // Redo (Ctrl+Y or Ctrl+Shift+Z)
+      if ((e.ctrlKey && e.key === "y") || (e.ctrlKey && e.shiftKey && e.key === "z")) {
+        e.preventDefault();
+        handleRedo();
+      }
+      
+      // Duplicate (Ctrl+D)
+      if (e.ctrlKey && e.key === "d") {
+        e.preventDefault();
+        handleDuplicateSelected();
+      }
+      
+      // Save (Ctrl+S)
+      if (e.ctrlKey && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+
+      // Fullscreen (F)
+      if (e.key === "f" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+          e.preventDefault();
+          setIsFullscreen((prev) => !prev);
+        }
+      }
+
+      // Toggle Sidebar (P)
+      if (e.key === "p" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+          e.preventDefault();
+          setSidebarOpen((prev) => !prev);
+        }
+      }
+
+      // Toggle Minimap (M)
+      if (e.key === "m" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+          e.preventDefault();
+          setMinimapVisible((prev) => !prev);
+        }
+      }
+
+      // Auto Layout (L)
+      if (e.key === "l" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+          e.preventDefault();
+          handleAutoLayout();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedNodes, selectedEdges, nodes, edges, handleAutoLayout, handleDeleteSelected, handleDuplicateSelected, handleRedo, handleSave, handleUndo]);
 
   // Autosave function (silent save without toasts)
   const handleAutoSave = useCallback(async () => {
@@ -1132,7 +1133,7 @@ ${edges.map((e) => `  - source: ${e.source}
     } finally {
       setIsAutoSaving(false);
     }
-  }, [nodes, edges, pipelineName, deploymentType, currentPipelineId, selectedAccountId, selectedEnterpriseId, selectedProductId, selectedServiceIds, hasUnsavedChanges, isAutoSaving, generateYamlContent, updatePipeline]);
+  }, [nodes, edges, pipelineName, deploymentType, currentPipelineId, selectedAccountId, selectedEnterpriseId, selectedProductId, selectedServiceIds, hasUnsavedChanges, isAutoSaving, generateYamlContent, updatePipeline, isPipelineLinked]);
 
   // Debounced autosave effect
   useEffect(() => {

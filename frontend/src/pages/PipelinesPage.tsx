@@ -92,6 +92,7 @@ import { SMART_PIPELINE_TYPES, PIPELINE_TEMPLATES } from "@/constants/pipeline";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
 import { FilterContextIndicator } from "@/components/layout/FilterContextIndicator";
 import { toast } from "sonner";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
 import { usePipelines, Pipeline as DbPipeline } from "@/hooks/usePipelines";
 import { formatDistanceToNow } from "date-fns";
 
@@ -657,9 +658,7 @@ export default function PipelinesPage() {
 
               {/* Pipeline Grid/Table */}
               {pipelinesLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-                </div>
+                <TableSkeleton rows={6} columns={5} variant={pipelinesView === "tile" ? "tile" : "table"} />
               ) : filteredPipelines.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <GitBranch className="w-12 h-12 text-slate-300 mb-4" />

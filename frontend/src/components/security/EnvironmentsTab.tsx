@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
 import { motion, AnimatePresence } from "framer-motion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ import { useEnvironments, type EnvironmentRecord } from "@/hooks/useEnvironments
 import { useWorkstreams } from "@/hooks/useWorkstreams";
 import { useAccountContext } from "@/contexts/AccountContext";
 import { useEnterpriseContext } from "@/contexts/EnterpriseContext";
+import { useProductContext } from "@/contexts/ProductContext";
 import { AddEnvironmentDialog } from "./AddEnvironmentDialog";
 import { EditEnvironmentDialog } from "./EditEnvironmentDialog";
 import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog";
@@ -148,11 +150,13 @@ interface EnvironmentsTabProps {
 export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, viewMode = "table" }: EnvironmentsTabProps) {
   const { selectedAccount } = useAccountContext();
   const { selectedEnterprise } = useEnterpriseContext();
+  const { selectedProduct } = useProductContext();
   const accountId = selectedAccount?.id;
   const enterpriseId = selectedEnterprise?.id;
+  const productId = selectedProduct?.id;
 
   const { environments, isLoading, updateEnvironment, deleteEnvironment } =
-    useEnvironments(accountId, enterpriseId);
+    useEnvironments(accountId, enterpriseId, productId);
   const { workstreams } = useWorkstreams(accountId, enterpriseId);
 
   // Products & Services for display
@@ -637,10 +641,7 @@ export function EnvironmentsTab({ externalAddOpen, onExternalAddOpenChange, view
 
       {/* Table */}
       {isLoading ? (
-        <motion.div variants={itemVariants} className="flex items-center justify-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-muted-foreground">Loading environments...</span>
-        </motion.div>
+        <TableSkeleton rows={5} columns={6} variant={viewMode === "tile" ? "tile" : "table"} />
       ) : sortedEnvironments.length === 0 ? (
         <motion.div variants={itemVariants} className="flex flex-col items-center justify-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60">
           <Globe className="w-12 h-12 text-slate-300 mb-3" />
