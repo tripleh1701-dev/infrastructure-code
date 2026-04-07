@@ -17,6 +17,10 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { sub: "user-1" } }),
 }));
 
+vi.mock("@/contexts/ProductContext", () => ({
+  useProductContext: () => ({ selectedProduct: { id: "prod-1", name: "Test Product" }, products: [], isLoading: false }),
+}));
+
 vi.mock("@/lib/api/http-client", () => ({
   httpClient: {
     get: vi.fn(),
@@ -70,7 +74,7 @@ describe("usePipelines (external API mode)", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(httpClient.get).toHaveBeenCalledWith("/pipelines", {
-      params: { accountId: "acc-1", enterpriseId: "ent-1" },
+      params: { accountId: "acc-1", enterpriseId: "ent-1", productId: "prod-1" },
     });
     expect(result.current.pipelines).toHaveLength(1);
     const p = result.current.pipelines[0];

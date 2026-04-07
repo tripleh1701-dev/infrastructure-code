@@ -13,6 +13,10 @@ vi.mock("@/contexts/EnterpriseContext", () => ({
   useEnterpriseContext: () => ({ selectedEnterprise: { id: "ent-1", name: "Test Enterprise" } }),
 }));
 
+vi.mock("@/contexts/ProductContext", () => ({
+  useProductContext: () => ({ selectedProduct: { id: "prod-1", name: "Test Product" }, products: [], isLoading: false }),
+}));
+
 // Mock the builds service
 vi.mock("@/lib/api/services/builds.service", () => ({
   buildsService: {
@@ -66,7 +70,7 @@ describe("useBuilds (external API mode)", () => {
     const { result } = renderHook(() => useBuilds(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(buildsService.getBuildJobs).toHaveBeenCalledWith("acc-1", "ent-1");
+    expect(buildsService.getBuildJobs).toHaveBeenCalledWith("acc-1", "ent-1", "prod-1", "Test Product");
     expect(result.current.buildJobs).toHaveLength(1);
     expect(result.current.buildJobs[0].connector_name).toBe("Jenkins");
   });
